@@ -1,0 +1,44 @@
+Program        <- _ Statement* EOF
+
+# Statements
+Statement      <- FunctionDef / VarDecl / Assignment / IfStmt / WhileStmt / ReturnStmt / ExprStmt
+
+FunctionDef    <- "def" _ Identifier _ "(" _ ParamList? _ ")" _ "->" _ Type _ ":" _ NEWLINE INDENT Statement+ DEDENT
+ParamList      <- Param ("," _ Param)*
+Param          <- Identifier _ ":" _ Type
+
+VarDecl        <- Identifier _ ":" _ Type _ "=" _ Expression NEWLINE
+Assignment     <- Identifier _ "=" _ Expression NEWLINE
+ReturnStmt     <- "return" _ Expression? NEWLINE
+ExprStmt       <- Expression NEWLINE
+
+IfStmt         <- "if" _ Expression _ ":" _ NEWLINE INDENT Statement+ DEDENT
+WhileStmt      <- "while" _ Expression _ ":" _ NEWLINE INDENT Statement+ DEDENT
+
+# Expressions
+Expression     <- OrExpr
+OrExpr         <- AndExpr ("or" _ AndExpr)*
+AndExpr        <- EqualityExpr ("and" _ EqualityExpr)*
+EqualityExpr   <- RelationalExpr (("==" / "!=") _ RelationalExpr)*
+RelationalExpr <- AddExpr (("<" / "<=" / ">" / ">=") _ AddExpr)*
+AddExpr        <- MulExpr (("+" / "-") _ MulExpr)*
+MulExpr        <- UnaryExpr (("*" / "/" / "%") _ UnaryExpr)*
+UnaryExpr      <- ("not" / "-")? _ PrimaryExpr
+PrimaryExpr    <- Number / String / Bool / Identifier / CallExpr / "(" _ Expression _ ")"
+CallExpr       <- Identifier _ "(" _ ArgList? _ ")"
+ArgList        <- Expression ("," _ Expression)*
+
+# Terminals
+Identifier     <- [a-zA-Z_][a-zA-Z0-9_]*
+Type           <- "int" / "float" / "bool" / "str"
+
+Number         <- [0-9]+ ("." [0-9]+)?
+String         <- '"' [^"]* '"'
+Bool           <- "True" / "False"
+
+# Whitespace and indentation (assumes an external preprocessor or indent-aware parser)
+_              <- [ \t]*
+NEWLINE        <- "\n"
+INDENT         <-  // handled by indent-aware parser
+DEDENT         <-  // handled by indent-aware parser
+EOF            <- !.

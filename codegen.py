@@ -1,35 +1,132 @@
-from parser import Parser
-from lexer import Lexer
+from lang_ast import *
 
-def emit_c(ast):
-    lines = ['#include <stdio.h>', '']
-    for node in ast:
-        if node[0] == "function":
-            name = node[1]
-            ret_type = node[3]
-            body = node[4]
+class CCodeGenerator:
+    def __init__(self):
+        self.indent_level = 0
+        self.output = []
+        self.defined_vars = set()
 
-            header = f"{ret_type} {name}()" if name != "main" else "int main()"
-            lines.append(f"{header} {{")
+    def indent(self):
+        return '    ' * self.indent_level
 
-            for stmt in body:
-                if stmt[0] == "print":
-                    lines.append(f'    printf("{stmt[1]}\\n");')
-                elif stmt[0] == "return":
-                    lines.append(f'    return {stmt[1]};')
-    lines.append('}')
-    return "\n".join(lines)
+    def emit(self, line):
+        self.output.append(self.indent() + line)
 
-if __name__ == "__main__":
-    with open("test.pyc") as f:
-        code = f.read()
+    def generate(self, program: Program) -> str:
+        self.emit("#include <stdio.h>")
+        self.emit("#include <stdbool.h>")
+        self.emit("")
+        for stmt in program.body:
+            self.gen_stmt(stmt)
+        return '\n'.join(self.output)
 
-    tokens = Lexer(code).tokenize()
-    tree = Parser(tokens).parse()
-    c_code = emit_c(tree)
+    def gen_stmt(self, stmt: Stmt):
+        if isinstance(stmt, FunctionDef):
+            ret_type = stmt.return_type or "void"
+            args = ", ".join(
+                f"int {p}" if isinstance(p, str) else f"{p[1]} {p[0]}"
+                for p in stmt.params
+                )
+            self.emit(f"{ret_type} {stmt.name}({args}) {{")
+            self.indent_level += 1
+            self.defined_vars = set()  # reset per function
+            for s in stmt.body:
+                self.gen_stmt(s)
+            self.indent_level -= 1
+            self.emit("}")
+            self.emit("")
 
-    with open("out.c", "w") as f:
-        f.write(c_code)
+        elif isinstance(stmt, ReturnStmt):
+            expr = self.gen_expr(stmt.value)
+            self.emit(f"return {expr};")
 
-    print("Generated C code:")
-    print(c_code)
+        elif isinstance(stmt, AssignStmt):
+            expr = self.gen_expr(stmt.value)
+            if stmt.target in self.defined_vars:
+                self.emit(f"{stmt.target} = {expr};")
+            else:
+                self.emit(f"int {stmt.target} = {expr};")
+                self.defined_vars.add(stmt.target)
+
+        elif isinstance(stmt, IfStmt):
+            cond = self.gen_expr(stmt.condition)
+            self.emit(f"if ({cond}) {{")
+            self.indent_level += 1
+            for s in stmt.then_body:
+                self.gen_stmt(s)
+            self.indent_level -= 1
+            self.emit("}")
+            if stmt.else_body:
+                self.emit("else {")
+                self.indent_level += 1
+                for s in stmt.else_body:
+                    self.gen_stmt(s)
+                self.indent_level -= 1
+                self.emit("}")
+
+        elif isinstance(stmt, WhileStmt):
+            cond = self.gen_expr(stmt.condition)
+            self.emit(f"while ({cond}) {{")
+            self.indent_level += 1
+            for s in stmt.body:
+                self.gen_stmt(s)
+            self.indent_level -= 1
+            self.emit("}")
+
+        elif isinstance(stmt, ForStmt):
+            iter_expr = self.gen_expr(stmt.iterable)
+            self.emit(f"// for loop over {iter_expr} not implemented in C directly")
+            self.emit("// You may need to implement custom loop logic here.")
+
+        elif isinstance(stmt, CallExpr):
+            self.gen_expr(stmt)  # side effect like print()
+
+    def gen_expr(self, expr: Expr) -> str:
+        if isinstance(expr, BinOp):
+            left = self.gen_expr(expr.left)
+            right = self.gen_expr(expr.right)
+            return f"({left} {expr.op} {right})"
+
+        elif isinstance(expr, UnaryOp):
+            operand = self.gen_expr(expr.operand)
+            return f"({expr.op}{operand})"
+
+        elif isinstance(expr, Literal):
+            if isinstance(expr.value, bool):
+                return "true" if expr.value else "false"
+            elif isinstance(expr.value, str):
+                return f'"{expr.value}"'  # warning: string support in C is basic
+            return str(expr.value)
+
+        elif isinstance(expr, Identifier):
+            return expr.name
+
+        elif isinstance(expr, CallExpr):
+            if isinstance(expr.func, Identifier) and expr.func.name == "print":
+                for arg in expr.args:
+                    arg_str = self.gen_expr(arg)
+                    if isinstance(arg, Literal):
+                        if isinstance(arg.value, str):
+                            self.emit(f'printf("%s\\n", {arg_str});')
+                        elif isinstance(arg.value, int):
+                            self.emit(f'printf("%d\\n", {arg_str});')
+                        elif isinstance(arg.value, float):
+                            self.emit(f'printf("%f\\n", {arg_str});')
+                        elif isinstance(arg.value, bool):
+                            self.emit(f'printf("%s\\n", {arg_str} ? "true" : "false");')
+                    else:
+                        self.emit(f'printf("%d\\n", {arg_str});')  # fallback for non-literal
+                return "0"
+            else:
+                args = ", ".join(self.gen_expr(a) for a in expr.args)
+                return f"{expr.func.name}({args})"
+
+        elif isinstance(expr, ListExpr):
+            elements = ", ".join(self.gen_expr(e) for e in expr.elements)
+            return f"{{ {elements} }}"  # user must define array outside
+
+        elif isinstance(expr, DictExpr):
+            return "/* dicts not directly supported in C */"
+
+        else:
+            raise NotImplementedError(f"Unknown expression type: {type(expr)}")

@@ -1,97 +1,196 @@
-class Token:
-    def __init__(self, kind, value):
-        self.kind = kind
-        self.value = value
+import re
+from pprint import pprint
+from enum import Enum, auto
+from typing import List, NamedTuple
+
+
+class TokenType(Enum):
+    # Keywords
+    DEF = auto(); RETURN = auto(); IF = auto(); ELSE = auto(); ELIF = auto()
+    WHILE = auto(); FOR = auto(); IN = auto(); TRUE = auto(); FALSE = auto()
+    INT = auto(); FLOAT = auto(); BOOL = auto(); STR = auto(); NOT = auto()
+    AND = auto(); OR = auto()
+
+    # Symbols
+    COLON = auto(); COMMA = auto(); LPAREN = auto(); RPAREN = auto()
+    LBRACKET = auto(); RBRACKET = auto(); LBRACE = auto(); RBRACE = auto()
+    EQ = auto(); PLUS = auto(); MINUS = auto(); STAR = auto(); SLASH = auto(); PERCENT = auto()
+    EQEQ = auto(); NOTEQ = auto(); LT = auto(); LTE = auto(); GT = auto(); GTE = auto()
+    ARROW = auto()
+
+    # Structure
+    NEWLINE = auto(); INDENT = auto(); DEDENT = auto(); EOF = auto()
+
+    # Literals & Identifiers
+    IDENTIFIER = auto(); INT_LIT = auto(); FLOAT_LIT = auto(); STRING_LIT = auto()
+
+
+class Token(NamedTuple):
+    type: TokenType
+    value: str
+    line: int
+    column: int
 
     def __repr__(self):
-        return f"Token({self.kind}, {self.value})"
+        start_line, start_col = self.line, self.column
+        end_line, end_col = self._compute_end_position()
+
+        # Format layout: line,col-line,col: TOKEN_TYPE_PADDED 'value'
+        position = f"{start_line},{start_col}-{end_line},{end_col}:"
+        type_name = f"{self.type.name:<16}"  # Right-align in 16-character field
+        value_repr = f"{repr(self.value)}"
+        return f"{position:<16} {type_name} {value_repr}"  # Position left-aligned, type right-aligned
+
+    def _compute_end_position(self):
+        if not self.value:
+            return self.line, self.column
+        lines = self.value.splitlines()
+        if len(lines) == 1:
+            return self.line, self.column + len(lines[0])
+        else:
+            return self.line + len(lines) - 1, len(lines[-1])
+
+
+class LexerError(Exception):
+    def __init__(self, message, line, column):
+        super().__init__(f"LexerError at line {line}, column {column}: {message}")
+
+
+KEYWORDS = {
+    "def": TokenType.DEF,
+    "return": TokenType.RETURN,
+    "if": TokenType.IF,
+    "else": TokenType.ELSE,
+    "elif": TokenType.ELIF,
+    "while": TokenType.WHILE,
+    "for": TokenType.FOR,
+    "in": TokenType.IN,
+    "true": TokenType.TRUE,
+    "false": TokenType.FALSE,
+    "int": TokenType.INT,
+    "float": TokenType.FLOAT,
+    "bool": TokenType.BOOL,
+    "str": TokenType.STR,
+    "not": TokenType.NOT,
+    "and": TokenType.AND,
+    "or": TokenType.OR,
+}
+
+TOKEN_REGEX = [
+    (r'==', TokenType.EQEQ),
+    (r'!=', TokenType.NOTEQ),
+    (r'<=', TokenType.LTE),
+    (r'>=', TokenType.GTE),
+    (r'->', TokenType.ARROW),
+    (r'\(', TokenType.LPAREN),
+    (r'\)', TokenType.RPAREN),
+    (r':', TokenType.COLON),
+    (r',', TokenType.COMMA),
+    (r'=', TokenType.EQ),
+    (r'\+', TokenType.PLUS),
+    (r'-', TokenType.MINUS),
+    (r'\*', TokenType.STAR),
+    (r'/', TokenType.SLASH),
+    (r'%', TokenType.PERCENT),
+    (r'<', TokenType.LT),
+    (r'>', TokenType.GT),
+    # Order matters: more specific first
+    (r'\d+\.\d+[eE][+-]?\d+', TokenType.FLOAT_LIT),
+    (r'\d+[eE][+-]?\d+', TokenType.FLOAT_LIT),
+    (r'\d+\.\d+', TokenType.FLOAT_LIT),
+    (r'\d+', TokenType.INT_LIT),
+    (r'"(?:\\.|[^"\\])*"', TokenType.STRING_LIT),
+    (r"'(?:\\.|[^'\\])*'", TokenType.STRING_LIT),
+    (r'[A-Za-z_][A-Za-z0-9_]*', TokenType.IDENTIFIER),
+]
+
+WHITESPACE = re.compile(r'[ \t]*')
+
 
 class Lexer:
-    def __init__(self, code):
-        self.code = code
-        self.pos = 0
+    def __init__(self, source: str):
+        self.source = source
+        self.tokens: List[Token] = []
+        self.lines = source.splitlines()
+        self.indents = [0]
+        self.line_num = 0
 
-    def advance(self):
-        self.pos += 1
+    def tokenize(self) -> List[Token]:
+        while self.line_num < len(self.lines):
+            self._tokenize_line()
+        while len(self.indents) > 1:
+            self.tokens.append(Token(TokenType.DEDENT, "", self.line_num + 1, 0))
+            self.indents.pop()
+        self.tokens.append(Token(TokenType.EOF, "", self.line_num + 1, 0))
+        return self.tokens
 
-    def peek(self):
-        return self.code[self.pos] if self.pos < len(self.code) else '\0'
+    def _tokenize_line(self):
+        raw_line = self.lines[self.line_num]
+        self.line_num += 1
+        line = raw_line.rstrip()
 
-    def tokenize(self):
-        tokens = []
-        while self.pos < len(self.code):
-            ch = self.code[self.pos]
+        # Handle comments
+        comment_start = line.find('#')
+        if comment_start != -1:
+            line = line[:comment_start]
 
-            if ch.isspace():
-                self.advance()
+        if not line.strip():
+            return  # skip empty or comment-only line
+
+        if '\t' in line and ' ' in line:
+            raise LexerError("Mixed tabs and spaces in indentation", self.line_num, 0)
+        line = line.replace('\t', '    ')
+
+        indent_match = WHITESPACE.match(line)
+        indent = len(indent_match.group(0)) if indent_match else 0
+        pos = indent
+
+        # Indentation handling
+        if indent > self.indents[-1]:
+            self.indents.append(indent)
+            self.tokens.append(Token(TokenType.INDENT, "", self.line_num, 0))
+        elif indent < self.indents[-1]:
+            while indent < self.indents[-1]:
+                self.indents.pop()
+                self.tokens.append(Token(TokenType.DEDENT, "", self.line_num, 0))
+            if indent != self.indents[-1]:
+                raise LexerError("Inconsistent indentation", self.line_num, 0)
+
+        while pos < len(line):
+            char = line[pos]
+            if char in ' \t':
+                pos += 1
                 continue
 
-            if ch == '-' and self.pos + 1 < len(self.code) and self.code[self.pos + 1] == '>':
-                self.advance()
-                self.advance()
-                tokens.append(Token("ARROW", "->"))
-                continue
+            matched = False
+            for pattern, ttype in TOKEN_REGEX:
+                regex = re.compile(pattern)
+                match = regex.match(line, pos)
+                if match:
+                    text = match.group(0)
+                    value = text
 
-            if ch == '(':
-                tokens.append(Token("LPAREN", ch))
-                self.advance()
-                continue
+                    if ttype == TokenType.IDENTIFIER and text in KEYWORDS:
+                        ttype = KEYWORDS[text]
+                    elif ttype == TokenType.STRING_LIT:
+                        try:
+                            value = bytes(text[1:-1], "utf-8").decode("unicode_escape")
+                        except Exception:
+                            raise LexerError("Invalid string escape sequence", self.line_num, pos + 1)
 
-            if ch == ')':
-                tokens.append(Token("RPAREN", ch))
-                self.advance()
-                continue
+                    self.tokens.append(Token(ttype, value, self.line_num, pos + 1))
+                    pos = match.end()
+                    matched = True
+                    break
+            if not matched:
+                raise LexerError("Unknown token", self.line_num, pos + 1)
 
-            if ch == ':':
-                tokens.append(Token("COLON", ch))
-                self.advance()
-                continue
-
-            if ch == ',':
-                tokens.append(Token("COMMA", ch))
-                self.advance()
-                continue
-
-            if ch == '"':
-                self.advance()
-                start = self.pos
-                while self.peek() != '"' and self.peek() != '\0':
-                    self.advance()
-                value = self.code[start:self.pos]
-                tokens.append(Token("STRING", value))
-                self.advance()  # closing "
-                continue
-
-            if ch.isdigit():
-                start = self.pos
-                while self.peek().isdigit():
-                    self.advance()
-                tokens.append(Token("NUMBER", self.code[start:self.pos]))
-                continue
-
-            if ch.isalpha() or ch == '_':
-                start = self.pos
-                while self.peek().isalnum() or self.peek() == '_':
-                    self.advance()
-                word = self.code[start:self.pos]
-
-                if word == "def":
-                    tokens.append(Token("DEF", word))
-                elif word == "return":
-                    tokens.append(Token("RETURN", word))
-                elif word == "print":
-                    tokens.append(Token("PRINT", word))
-                else:
-                    tokens.append(Token("IDENT", word))
-                continue
-
-            raise Exception(f"Unexpected character: {ch}")
-
-        return tokens
+        self.tokens.append(Token(TokenType.NEWLINE, "", self.line_num, len(line)))
 
 if __name__ == "__main__":
-    with open("test.pyc") as f:
+    with open("2.pb") as f:
         code = f.read()
     lexer = Lexer(code)
     tokens = lexer.tokenize()
-    print(tokens)
+    for token in tokens:
+        pprint(token)
