@@ -41,12 +41,19 @@ class CCodeGenerator:
             self.emit(f"return {expr};")
 
         elif isinstance(stmt, AssignStmt):
-            expr = self.gen_expr(stmt.value)
-            if stmt.target in self.defined_vars:
-                self.emit(f"{stmt.target} = {expr};")
-            else:
-                self.emit(f"int {stmt.target} = {expr};")
-                self.defined_vars.add(stmt.target)
+            expr_code = self.gen_expr(stmt.value)
+            expr_type = self.infer_type(stmt.value)
+            c_type = self.map_type(expr_type)
+            self.emit(f"{c_type} {stmt.target} = {expr_code};")
+
+
+        # elif isinstance(stmt, AssignStmt):
+        #     expr = self.gen_expr(stmt.value)
+        #     if stmt.target in self.defined_vars:
+        #         self.emit(f"{stmt.target} = {expr};")
+        #     else:
+        #         self.emit(f"int {stmt.target} = {expr};")
+        #         self.defined_vars.add(stmt.target)
 
         elif isinstance(stmt, IfStmt):
             cond = self.gen_expr(stmt.condition)
@@ -110,7 +117,8 @@ class CCodeGenerator:
 
         elif isinstance(expr, UnaryOp):
             operand = self.gen_expr(expr.operand)
-            return f"({expr.op}{operand})"
+            op = "!" if expr.op == "not" else expr.op
+            return f"({op}{operand})"
 
         elif isinstance(expr, Literal):
             if isinstance(expr.value, bool):
@@ -120,6 +128,12 @@ class CCodeGenerator:
             return str(expr.value)
 
         elif isinstance(expr, Identifier):
+            if expr.name == "True":
+                return "true"
+            elif expr.name == "False":
+                return "false"
+            elif expr.name == "None":
+                return "0"  # or 'NULL' if you want to add pointer/null support
             return expr.name
 
         elif isinstance(expr, CallExpr):
@@ -151,3 +165,28 @@ class CCodeGenerator:
 
         else:
             raise NotImplementedError(f"Unknown expression type: {type(expr)}")
+
+    def map_type(self, t):
+        if t == "int":
+            return "int"
+        elif t == "bool":
+            return "bool"
+        elif t == "string":
+            return "const char*"
+        return "int"  # fallback default
+
+    def infer_type(self, expr: Expr) -> str:
+        if isinstance(expr, Literal):
+            if isinstance(expr.value, bool):
+                return "bool"
+            elif isinstance(expr.value, str):
+                return "string"
+            else:
+                return "int"
+        elif isinstance(expr, Identifier):
+            if expr.name == "True" or expr.name == "False":
+                return "bool"
+            elif expr.name == "None":
+                return "int"
+            return "int"
+        # ... other cases ...

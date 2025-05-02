@@ -60,5 +60,23 @@ def main() -> int:
         self.assertIn('printf("%s\\n", "Equal");', c_code)
         self.assertIn('else {', c_code)
 
+    def test_builtin_constants(self):
+        source = (
+            "def main() -> int:\n"
+            "    x = True\n"
+            "    y = False\n"
+            "    if x:\n"
+            "        print(\"yes\")\n"
+            "    if not y:\n"
+            "        print(\"still yes\")\n"
+            "    return 0\n"
+        )
+        c_code = self.compile_pipeline(source)
+        self.assertIn('bool x = true;', c_code)
+        self.assertIn('bool y = false;', c_code)
+        self.assertIn('if (x) {', c_code)
+        self.assertIn('if ((!y)) {', c_code)
+
+
 if __name__ == "__main__":
     unittest.main()

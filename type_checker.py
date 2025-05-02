@@ -10,6 +10,7 @@ class TypeChecker:
             "range": ([("start", "int")], "range"),  # support will be handled manually
         }
         # self.functions = {}  # name -> (params: [(name, type)], return_type)
+        self.builtins = {"True": "bool", "False": "bool", "None": "int"}
         self.env = {}        # variable -> type
         self.current_function_return_type = None
         self.in_loop = 0
@@ -95,8 +96,10 @@ class TypeChecker:
                 return "bool"
 
         elif isinstance(expr, Identifier):
+            if expr.name in self.builtins:
+                return self.builtins[expr.name]
             if expr.name not in self.env:
-                raise TypeError(f"Undeclared variable '{expr.name}'")
+                raise TypeError(f"Undefined variable '{expr.name}'")
             return self.env[expr.name]
 
         elif isinstance(expr, BinOp):

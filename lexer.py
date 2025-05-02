@@ -7,7 +7,7 @@ from typing import List, NamedTuple
 class TokenType(Enum):
     # Keywords
     DEF = auto(); RETURN = auto(); IF = auto(); ELSE = auto(); ELIF = auto()
-    WHILE = auto(); FOR = auto(); IN = auto(); TRUE = auto(); FALSE = auto()
+    WHILE = auto(); FOR = auto(); IN = auto()
     INT = auto(); FLOAT = auto(); BOOL = auto(); STR = auto(); NOT = auto()
     AND = auto(); OR = auto(); BREAK = auto(); CONTINUE = auto()
 
@@ -67,8 +67,6 @@ KEYWORDS = {
     "break": TokenType.BREAK,
     "continue": TokenType.CONTINUE,
     "in": TokenType.IN,
-    "true": TokenType.TRUE,
-    "false": TokenType.FALSE,
     "int": TokenType.INT,
     "float": TokenType.FLOAT,
     "bool": TokenType.BOOL,
