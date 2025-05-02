@@ -40,6 +40,14 @@ class ForStmt:
     body: List['Stmt']
 
 @dataclass
+class BreakStmt:
+    pass
+
+@dataclass
+class ContinueStmt:
+    pass
+
+@dataclass
 class ListExpr:
     elements: List['Expr']
 
@@ -74,7 +82,8 @@ class UnaryOp:
 
 # Union Types
 Stmt = Union[
-    FunctionDef, ReturnStmt, IfStmt, AssignStmt, WhileStmt, ForStmt
+    FunctionDef, ReturnStmt, IfStmt, AssignStmt, WhileStmt, ForStmt,
+    BreakStmt, ContinueStmt,
 ]
 
 Expr = Union[

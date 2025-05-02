@@ -9,7 +9,7 @@ class TokenType(Enum):
     DEF = auto(); RETURN = auto(); IF = auto(); ELSE = auto(); ELIF = auto()
     WHILE = auto(); FOR = auto(); IN = auto(); TRUE = auto(); FALSE = auto()
     INT = auto(); FLOAT = auto(); BOOL = auto(); STR = auto(); NOT = auto()
-    AND = auto(); OR = auto()
+    AND = auto(); OR = auto(); BREAK = auto(); CONTINUE = auto()
 
     # Symbols
     COLON = auto(); COMMA = auto(); LPAREN = auto(); RPAREN = auto()
@@ -64,6 +64,8 @@ KEYWORDS = {
     "elif": TokenType.ELIF,
     "while": TokenType.WHILE,
     "for": TokenType.FOR,
+    "break": TokenType.BREAK,
+    "continue": TokenType.CONTINUE,
     "in": TokenType.IN,
     "true": TokenType.TRUE,
     "false": TokenType.FALSE,

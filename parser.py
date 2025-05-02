@@ -48,6 +48,12 @@ class Parser:
             return self.parse_while()
         elif self.match(TokenType.FOR):
             return self.parse_for()
+        elif self.match(TokenType.BREAK):
+            self.expect(TokenType.NEWLINE)
+            return BreakStmt()
+        elif self.match(TokenType.CONTINUE):
+            self.expect(TokenType.NEWLINE)
+            return ContinueStmt()
         elif self.current().type == TokenType.IDENTIFIER:
             if self.tokens[self.pos + 1].type == TokenType.EQ:
                 return self.parse_assignment()

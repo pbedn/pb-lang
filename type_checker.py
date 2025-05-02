@@ -12,6 +12,7 @@ class TypeChecker:
         # self.functions = {}  # name -> (params: [(name, type)], return_type)
         self.env = {}        # variable -> type
         self.current_function_return_type = None
+        self.in_loop = 0
 
     def check(self, program: Program):
         for stmt in program.body:
@@ -60,14 +61,24 @@ class TypeChecker:
             cond_type = self.check_expr(stmt.condition)
             if cond_type != "bool":
                 raise TypeError("While condition must be of type 'bool'")
+            self.in_loop += 1
             for s in stmt.body:
                 self.check_stmt(s)
+            self.in_loop -= 1
 
         elif isinstance(stmt, ForStmt):
+            iter_type = self.check_expr(stmt.iterable)
+            if iter_type != "range":
+                raise TypeError("Can only iterate over range")
             self.env[stmt.var_name] = "int"
-            self.check_expr(stmt.iterable)
+            self.in_loop += 1
             for s in stmt.body:
                 self.check_stmt(s)
+            self.in_loop -= 1
+
+        elif isinstance(stmt, BreakStmt) or isinstance(stmt, ContinueStmt):
+            if self.in_loop == 0:
+                raise TypeError(f"{type(stmt).__name__} used outside of loop")
 
         elif isinstance(stmt, CallExpr):
             self.check_expr(stmt)

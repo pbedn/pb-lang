@@ -93,6 +93,12 @@ class CCodeGenerator:
             else:
                 self.emit(f"// unsupported for-loop iterable: {stmt.iterable}")
 
+        elif isinstance(stmt, BreakStmt):
+            self.emit("break;")
+
+        elif isinstance(stmt, ContinueStmt):
+            self.emit("continue;")
+
         elif isinstance(stmt, CallExpr):
             self.gen_expr(stmt)  # side effect like print()
 
