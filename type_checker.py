@@ -5,7 +5,11 @@ class TypeError(Exception):
 
 class TypeChecker:
     def __init__(self):
-        self.functions = {}  # name -> (params: [(name, type)], return_type)
+        self.functions = {
+            "print": ([("value", "int")], "void"),  # accept 1 argument for now
+            "range": ([("start", "int")], "range"),  # support will be handled manually
+        }
+        # self.functions = {}  # name -> (params: [(name, type)], return_type)
         self.env = {}        # variable -> type
         self.current_function_return_type = None
 
@@ -114,6 +118,15 @@ class TypeChecker:
                 for arg in expr.args:
                     self.check_expr(arg)
                 return "void"
+
+            if fname == "range":
+                if not (1 <= len(expr.args) <= 2):
+                    raise TypeError("range() takes 1 or 2 arguments")
+                for arg in expr.args:
+                    if self.check_expr(arg) != "int":
+                        raise TypeError("range() arguments must be integers")
+                return "range"
+
             if fname not in self.functions:
                 raise TypeError(f"Undefined function '{fname}'")
             params, return_type = self.functions[fname]

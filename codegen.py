@@ -74,9 +74,24 @@ class CCodeGenerator:
             self.emit("}")
 
         elif isinstance(stmt, ForStmt):
-            iter_expr = self.gen_expr(stmt.iterable)
-            self.emit(f"// for loop over {iter_expr} not implemented in C directly")
-            self.emit("// You may need to implement custom loop logic here.")
+            if isinstance(stmt.iterable, CallExpr) and isinstance(stmt.iterable.func, Identifier) and stmt.iterable.func.name == "range":
+                args = stmt.iterable.args
+                if len(args) == 1:
+                    start = "0"
+                    end = self.gen_expr(args[0])
+                elif len(args) == 2:
+                    start = self.gen_expr(args[0])
+                    end = self.gen_expr(args[1])
+                else:
+                    raise NotImplementedError("range() with 1 or 2 args only")
+                self.emit(f"for (int {stmt.var_name} = {start}; {stmt.var_name} < {end}; {stmt.var_name}++) {{")
+                self.indent_level += 1
+                for s in stmt.body:
+                    self.gen_stmt(s)
+                self.indent_level -= 1
+                self.emit("}")
+            else:
+                self.emit(f"// unsupported for-loop iterable: {stmt.iterable}")
 
         elif isinstance(stmt, CallExpr):
             self.gen_expr(stmt)  # side effect like print()
