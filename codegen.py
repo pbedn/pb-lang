@@ -119,7 +119,15 @@ class CCodeGenerator:
         if isinstance(expr, BinOp):
             left = self.gen_expr(expr.left)
             right = self.gen_expr(expr.right)
-            return f"({left} {expr.op} {right})"
+
+            # Map Python-style logical ops to C-style
+            op = expr.op
+            if op == "and":
+                op = "&&"
+            elif op == "or":
+                op = "||"
+
+            return f"({left} {op} {right})"
 
         elif isinstance(expr, UnaryOp):
             operand = self.gen_expr(expr.operand)

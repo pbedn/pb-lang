@@ -78,17 +78,26 @@ def main() -> int:
         self.assertIn('if ((!y)) {', c_code)
 
     def test_list_indexing(self):
-        source = '''
-def main() -> int:
-    numbers = [10, 20, 30]
-    x = numbers[1]
-    print(x)
-    return 0
-    '''
+        source = (
+            "def main() -> int:\n"
+            "    numbers = [10, 20, 30]\n"
+            "    x = numbers[1]\n"
+            "    print(x)\n"
+            "    return 0\n"
+        )
         c_code = self.compile_pipeline(source)
         self.assertIn('int numbers[] = { 10, 20, 30 };', c_code)
         self.assertIn('int x = numbers[1];', c_code)
         self.assertIn('printf("%d\\n", x);', c_code)
+
+    def test_void_function(self):
+        source = (
+            "def debug():\n"
+            "    print(\"Debugging...\")\n"
+        )
+        c_code = self.compile_pipeline(source)
+        self.assertIn('void debug()', c_code)
+        self.assertIn('printf("%s\\n", "Debugging...");', c_code)
 
 
 if __name__ == "__main__":
