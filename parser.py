@@ -116,7 +116,9 @@ class Parser:
             then_body.append(self.parse_stmt())
 
         else_body = None
-        if self.match(TokenType.ELSE):
+        if self.match(TokenType.ELIF):
+            else_body = [self.parse_if()]  # desugar elif into nested if
+        elif self.match(TokenType.ELSE):
             self.expect(TokenType.COLON)
             self.expect(TokenType.NEWLINE)
             self.expect(TokenType.INDENT)
@@ -125,6 +127,7 @@ class Parser:
                 else_body.append(self.parse_stmt())
 
         return IfStmt(cond, then_body, else_body)
+
 
     def parse_while(self):
         cond = self.parse_expr()
