@@ -88,5 +88,20 @@ class TestTypeChecker(unittest.TestCase):
         ])
         self.check_type_error(prog)
 
+    def test_indexing_type_errors(self):
+        prog = Program([
+            FunctionDef(
+                name="main",
+                params=[],
+                body=[
+                    AssignStmt("d", Literal(42)),
+                    AssignStmt("x", IndexExpr(Identifier("d"), Literal(0))),
+                    ReturnStmt(Identifier("x"))
+                ],
+                return_type="int"
+            )
+        ])
+        self.check_type_error(prog)
+
 if __name__ == "__main__":
     unittest.main()

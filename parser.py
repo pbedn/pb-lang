@@ -229,6 +229,8 @@ class Parser:
 
     def parse_identifier_or_call(self):
         name = self.expect(TokenType.IDENTIFIER).value
+        expr = Identifier(name)
+        # Function call
         if self.match(TokenType.LPAREN):
             args = []
             if self.current().type != TokenType.RPAREN:
@@ -237,8 +239,16 @@ class Parser:
                     if not self.match(TokenType.COMMA):
                         break
             self.expect(TokenType.RPAREN)
-            return CallExpr(Identifier(name), args)
-        return Identifier(name)
+            expr = CallExpr(expr, args)
+
+        # Handle indexing (mylist[0][1] ...)
+        while self.match(TokenType.LBRACKET):
+            index = self.parse_expr()
+            self.expect(TokenType.RBRACKET)
+            expr = IndexExpr(expr, index)
+
+        return expr
+
 
     def parse_list(self):
         self.expect(TokenType.LBRACKET)

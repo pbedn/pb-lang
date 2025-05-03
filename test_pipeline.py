@@ -77,6 +77,19 @@ def main() -> int:
         self.assertIn('if (x) {', c_code)
         self.assertIn('if ((!y)) {', c_code)
 
+    def test_list_indexing(self):
+        source = '''
+def main() -> int:
+    numbers = [10, 20, 30]
+    x = numbers[1]
+    print(x)
+    return 0
+    '''
+        c_code = self.compile_pipeline(source)
+        self.assertIn('int numbers[] = { 10, 20, 30 };', c_code)
+        self.assertIn('int x = numbers[1];', c_code)
+        self.assertIn('printf("%d\\n", x);', c_code)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -41,19 +41,25 @@ class CCodeGenerator:
             self.emit(f"return {expr};")
 
         elif isinstance(stmt, AssignStmt):
-            expr_code = self.gen_expr(stmt.value)
+            expr = self.gen_expr(stmt.value)
             expr_type = self.infer_type(stmt.value)
-            c_type = self.map_type(expr_type)
-            self.emit(f"{c_type} {stmt.target} = {expr_code};")
 
-
-        # elif isinstance(stmt, AssignStmt):
-        #     expr = self.gen_expr(stmt.value)
-        #     if stmt.target in self.defined_vars:
-        #         self.emit(f"{stmt.target} = {expr};")
-        #     else:
-        #         self.emit(f"int {stmt.target} = {expr};")
-        #         self.defined_vars.add(stmt.target)
+            if isinstance(stmt.value, ListExpr):
+                # Handle arrays: only allow declaration (no reassignment)
+                c_type = self.map_type(expr_type)
+                if stmt.target in self.defined_vars:
+                    # Optional: warn or skip because reassignment of arrays is invalid in C
+                    self.emit(f"// Warning: cannot reassign array {stmt.target} in C")
+                else:
+                    self.emit(f"{c_type} {stmt.target}[] = {expr};")
+                    self.defined_vars.add(stmt.target)
+            else:
+                if stmt.target in self.defined_vars:
+                    self.emit(f"{stmt.target} = {expr};")
+                else:
+                    c_type = self.map_type(expr_type)
+                    self.emit(f"{c_type} {stmt.target} = {expr};")
+                    self.defined_vars.add(stmt.target)
 
         elif isinstance(stmt, IfStmt):
             cond = self.gen_expr(stmt.condition)
@@ -160,6 +166,11 @@ class CCodeGenerator:
             elements = ", ".join(self.gen_expr(e) for e in expr.elements)
             return f"{{ {elements} }}"  # user must define array outside
 
+        elif isinstance(expr, IndexExpr):
+            base = self.gen_expr(expr.base)
+            index = self.gen_expr(expr.index)
+            return f"{base}[{index}]"
+
         elif isinstance(expr, DictExpr):
             return "/* dicts not directly supported in C */"
 
@@ -173,6 +184,8 @@ class CCodeGenerator:
             return "bool"
         elif t == "string":
             return "const char*"
+        elif t == "list":
+            return "int"
         return "int"  # fallback default
 
     def infer_type(self, expr: Expr) -> str:

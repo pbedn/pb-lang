@@ -52,6 +52,11 @@ class ListExpr:
     elements: List['Expr']
 
 @dataclass
+class IndexExpr:
+    base: 'Expr'
+    index: 'Expr'
+
+@dataclass
 class DictExpr:
     pairs: List[tuple['Expr', 'Expr']]
 
@@ -87,7 +92,7 @@ Stmt = Union[
 ]
 
 Expr = Union[
-    BinOp, Identifier, Literal, CallExpr, UnaryOp, ListExpr, DictExpr
+    BinOp, Identifier, Literal, CallExpr, UnaryOp, ListExpr, DictExpr, IndexExpr
 ]
 
 

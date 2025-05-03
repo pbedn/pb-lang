@@ -124,6 +124,15 @@ class TypeChecker:
                 return "bool"
             raise TypeError(f"Invalid unary op '{expr.op}' for type '{t}'")
 
+        elif isinstance(expr, IndexExpr):
+            base_type = self.check_expr(expr.base)
+            index_type = self.check_expr(expr.index)
+            if base_type != "list":
+                raise TypeError("Can only index into lists")
+            if index_type != "int":
+                raise TypeError("List index must be an integer")
+            return "int"  # assuming list of ints for now
+
         elif isinstance(expr, CallExpr):
             if not isinstance(expr.func, Identifier):
                 raise TypeError("Function calls must use identifier as name")
