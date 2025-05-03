@@ -127,11 +127,13 @@ class TypeChecker:
         elif isinstance(expr, IndexExpr):
             base_type = self.check_expr(expr.base)
             index_type = self.check_expr(expr.index)
-            if base_type != "list":
+            if not base_type.startswith("list"):
                 raise TypeError("Can only index into lists")
             if index_type != "int":
                 raise TypeError("List index must be an integer")
-            return "int"  # assuming list of ints for now
+            elem_type = base_type[5:-1]  # Extract type inside 'list[...]'
+            expr.elem_type = elem_type
+            return elem_type
 
         elif isinstance(expr, CallExpr):
             if not isinstance(expr.func, Identifier):
@@ -163,9 +165,15 @@ class TypeChecker:
             return return_type
 
         elif isinstance(expr, ListExpr):
-            for e in expr.elements:
-                self.check_expr(e)  # not enforcing homogeneity yet
-            return "list"
+            if not expr.elements:
+                raise TypeError("Cannot infer type of empty list")
+            elem_types = [self.check_expr(e) for e in expr.elements]
+            first_type = elem_types[0]
+            for t in elem_types:
+                if t != first_type:
+                    raise TypeError("All elements of a list must have the same type")
+            expr.elem_type = first_type  # Save the type for codegen
+            return f"list[{first_type}]"
 
         elif isinstance(expr, DictExpr):
             for k, v in expr.pairs:

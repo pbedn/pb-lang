@@ -50,11 +50,13 @@ class ContinueStmt:
 @dataclass
 class ListExpr:
     elements: List['Expr']
+    elem_type: Optional[str] = None  # inferred during type checking
 
 @dataclass
 class IndexExpr:
     base: 'Expr'
     index: 'Expr'
+    elem_type: Optional[str] = None
 
 @dataclass
 class DictExpr:

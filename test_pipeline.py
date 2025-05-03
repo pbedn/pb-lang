@@ -99,6 +99,29 @@ def main() -> int:
         self.assertIn('void debug()', c_code)
         self.assertIn('printf("%s\\n", "Debugging...");', c_code)
 
+    def test_list_of_bools(self):
+        code = source = (
+            "def main() -> int:\n"
+            "    flags = [True, False, True]\n"
+            "    x = flags[0]\n"
+            "    print(x)\n"
+            "    return 0\n"
+        )
+        c_code = self.compile_pipeline(code)
+        self.assertIn('bool flags[] = { true, false, true };', c_code)
+        self.assertIn('bool x = flags[0];', c_code)
+        self.assertIn('printf("%s\\n", x ? "true" : "false");', c_code)
+
+    def test_list_mixed_types_error(self):
+        code = '''
+def main() -> int:
+    stuff = [1, True, "oops"]
+    return 0
+    '''
+        with self.assertRaises(Exception) as ctx:
+            self.compile_pipeline(code)
+        self.assertIn("All elements of a list must have the same type", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

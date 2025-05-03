@@ -4,7 +4,7 @@ class CCodeGenerator:
     def __init__(self):
         self.indent_level = 0
         self.output = []
-        self.defined_vars = set()
+        self.defined_vars = dict()  # now a dict: name -> type
 
     def indent(self):
         return '    ' * self.indent_level
@@ -29,7 +29,7 @@ class CCodeGenerator:
                 )
             self.emit(f"{ret_type} {stmt.name}({args}) {{")
             self.indent_level += 1
-            self.defined_vars = set()  # reset per function
+            self.defined_vars = dict()  # reset per function
             for s in stmt.body:
                 self.gen_stmt(s)
             self.indent_level -= 1
@@ -45,21 +45,19 @@ class CCodeGenerator:
             expr_type = self.infer_type(stmt.value)
 
             if isinstance(stmt.value, ListExpr):
-                # Handle arrays: only allow declaration (no reassignment)
-                c_type = self.map_type(expr_type)
+                elem_c_type = self.map_type(stmt.value.elem_type or "int")
                 if stmt.target in self.defined_vars:
-                    # Optional: warn or skip because reassignment of arrays is invalid in C
                     self.emit(f"// Warning: cannot reassign array {stmt.target} in C")
                 else:
-                    self.emit(f"{c_type} {stmt.target}[] = {expr};")
-                    self.defined_vars.add(stmt.target)
+                    self.emit(f"{elem_c_type} {stmt.target}[] = {expr};")
+                    self.defined_vars[stmt.target] = expr_type
             else:
                 if stmt.target in self.defined_vars:
                     self.emit(f"{stmt.target} = {expr};")
                 else:
                     c_type = self.map_type(expr_type)
                     self.emit(f"{c_type} {stmt.target} = {expr};")
-                    self.defined_vars.add(stmt.target)
+                    self.defined_vars[stmt.target] = expr_type
 
         elif isinstance(stmt, IfStmt):
             cond = self.gen_expr(stmt.condition)
@@ -154,17 +152,17 @@ class CCodeGenerator:
             if isinstance(expr.func, Identifier) and expr.func.name == "print":
                 for arg in expr.args:
                     arg_str = self.gen_expr(arg)
-                    if isinstance(arg, Literal):
-                        if isinstance(arg.value, str):
-                            self.emit(f'printf("%s\\n", {arg_str});')
-                        elif isinstance(arg.value, int):
-                            self.emit(f'printf("%d\\n", {arg_str});')
-                        elif isinstance(arg.value, float):
-                            self.emit(f'printf("%f\\n", {arg_str});')
-                        elif isinstance(arg.value, bool):
-                            self.emit(f'printf("%s\\n", {arg_str} ? "true" : "false");')
+                    arg_type = self.infer_type(arg)
+                    if arg_type == "string":
+                        self.emit(f'printf("%s\\n", {arg_str});')
+                    elif arg_type == "int":
+                        self.emit(f'printf("%d\\n", {arg_str});')
+                    elif arg_type == "float":
+                        self.emit(f'printf("%f\\n", {arg_str});')
+                    elif arg_type == "bool":
+                        self.emit(f'printf("%s\\n", {arg_str} ? "true" : "false");')
                     else:
-                        self.emit(f'printf("%d\\n", {arg_str});')  # fallback for non-literal
+                        self.emit(f'printf("UNSUPPORTED PRINT TYPE\\n");')
                 return "0"
             else:
                 args = ", ".join(self.gen_expr(a) for a in expr.args)
@@ -186,15 +184,20 @@ class CCodeGenerator:
             raise NotImplementedError(f"Unknown expression type: {type(expr)}")
 
     def map_type(self, t):
+        if not t:
+            return "int" 
+        if t.startswith("list["):
+            elem_type = t[5:-1]
+            return self.map_type(elem_type)
         if t == "int":
             return "int"
         elif t == "bool":
             return "bool"
+        elif t == "float":
+            return "float"
         elif t == "string":
             return "const char*"
-        elif t == "list":
-            return "int"
-        return "int"  # fallback default
+        return "int"
 
     def infer_type(self, expr: Expr) -> str:
         if isinstance(expr, Literal):
@@ -204,10 +207,33 @@ class CCodeGenerator:
                 return "string"
             else:
                 return "int"
+
         elif isinstance(expr, Identifier):
+            if expr.name in self.defined_vars:
+                return self.defined_vars[expr.name]
             if expr.name == "True" or expr.name == "False":
                 return "bool"
             elif expr.name == "None":
                 return "int"
             return "int"
-        # ... other cases ...
+
+        elif isinstance(expr, IndexExpr):
+            return expr.elem_type or "int"
+
+        elif isinstance(expr, BinOp):
+            left_type = self.infer_type(expr.left)
+            right_type = self.infer_type(expr.right)
+            if left_type == right_type:
+                return left_type
+            return "int"  # fallback for mixed types
+
+        elif isinstance(expr, CallExpr):
+            if isinstance(expr.func, Identifier):
+                func_name = expr.func.name
+                # You could keep a map of known function return types, e.g.:
+                if func_name == "add":
+                    return "int"
+                elif func_name == "is_even":
+                    return "bool"
+            return "int"  # fallback
+
