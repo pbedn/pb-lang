@@ -3,7 +3,7 @@ from lexer import Lexer
 from parser import Parser
 from codegen import CCodeGenerator
 from lang_ast import (
-    FunctionDef, IfStmt, ReturnStmt, AssignStmt, WhileStmt, ForStmt
+    FunctionDef, IfStmt, ReturnStmt, AssignStmt, WhileStmt, ForStmt, PassStmt
 )
 
 class TestParser(unittest.TestCase):
@@ -66,6 +66,19 @@ class TestParser(unittest.TestCase):
         nested_if = if_stmt.else_body[0]
         self.assertIsInstance(nested_if, IfStmt)
         self.assertEqual(len(nested_if.then_body), 1)
+
+    def test_parser_pass_statement(self):
+        code = (
+            "def main() -> int:\n"
+            "    if True:\n"
+            "        pass\n"
+        )
+        tokens = Lexer(code).tokenize()
+        parser = Parser(tokens)
+        ast = parser.parse()
+        # Look for PassStmt in AST
+        self.assertTrue(any(isinstance(stmt, PassStmt) for func in ast.body for stmt in func.body[0].then_body))
+
 
 
 if __name__ == "__main__":

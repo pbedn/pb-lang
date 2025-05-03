@@ -93,21 +93,20 @@ def main() -> int:
     else:
         print("other")
 
-    # # Pass statement demonstration
-    # print("=== Pass Statement ===")
-    # if True:
-    #     pass
-    # print("Pass block completed")
+    # Pass statement demonstration
+    print("=== Pass Statement ===")
+    if True:
+        pass
+    print("Pass block completed")
 
-    # # 'is' and 'is not' operators
-    # print("=== Is / Is Not Operators ===")
-    # a = 10
-    # b = 10
-    # if a is b:
-    #     print("a is b")
-    # if a is not 20:
-    #     print("a is not 20")
-
+    # 'is' and 'is not' operators
+    print("=== Is / Is Not Operators ===")
+    a = 10
+    b = 10
+    if a is b:
+        print("a is b")
+    if a is not 20:
+        print("a is not 20")
     
     # Return statement to indicate success
     return 0

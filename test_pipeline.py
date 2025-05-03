@@ -113,14 +113,46 @@ def main() -> int:
         self.assertIn('printf("%s\\n", x ? "true" : "false");', c_code)
 
     def test_list_mixed_types_error(self):
-        code = '''
-def main() -> int:
-    stuff = [1, True, "oops"]
-    return 0
-    '''
+        code = (
+            "def main() -> int:\n"
+            "    stuff = [1, True, \"oops\"]\n"
+            "    return 0\n"
+        )
         with self.assertRaises(Exception) as ctx:
             self.compile_pipeline(code)
         self.assertIn("All elements of a list must have the same type", str(ctx.exception))
+
+    def test_pass_statement(self):
+        code = (
+            "def main() -> int:\n"
+            "    if True:\n"
+            "        pass\n"
+            "    print(\"Done\")\n"
+            "    return 0\n"
+        )
+        c_code = self.compile_pipeline(code)
+        self.assertIn('// pass', c_code)
+        self.assertIn('printf("%s\\n", "Done");', c_code)
+
+    def test_is_and_is_not(self):
+        code = (
+            "def main() -> int:\n"
+            "    a = 10\n"
+            "    b = 10\n"
+            "    if a is b:\n"
+            "        print(\"Equal\")\n"
+            "    if a is not 20:\n"
+            "        print(\"Not 20\")\n"
+            "    return 0\n"
+        )
+        c_code = self.compile_pipeline(code)
+        # Check that 'is' became '=='
+        self.assertIn('if ((a == b)) {', c_code)
+        # Check that 'is not' became '!='
+        self.assertIn('if ((a != 20)) {', c_code)
+        # Check the print statements exist
+        self.assertIn('printf("%s\\n", "Equal");', c_code)
+        self.assertIn('printf("%s\\n", "Not 20");', c_code)
 
 
 if __name__ == "__main__":

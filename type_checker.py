@@ -109,7 +109,7 @@ class TypeChecker:
                 raise TypeError("Type mismatch in binary operation")
             if expr.op in ['+', '-', '*', '/', '%']:
                 return left
-            if expr.op in ['==', '!=', '<', '<=', '>', '>=']:
+            if expr.op in {"==", "!=", "<", ">", "<=", ">=", "is", "is not"}:
                 return "bool"
             if expr.op in ['and', 'or']:
                 if left != "bool":

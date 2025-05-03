@@ -44,6 +44,10 @@ class BreakStmt:
     pass
 
 @dataclass
+class PassStmt:
+    pass
+
+@dataclass
 class ContinueStmt:
     pass
 

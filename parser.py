@@ -54,6 +54,9 @@ class Parser:
         elif self.match(TokenType.CONTINUE):
             self.expect(TokenType.NEWLINE)
             return ContinueStmt()
+        elif self.match(TokenType.PASS):
+            self.expect(TokenType.NEWLINE)
+            return PassStmt()
         elif self.current().type == TokenType.IDENTIFIER:
             if self.tokens[self.pos + 1].type == TokenType.EQ:
                 return self.parse_assignment()
@@ -173,10 +176,18 @@ class Parser:
         while self.current().type in {
             TokenType.EQEQ, TokenType.NOTEQ,
             TokenType.LT, TokenType.LTE,
-            TokenType.GT, TokenType.GTE
+            TokenType.GT, TokenType.GTE,
+            TokenType.IS
         }:
-            op = self.current().value
-            self.advance()
+            if self.current().type == TokenType.IS:
+                self.advance()
+                if self.match(TokenType.NOT):
+                    op = "is not"
+                else:
+                    op = "is"
+            else:
+                op = self.current().value
+                self.advance()
             right = self.parse_add_sub()
             expr = BinOp(expr, op, right)
         return expr

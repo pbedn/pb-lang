@@ -110,6 +110,9 @@ class CCodeGenerator:
         elif isinstance(stmt, ContinueStmt):
             self.emit("continue;")
 
+        elif isinstance(stmt, PassStmt):
+            self.emit("// pass")
+
         elif isinstance(stmt, CallExpr):
             self.gen_expr(stmt)  # side effect like print()
 
@@ -124,6 +127,10 @@ class CCodeGenerator:
                 op = "&&"
             elif op == "or":
                 op = "||"
+            elif op == "is":
+                op = "=="
+            elif op == "is not":
+                op = "!="
 
             return f"({left} {op} {right})"
 
