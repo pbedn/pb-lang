@@ -12,9 +12,9 @@ def compile_to_c(source_code: str, output_file: str = "out.c"):
     tokens = lexer.tokenize()
 
     parser = Parser(tokens)
-    pprint(tokens)
+    # pprint(tokens)
     ast = parser.parse()
-    pprint(ast)
+    # pprint(ast)
 
     # ✅ Run type checker
     try:
@@ -22,7 +22,7 @@ def compile_to_c(source_code: str, output_file: str = "out.c"):
         checker.check(ast)
     except TypeError as e:
         print(f"❌ Type Error: {e}")
-        return
+        return False  # signal failure
 
     # ✅ Generate C code if type check passes
     codegen = CCodeGenerator()
@@ -31,16 +31,32 @@ def compile_to_c(source_code: str, output_file: str = "out.c"):
     with open(output_file, "w") as f:
         f.write(c_code)
     print(f"✅ C code written to {output_file}")
+    return True  # signal success
 
-def build(source_code: str, output_file: str):
-    compile_to_c(source_code, f"{output_file}.c")
+def build(source_code: str, output_file: str) -> bool:
+    success = compile_to_c(source_code, f"{output_file}.c")
+    if not success:
+        print("⚠️ Skipping GCC build because type checking failed.")
+        return False
+
     exe_file = output_file + (".exe" if os.name == "nt" else "")
     compile_cmd = ["gcc", f"{output_file}.c", "-o", exe_file]
-    subprocess.run(compile_cmd, check=True)
-    print(f"Built: {exe_file}")
+    result = subprocess.run(compile_cmd, capture_output=True, text=True)
+    if result.returncode == 0:
+        print(f"✅ Built: {exe_file}")
+        return True
+    else:
+        print(f"❌ GCC build failed (exit code {result.returncode})")
+        print(result.stderr)
+        return False
+
 
 def run(source_code: str, output_file: str):
-    build(source_code, output_file)
+    success = build(source_code, output_file)
+    if not success:
+        print("⚠️ Skipping run because compilation failed.")
+        return
+
     exe_file = output_file + (".exe" if os.name == "nt" else "")
     print("Running:", exe_file)
     print("\n")
