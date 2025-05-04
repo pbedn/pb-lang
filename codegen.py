@@ -1,10 +1,11 @@
 from lang_ast import *
 
 class CCodeGenerator:
-    def __init__(self):
+    def __init__(self, functions=None):
         self.indent_level = 0
         self.output = []
-        self.defined_vars = dict()  # now a dict: name -> type
+        self.defined_vars = dict()  # dict: name -> type
+        self.functions = functions or {}
 
     def indent(self):
         return '    ' * self.indent_level
@@ -191,8 +192,10 @@ class CCodeGenerator:
             raise NotImplementedError(f"Unknown expression type: {type(expr)}")
 
     def map_type(self, t):
+        if isinstance(t, tuple):
+            t = t[1]  # Defensive: grab the return type if it's a (params, return_type)
         if not t:
-            return "int" 
+            return "int"
         if t.startswith("list["):
             elem_type = t[5:-1]
             return self.map_type(elem_type)
@@ -237,10 +240,11 @@ class CCodeGenerator:
         elif isinstance(expr, CallExpr):
             if isinstance(expr.func, Identifier):
                 func_name = expr.func.name
-                # You could keep a map of known function return types, e.g.:
-                if func_name == "add":
-                    return "int"
-                elif func_name == "is_even":
-                    return "bool"
-            return "int"  # fallback
+                if func_name in self.functions:
+                    ret_type = self.functions[func_name]
+                    # If it's a tuple, extract the return_type part
+                    if isinstance(ret_type, tuple):
+                        ret_type = ret_type[1]  # second element is return_type
+                    return ret_type
+            return "int"
 

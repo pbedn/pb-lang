@@ -20,12 +20,15 @@ def compile_to_c(source_code: str, output_file: str = "out.c"):
     try:
         checker = TypeChecker()
         checker.check(ast)
+        print("Registered functions:", checker.functions)
+        exit()
+        functions = checker.functions
     except TypeError as e:
         print(f"❌ Type Error: {e}")
         return False  # signal failure
 
     # ✅ Generate C code if type check passes
-    codegen = CCodeGenerator()
+    codegen = CCodeGenerator(functions=functions)
     c_code = codegen.generate(ast)
 
     with open(output_file, "w") as f:
