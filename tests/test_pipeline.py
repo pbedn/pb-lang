@@ -1,9 +1,12 @@
+import os
 import unittest
 from lexer import Lexer
 from parser import Parser
 from codegen import CCodeGenerator
 from type_checker import TypeChecker
 from lang_ast import Program
+
+BASE_DIR = os.path.dirname(__file__)
 
 class TestPipeline(unittest.TestCase):
     def compile_pipeline(self, code: str) -> str:
@@ -20,10 +23,12 @@ class TestPipeline(unittest.TestCase):
         return codegen.generate(ast)
 
     def test_lang_pb_codegen_matches_expected(self):
-        with open("lang.pb") as f:
+        pb_path = os.path.join(BASE_DIR, "../ref/lang.pb")
+        expected_c_path = os.path.join(BASE_DIR, "../ref/lang.c")
+        with open(pb_path) as f:
             source = f.read()
 
-        with open("expected_lang.c") as f:
+        with open(expected_c_path) as f:
             expected_c = f.read()
 
         generated_c = self.compile_pipeline(source)
