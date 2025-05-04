@@ -58,8 +58,14 @@ class Parser:
             self.expect(TokenType.NEWLINE)
             return PassStmt()
         elif self.current().type == TokenType.IDENTIFIER:
-            if self.tokens[self.pos + 1].type == TokenType.EQ:
+            next_type = self.tokens[self.pos + 1].type
+            if next_type == TokenType.EQ:
                 return self.parse_assignment()
+            elif next_type in {
+                TokenType.PLUSEQ, TokenType.MINUSEQ, TokenType.STAREQ,
+                TokenType.SLASHEQ, TokenType.PERCENTEQ,
+            }:
+                return self.parse_aug_assignment()
             else:
                 expr = self.parse_expr()
                 self.expect(TokenType.NEWLINE)
@@ -73,6 +79,26 @@ class Parser:
         value = self.parse_expr()
         self.expect(TokenType.NEWLINE)
         return AssignStmt(name, value)
+
+    def parse_aug_assignment(self):
+        name = self.expect(TokenType.IDENTIFIER).value
+        op_tok = self.match(
+            TokenType.PLUSEQ, TokenType.MINUSEQ, TokenType.STAREQ,
+            TokenType.SLASHEQ, TokenType.PERCENTEQ,
+        )
+        if not op_tok:
+            raise ParserError(f"Expected augmented assignment operator at line {self.current().line}")
+        op_map = {
+            TokenType.PLUSEQ: "+",
+            TokenType.MINUSEQ: "-",
+            TokenType.STAREQ: "*",
+            TokenType.SLASHEQ: "/",
+            TokenType.PERCENTEQ: "%",
+        }
+        op = op_map[op_tok.type]
+        value = self.parse_expr()
+        self.expect(TokenType.NEWLINE)
+        return AugAssignStmt(name, op, value)
 
     def parse_function(self):
         name_tok = self.expect(TokenType.IDENTIFIER)

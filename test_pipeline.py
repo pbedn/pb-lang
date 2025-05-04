@@ -19,6 +19,26 @@ class TestPipeline(unittest.TestCase):
         codegen = CCodeGenerator()
         return codegen.generate(ast)
 
+    def test_lang_pb_codegen_matches_expected(self):
+        with open("lang.pb") as f:
+            source = f.read()
+
+        with open("expected_lang.c") as f:
+            expected_c = f.read()
+
+        generated_c = self.compile_pipeline(source)
+
+        # Optional: normalize line endings to be OS-independent
+        expected_c_normalized = expected_c.replace("\r\n", "\n").strip()
+        generated_c_normalized = generated_c.replace("\r\n", "\n").strip()
+
+        # Assert full match
+        self.assertEqual(
+            generated_c_normalized, expected_c_normalized,
+            msg="Generated C code does not match the expected output."
+        )
+
+
     def test_hello_world(self):
         source = '''
 def main() -> int:
@@ -153,6 +173,19 @@ def main() -> int:
         # Check the print statements exist
         self.assertIn('printf("%s\\n", "Equal");', c_code)
         self.assertIn('printf("%s\\n", "Not 20");', c_code)
+
+    def test_augmented_assignment_pipeline(self):
+        code = (
+            "def main() -> int:\n"
+            "    x = 10\n"
+            "    x += 5\n"
+            "    print(x)\n"
+            "    return 0\n"
+        )
+        c_code = self.compile_pipeline(code)
+        self.assertIn('int x = 10;', c_code)
+        self.assertIn('x += 5;', c_code)
+        self.assertIn('printf("%d\\n", x);', c_code)
 
 
 if __name__ == "__main__":

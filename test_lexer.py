@@ -20,3 +20,22 @@ class TestLexer(unittest.TestCase):
         ops = [t.value for t in tokens if t.type.name in ["PLUS", "MINUS", "STAR", "SLASH", "PERCENT", "AND", "OR", "NOT"]]
         for op in ['+', '-', '*', '/', '%', 'and', 'or', 'not']:
             self.assertIn(op, ops)
+
+    def test_augmented_assignment_tokens(self):
+        code = (
+            "x += 1\n"
+            "y -= 2\n"
+            "z *= 3\n"
+            "w /= 4\n"
+            "v %= 5\n"
+        )
+        lexer = Lexer(code)
+        tokens = lexer.tokenize()
+        types = [t.type.name for t in tokens]
+        self.assertIn("PLUSEQ", types)
+        self.assertIn("MINUSEQ", types)
+        self.assertIn("STAREQ", types)
+        self.assertIn("SLASHEQ", types)
+        self.assertIn("PERCENTEQ", types)
+
+

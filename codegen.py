@@ -60,6 +60,10 @@ class CCodeGenerator:
                     self.emit(f"{c_type} {stmt.target} = {expr};")
                     self.defined_vars[stmt.target] = expr_type
 
+        elif isinstance(stmt, AugAssignStmt):
+            expr = self.gen_expr(stmt.value)
+            self.emit(f"{stmt.target} {stmt.op}= {expr};")
+
         elif isinstance(stmt, IfStmt):
             cond = self.gen_expr(stmt.condition)
             self.emit(f"if ({cond}) {{")

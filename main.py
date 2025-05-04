@@ -20,8 +20,8 @@ def compile_to_c(source_code: str, output_file: str = "out.c"):
     try:
         checker = TypeChecker()
         checker.check(ast)
+        # todo: add debug option to print stuff
         print("Registered functions:", checker.functions)
-        exit()
         functions = checker.functions
     except TypeError as e:
         print(f"❌ Type Error: {e}")

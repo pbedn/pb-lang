@@ -41,6 +41,14 @@ class TypeChecker:
             val_type = self.check_expr(stmt.value)
             self.env[stmt.target] = val_type
 
+        elif isinstance(stmt, AugAssignStmt):
+            if stmt.target not in self.env:
+                raise TypeError(f"Variable '{stmt.target}' not defined before augmented assignment")
+            target_type = self.env[stmt.target]
+            value_type = self.check_expr(stmt.value)
+            if target_type != value_type:
+                raise TypeError(f"Augmented assignment type mismatch: {target_type} {stmt.op}= {value_type}")
+
         elif isinstance(stmt, ReturnStmt):
             val_type = self.check_expr(stmt.value)
             if self.current_function_return_type != val_type:

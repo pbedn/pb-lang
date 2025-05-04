@@ -29,6 +29,12 @@ class AssignStmt:
     value: 'Expr'
 
 @dataclass
+class AugAssignStmt:
+    target: str
+    op: str
+    value: 'Expr'
+
+@dataclass
 class WhileStmt:
     condition: 'Expr'
     body: List['Stmt']
@@ -94,7 +100,7 @@ class UnaryOp:
 # Union Types
 Stmt = Union[
     FunctionDef, ReturnStmt, IfStmt, AssignStmt, WhileStmt, ForStmt,
-    BreakStmt, ContinueStmt,
+    BreakStmt, ContinueStmt, AugAssignStmt
 ]
 
 Expr = Union[

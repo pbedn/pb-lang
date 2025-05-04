@@ -107,6 +107,22 @@ def main() -> int:
         print("a is b")
     if a is not 20:
         print("a is not 20")
+
+    # Augmented assignment demonstration
+    print("=== Augmented Assignment ===")
+    m = 5
+    print(m)
+    m += 3
+    print(m)
+    m -= 2
+    print(m)
+    m *= 4
+    print(m)
+    m /= 2
+    print(m)
+    m %= 3
+    print(m)
+
     
     # Return statement to indicate success
     return 0

@@ -15,6 +15,10 @@ class TokenType(Enum):
     COLON = auto(); COMMA = auto(); LPAREN = auto(); RPAREN = auto()
     LBRACKET = auto(); RBRACKET = auto(); LBRACE = auto(); RBRACE = auto()
     EQ = auto(); PLUS = auto(); MINUS = auto(); STAR = auto(); SLASH = auto(); PERCENT = auto()
+
+    ## augmented assignment
+    PLUSEQ = auto(); MINUSEQ = auto(); STAREQ = auto(); SLASHEQ = auto(); PERCENTEQ = auto()
+
     EQEQ = auto(); NOTEQ = auto(); LT = auto(); LTE = auto(); GT = auto(); GTE = auto()
     ARROW = auto()
 
@@ -84,6 +88,11 @@ TOKEN_REGEX = [
     (r'<=', TokenType.LTE),
     (r'>=', TokenType.GTE),
     (r'->', TokenType.ARROW),
+    (r'\+=', TokenType.PLUSEQ),
+    (r'-=', TokenType.MINUSEQ),
+    (r'\*=', TokenType.STAREQ),
+    (r'/=', TokenType.SLASHEQ),
+    (r'%=', TokenType.PERCENTEQ),
     (r'\(', TokenType.LPAREN),
     (r'\)', TokenType.RPAREN),
     (r'\[', TokenType.LBRACKET),
@@ -109,6 +118,7 @@ TOKEN_REGEX = [
     (r"'(?:\\.|[^'\\])*'", TokenType.STRING_LIT),
     (r'[A-Za-z_][A-Za-z0-9_]*', TokenType.IDENTIFIER),
 ]
+
 
 WHITESPACE = re.compile(r'[ \t]*')
 

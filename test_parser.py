@@ -3,7 +3,7 @@ from lexer import Lexer
 from parser import Parser
 from codegen import CCodeGenerator
 from lang_ast import (
-    FunctionDef, IfStmt, ReturnStmt, AssignStmt, WhileStmt, ForStmt, PassStmt
+    FunctionDef, IfStmt, ReturnStmt, AssignStmt, WhileStmt, ForStmt, PassStmt, AugAssignStmt, Literal
 )
 
 class TestParser(unittest.TestCase):
@@ -78,6 +78,24 @@ class TestParser(unittest.TestCase):
         ast = parser.parse()
         # Look for PassStmt in AST
         self.assertTrue(any(isinstance(stmt, PassStmt) for func in ast.body for stmt in func.body[0].then_body))
+
+    def test_augmented_assignment_stmt(self):
+        code = (
+            "def main() -> int:\n"
+            "    x = 10\n"
+            "    x += 5\n"
+            "    return x\n"
+        )
+        lexer = Lexer(code)
+        tokens = lexer.tokenize()
+        parser = Parser(tokens)
+        ast = parser.parse()
+        func = ast.body[0]
+        aug_stmt = func.body[1]
+        self.assertIsInstance(aug_stmt, AugAssignStmt)
+        self.assertEqual(aug_stmt.target, "x")
+        self.assertEqual(aug_stmt.op, "+")
+        self.assertIsInstance(aug_stmt.value, Literal)
 
 
 
