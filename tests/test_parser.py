@@ -4,7 +4,7 @@ from parser import Parser
 from codegen import CCodeGenerator
 from lang_ast import (
     FunctionDef, IfStmt, ReturnStmt, AssignStmt, WhileStmt, ForStmt, PassStmt, AugAssignStmt, Literal,
-    GlobalStmt
+    GlobalStmt, VarDecl
 )
 
 class TestParser(unittest.TestCase):
@@ -166,9 +166,20 @@ class TestParser(unittest.TestCase):
         return_stmt = body[3]
         self.assertIsInstance(return_stmt, ReturnStmt)
 
-
-
-
+    def test_vardecl_parser(self):
+        code = (
+            "def main() -> int:\n"
+            "    x: int = 5\n"
+            "    return x\n"
+        )
+        tokens = Lexer(code).tokenize()
+        parser = Parser(tokens)
+        ast = parser.parse()
+        func_body = ast.body[0].body
+        vardecl = func_body[0]
+        self.assertIsInstance(vardecl, VarDecl)
+        self.assertEqual(vardecl.name, "x")
+        self.assertEqual(vardecl.declared_type, "int")
 
 if __name__ == "__main__":
     unittest.main()

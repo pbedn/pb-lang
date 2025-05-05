@@ -39,7 +39,7 @@ class TestPipelineRuntime(unittest.TestCase):
 
     def test_global_runtime_update(self):
         code = (
-            "x = 10\n"
+            "x: int = 10\n"
             "\n"
             "def main() -> int:\n"
             "    global x\n"
@@ -52,7 +52,7 @@ class TestPipelineRuntime(unittest.TestCase):
 
     def test_global_shadowing_runtime(self):
         code = (
-            "x = 10\n"
+            "x: int = 10\n"
             "\n"
             "def main() -> int:\n"
             "    x = 5\n"
@@ -64,7 +64,7 @@ class TestPipelineRuntime(unittest.TestCase):
 
     def test_global_read_then_update(self):
         code = (
-            "x = 1\n"
+            "x: int = 1\n"
             "\n"
             "def main() -> int:\n"
             "    print(x)\n"

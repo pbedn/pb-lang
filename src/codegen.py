@@ -31,9 +31,9 @@ class CCodeGenerator:
             self.current_function_globals = stmt.globals_declared or set()
             ret_type = stmt.return_type or "void"
             args = ", ".join(
-                f"int {p}" if isinstance(p, str) else f"{p[1]} {p[0]}"
+                f"int {p}" if isinstance(p, str) else f"{self.map_type(p[1])} {p[0]}"
                 for p in stmt.params
-                )
+            )
             self.emit(f"{ret_type} {stmt.name}({args}) {{")
             self.indent_level += 1
             self.defined_vars = dict()  # reset per function
@@ -47,6 +47,21 @@ class CCodeGenerator:
         elif isinstance(stmt, ReturnStmt):
             expr = self.gen_expr(stmt.value)
             self.emit(f"return {expr};")
+
+        elif isinstance(stmt, VarDecl):
+            expr = self.gen_expr(stmt.value)
+            c_type = self.map_type(stmt.declared_type)
+            if self.in_function:
+                if stmt.name in self.current_function_globals:
+                    # Globals: no redeclare
+                    self.emit(f"{stmt.name} = {expr};  // global update")
+                else:
+                    self.emit(f"{c_type} {stmt.name} = {expr};")
+                    self.defined_vars[stmt.name] = stmt.declared_type
+            else:
+                # Top-level (global)
+                self.emit(f"{c_type} {stmt.name} = {expr};")
+                self.defined_vars[stmt.name] = stmt.declared_type
 
         elif isinstance(stmt, AssignStmt):
             expr = self.gen_expr(stmt.value)
@@ -177,6 +192,8 @@ class CCodeGenerator:
         elif isinstance(expr, Literal):
             if isinstance(expr.value, bool):
                 return "true" if expr.value else "false"
+            elif isinstance(expr.value, float):
+                return f"{expr.value}"    # ensures float is explicit
             elif isinstance(expr.value, str):
                 return f'"{expr.value}"'  # warning: string support in C is basic
             return str(expr.value)
@@ -195,11 +212,12 @@ class CCodeGenerator:
                 for arg in expr.args:
                     arg_str = self.gen_expr(arg)
                     arg_type = self.infer_type(arg)
+                    # print(f"[DEBUG] arg: {arg_str}, inferred type: {arg_type}")
                     if arg_type == "string":
                         self.emit(f'printf("%s\\n", {arg_str});')
                     elif arg_type == "int":
                         self.emit(f'printf("%d\\n", {arg_str});')
-                    elif arg_type == "float":
+                    elif arg_type in ("float", "double"):
                         self.emit(f'printf("%f\\n", {arg_str});')
                     elif arg_type == "bool":
                         self.emit(f'printf("%s\\n", {arg_str} ? "true" : "false");')
@@ -238,7 +256,7 @@ class CCodeGenerator:
         elif t == "bool":
             return "bool"
         elif t == "float":
-            return "float"
+            return "double"
         elif t == "string":
             return "const char*"
         return "int"
@@ -247,6 +265,8 @@ class CCodeGenerator:
         if isinstance(expr, Literal):
             if isinstance(expr.value, bool):
                 return "bool"
+            elif isinstance(expr.value, float):
+                return "float"
             elif isinstance(expr.value, str):
                 return "string"
             else:

@@ -196,7 +196,7 @@ class TestPipeline(unittest.TestCase):
 
     def test_global_read_without_global(self):
         code = (
-            "x = 100\n"
+            "x: int = 100\n"
             "\n"
             "def main() -> int:\n"
             "    print(x)\n"
@@ -208,7 +208,7 @@ class TestPipeline(unittest.TestCase):
 
     def test_global_write_with_global(self):
         code = (
-            "x = 10\n"
+            "x:int = 10\n"
             "\n"
             "def main() -> int:\n"
             "    global x\n"
@@ -222,7 +222,7 @@ class TestPipeline(unittest.TestCase):
 
     def test_global_write_without_global_is_local(self):
         code = (
-            "x = 10\n"
+            "x: int = 10\n"
             "\n"
             "def main() -> int:\n"
             "    x = 5\n"
@@ -243,6 +243,17 @@ class TestPipeline(unittest.TestCase):
         with self.assertRaises(LangTypeError) as ctx:
             self.compile_pipeline(code)
         self.assertIn("Global variable 'y' not defined", str(ctx.exception))
+
+    def test_vardecl_pipeline(self):
+        code = (
+            "def main() -> int:\n"
+            "    x: int = 10\n"
+            "    print(x)\n"
+            "    return 0\n"
+        )
+        c_code = self.compile_pipeline(code)
+        self.assertIn('int x = 10;', c_code)
+        self.assertIn('printf("%d\\n", x);', c_code)
 
 
 if __name__ == "__main__":

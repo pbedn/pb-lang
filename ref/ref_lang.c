@@ -26,6 +26,9 @@ int main() {
     printf("%d\n", counter);
     printf("%s\n", "=== Function Call ===");
     int total = add(10, 5);
+    printf("%s\n", "=== Handle Float/Double ===");
+    double threshold = 50.0;
+    printf("%f\n", threshold);
     printf("%s\n", "=== If/Else ===");
     if (is_even(total)) {
         printf("%s\n", "Total is even");

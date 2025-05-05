@@ -38,6 +38,7 @@ class Parser:
     def parse_stmt(self):
         if self.match(TokenType.DEF):
             return self.parse_function()
+
         elif self.match(TokenType.RETURN):
             expr = self.parse_expr()
             self.expect(TokenType.NEWLINE)
@@ -54,22 +55,30 @@ class Parser:
 
         elif self.match(TokenType.IF):
             return self.parse_if()
+
         elif self.match(TokenType.WHILE):
             return self.parse_while()
+
         elif self.match(TokenType.FOR):
             return self.parse_for()
+
         elif self.match(TokenType.BREAK):
             self.expect(TokenType.NEWLINE)
             return BreakStmt()
+
         elif self.match(TokenType.CONTINUE):
             self.expect(TokenType.NEWLINE)
             return ContinueStmt()
+
         elif self.match(TokenType.PASS):
             self.expect(TokenType.NEWLINE)
             return PassStmt()
+
         elif self.current().type == TokenType.IDENTIFIER:
             next_type = self.tokens[self.pos + 1].type
-            if next_type == TokenType.EQ:
+            if next_type == TokenType.COLON:
+                return self.parse_vardecl()
+            elif next_type == TokenType.EQ:
                 return self.parse_assignment()
             elif next_type in {
                 TokenType.PLUSEQ, TokenType.MINUSEQ, TokenType.STAREQ,
@@ -82,6 +91,18 @@ class Parser:
                 return expr
         else:
             raise ParserError(f"Unknown statement at line {self.current().line}")
+
+    def parse_vardecl(self):
+        name = self.expect(TokenType.IDENTIFIER).value
+        self.expect(TokenType.COLON)
+        type_tok = self.match(TokenType.IDENTIFIER, TokenType.INT, TokenType.FLOAT, TokenType.BOOL, TokenType.STR)
+        if not type_tok:
+            raise ParserError(f"Expected type after ':' at line {self.current().line}")
+        declared_type = type_tok.value
+        self.expect(TokenType.EQ)
+        value = self.parse_expr()
+        self.expect(TokenType.NEWLINE)
+        return VarDecl(name, declared_type, value)
 
     def parse_assignment(self):
         name = self.expect(TokenType.IDENTIFIER).value

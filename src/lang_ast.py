@@ -23,6 +23,12 @@ class GlobalStmt:
     names: List[str]
 
 @dataclass
+class VarDecl:
+    name: str
+    declared_type: str
+    value: 'Expr'
+
+@dataclass
 class IfStmt:
     condition: 'Expr'
     then_body: List['Stmt']
@@ -105,7 +111,7 @@ class UnaryOp:
 # Union Types
 Stmt = Union[
     FunctionDef, ReturnStmt, IfStmt, AssignStmt, WhileStmt, ForStmt,
-    BreakStmt, ContinueStmt, AugAssignStmt, GlobalStmt,
+    BreakStmt, ContinueStmt, AugAssignStmt, GlobalStmt, VarDecl
 ]
 
 Expr = Union[

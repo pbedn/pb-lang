@@ -3,12 +3,12 @@
 # Each section includes comments describing what is tested.
 
 # === Global variable declaration ===
-counter = 100
+counter: int = 100
 
 # === Function definition with parameters and return value ===
 def add(x: int, y: int) -> int:
     # Local variable assignment and arithmetic expression
-    result = x + y
+    result: int = x + y
     
     # Print statements (strings and integers)
     print("Adding numbers:")
@@ -37,7 +37,12 @@ def main() -> int:
 
     # Function call and assignment
     print("=== Function Call ===")
-    total = add(10, 5)
+    total: int = add(10, 5)
+
+    # Explicit var declaration (VarDecl)
+    print("=== Handle Float/Double ===")
+    threshold: float = 50.0
+    print(threshold)
     
     # If/Else statement using a function returning bool
     print("=== If/Else ===")
@@ -48,7 +53,7 @@ def main() -> int:
     
     # While loop with condition and local variable update
     print("=== While Loop ===")
-    loop_counter = 0
+    loop_counter: int = 0
     while loop_counter < 3:
         print(loop_counter)
         loop_counter = loop_counter + 1  # Reassignment
@@ -75,29 +80,29 @@ def main() -> int:
     # List literal and indexing
     print("=== List and Indexing ===")
     numbers = [100, 200, 300]  # ListExpr
-    first_number = numbers[0]  # IndexExpr
-    second_number = numbers[1]
+    first_number: int = numbers[0]  # IndexExpr
+    second_number: int = numbers[1]
     print(first_number)
     print(second_number)
     
     # Boolean literals and logical operators
     print("=== Boolean Literals ===")
-    x = True
-    y = False
+    x: bool = True
+    y: bool = False
     if x and not y:  # Logical AND and NOT
         print("x is True and y is False")
 
     # Boolean list and indexing
     print("=== Boolean List and Indexing ===")
     flags = [True, False, True]
-    first_flag = flags[0]
-    second_flag = flags[1]
+    first_flag: bool = flags[0]
+    second_flag: bool = flags[1]
     print(first_flag)
     print(second_flag)
 
     # If/Elif/Else chain
     print("=== If/Elif/Else ===")
-    n = 5
+    n: int = 5
     if n == 0:
         print("zero")
     elif n == 5:
@@ -113,8 +118,8 @@ def main() -> int:
 
     # 'is' and 'is not' operators
     print("=== Is / Is Not Operators ===")
-    a = 10
-    b = 10
+    a: int = 10
+    b: int = 10
     if a is b:
         print("a is b")
     if a is not 20:
@@ -122,7 +127,7 @@ def main() -> int:
 
     # Augmented assignment demonstration
     print("=== Augmented Assignment ===")
-    m = 5
+    m: int = 5
     print(m)
     m += 3
     print(m)

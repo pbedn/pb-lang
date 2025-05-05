@@ -3,6 +3,7 @@ from codegen import CCodeGenerator
 from lang_ast import *
 
 class TestCodegen(unittest.TestCase):
+
     def test_generate_print(self):
         ast = Program([
             FunctionDef(
@@ -78,6 +79,65 @@ class TestCodegen(unittest.TestCase):
         self.assertIn("int x = 10;", c_code)
         # Check inside function: local shadowing (must declare)
         self.assertIn("int x = 5;", c_code)
+
+    def test_global_float_vardecl_generates_double(self):
+        ast = Program([
+            VarDecl("threshold", "float", Literal(50.0)),
+            FunctionDef(
+                name="main",
+                params=[],
+                body=[
+                    ReturnStmt(Literal(0))
+                ],
+                return_type="int"
+            )
+        ])
+        c_code = CCodeGenerator().generate(ast)
+        self.assertIn("double threshold = 50.0;", c_code)
+
+    def test_local_float_vardecl_generates_double(self):
+        ast = Program([
+            FunctionDef(
+                name="main",
+                params=[],
+                body=[
+                    VarDecl("threshold", "float", Literal(50.0)),
+                    ReturnStmt(Literal(0))
+                ],
+                return_type="int"
+            )
+        ])
+        c_code = CCodeGenerator().generate(ast)
+        self.assertIn("double threshold = 50.0;", c_code)
+
+    def test_function_param_float_is_double(self):
+        ast = Program([
+            FunctionDef(
+                name="show",
+                params=[("value", "float")],
+                body=[
+                    ReturnStmt(Literal(0))
+                ],
+                return_type="int"
+            )
+        ])
+        c_code = CCodeGenerator().generate(ast)
+        self.assertIn("int show(double value)", c_code)
+
+    def test_print_float_uses_printf_f_format(self):
+        ast = Program([
+            FunctionDef(
+                name="main",
+                params=[],
+                body=[
+                    CallExpr(Identifier("print"), [Literal(50.0)]),
+                    ReturnStmt(Literal(0))
+                ],
+                return_type="int"
+            )
+        ])
+        c_code = CCodeGenerator().generate(ast)
+        self.assertIn('printf("%f\\n", 50.0);', c_code)
 
 if __name__ == "__main__":
     unittest.main()

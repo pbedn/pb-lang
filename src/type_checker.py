@@ -19,12 +19,26 @@ class TypeChecker:
 
     def check(self, program: Program):
         for stmt in program.body:
-            if isinstance(stmt, AssignStmt):
+            if isinstance(stmt, VarDecl):
                 val_type = self.check_expr(stmt.value)
-                self.global_env[stmt.target] = val_type
+                if val_type != stmt.declared_type:
+                    raise LangTypeError(
+                        f"Type mismatch: global variable '{stmt.name}' declared as '{stmt.declared_type}' but got '{val_type}'"
+                    )
+                self.global_env[stmt.name] = stmt.declared_type
+
+            elif isinstance(stmt, AssignStmt):
+                # Top-level AssignStmt is invalid (must use VarDecl)
+                raise LangTypeError(
+                    f"Global variable '{stmt.target}' must be declared with a type"
+                )
+
             elif isinstance(stmt, FunctionDef):
                 self.functions[stmt.name] = (stmt.params, stmt.return_type or "void")
-            self.check_stmt(stmt)
+                self.check_stmt(stmt)
+
+            else:
+                self.check_stmt(stmt)
 
     def check_stmt(self, stmt: Stmt):
         if isinstance(stmt, FunctionDef):
@@ -47,6 +61,17 @@ class TypeChecker:
                 # Validate: global must already be defined at top level
                 if name not in self.global_env:
                     raise LangTypeError(f"Global variable '{name}' not defined")
+
+        elif isinstance(stmt, VarDecl):
+            val_type = self.check_expr(stmt.value)
+            if val_type != stmt.declared_type:
+                raise LangTypeError(
+                    f"Type mismatch: variable '{stmt.name}' declared as '{stmt.declared_type}' but got '{val_type}'"
+                )
+            if stmt.name in self.current_function_globals:
+                self.global_env[stmt.name] = stmt.declared_type
+            else:
+                self.env[stmt.name] = stmt.declared_type
 
         elif isinstance(stmt, AssignStmt):
             val_type = self.check_expr(stmt.value)

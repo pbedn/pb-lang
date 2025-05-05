@@ -103,5 +103,64 @@ class TestTypeChecker(unittest.TestCase):
         ])
         self.check_type_error(prog)
 
+    def test_vardecl_type_check(self):
+        prog = Program([
+            FunctionDef(
+                name="main",
+                params=[],
+                body=[
+                    VarDecl("x", "int", Literal(10)),
+                    ReturnStmt(Identifier("x")),
+                ],
+                return_type="int"
+            )
+        ])
+        self.check_ok(prog)
+
+    def test_vardecl_type_mismatch(self):
+        prog = Program([
+            FunctionDef(
+                name="main",
+                params=[],
+                body=[
+                    VarDecl("x", "int", Literal("oops")),
+                ],
+                return_type="int"
+            )
+        ])
+        self.check_type_error(prog)
+
+    def test_missing_type_in_global_should_fail(self):
+        # This mimics: counter = 100  (without type)
+        prog = Program([
+            AssignStmt("counter", Literal(100)),  # 🚫 invalid: no type
+            FunctionDef(
+                name="main",
+                params=[],
+                body=[
+                    ReturnStmt(Literal(0))
+                ],
+                return_type="int"
+            )
+        ])
+        checker = TypeChecker()
+        with self.assertRaises(LangTypeError) as ctx:
+            checker.check(prog)
+        self.assertIn("Global variable 'counter' must be declared with a type", str(ctx.exception))
+
+    def test_global_vardecl_is_valid(self):
+        prog = Program([
+            VarDecl("counter", "int", Literal(100)),  # ✅ valid
+            FunctionDef(
+                name="main",
+                params=[],
+                body=[
+                    ReturnStmt(Identifier("counter"))
+                ],
+                return_type="int"
+            )
+        ])
+        self.check_ok(prog)
+
 if __name__ == "__main__":
     unittest.main()
