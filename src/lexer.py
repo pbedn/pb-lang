@@ -10,6 +10,7 @@ class TokenType(Enum):
     WHILE = auto(); FOR = auto(); IN = auto(); IS = auto()
     INT = auto(); FLOAT = auto(); BOOL = auto(); STR = auto(); NOT = auto()
     AND = auto(); OR = auto(); BREAK = auto(); CONTINUE = auto(); PASS = auto()
+    GLOBAL = auto()
 
     # Symbols
     COLON = auto(); COMMA = auto(); LPAREN = auto(); RPAREN = auto()
@@ -63,6 +64,7 @@ class LexerError(Exception):
 KEYWORDS = {
     "def": TokenType.DEF,
     "return": TokenType.RETURN,
+    "global": TokenType.GLOBAL,
     "if": TokenType.IF,
     "else": TokenType.ELSE,
     "elif": TokenType.ELIF,

@@ -3,7 +3,8 @@ from lexer import Lexer
 from parser import Parser
 from codegen import CCodeGenerator
 from lang_ast import (
-    FunctionDef, IfStmt, ReturnStmt, AssignStmt, WhileStmt, ForStmt, PassStmt, AugAssignStmt, Literal
+    FunctionDef, IfStmt, ReturnStmt, AssignStmt, WhileStmt, ForStmt, PassStmt, AugAssignStmt, Literal,
+    GlobalStmt
 )
 
 class TestParser(unittest.TestCase):
@@ -96,6 +97,76 @@ class TestParser(unittest.TestCase):
         self.assertEqual(aug_stmt.target, "x")
         self.assertEqual(aug_stmt.op, "+")
         self.assertIsInstance(aug_stmt.value, Literal)
+
+    def test_global_stmt_parser(self):
+        code = (
+            "def main() -> int:\n"
+            "    global x, y\n"
+            "    x = 10\n"
+            "    return x\n"
+        )
+        lexer = Lexer(code)
+        tokens = lexer.tokenize()
+        parser = Parser(tokens)
+        ast = parser.parse()
+        func_body = ast.body[0].body
+        self.assertTrue(any(isinstance(stmt, GlobalStmt) for stmt in func_body))
+
+    def test_parser_with_top_level_and_function_global(self):
+        code = (
+            "counter = 100\n"
+            "\n"
+            "def main() -> int:\n"
+            "    global counter, value\n"
+            "    counter = 1\n"
+            "    value = 2\n"
+            "    return counter\n"
+        )
+        lexer = Lexer(code)
+        tokens = lexer.tokenize()
+
+        parser = Parser(tokens)
+        ast = parser.parse()
+
+        # Top-level: should have 2 statements: AssignStmt + FunctionDef
+        self.assertEqual(len(ast.body), 2)
+
+        # --- Top-level global var ---
+        top_level_assign = ast.body[0]
+        self.assertIsInstance(top_level_assign, AssignStmt)
+        self.assertEqual(top_level_assign.target, "counter")
+        self.assertIsInstance(top_level_assign.value, Literal)
+        self.assertEqual(top_level_assign.value.value, 100)
+
+        # --- Function def ---
+        func_def = ast.body[1]
+        self.assertIsInstance(func_def, FunctionDef)
+        self.assertEqual(func_def.name, "main")
+
+        # Check globals_declared
+        self.assertIsNotNone(func_def.globals_declared)
+        self.assertSetEqual(func_def.globals_declared, {"counter", "value"})
+
+        # Check function body: [GlobalStmt, AssignStmt, AssignStmt, ReturnStmt]
+        body = func_def.body
+        self.assertEqual(len(body), 4)
+
+        global_stmt = body[0]
+        self.assertIsInstance(global_stmt, GlobalStmt)
+        self.assertListEqual(global_stmt.names, ["counter", "value"])
+
+        assign1 = body[1]
+        self.assertIsInstance(assign1, AssignStmt)
+        self.assertEqual(assign1.target, "counter")
+
+        assign2 = body[2]
+        self.assertIsInstance(assign2, AssignStmt)
+        self.assertEqual(assign2.target, "value")
+
+        return_stmt = body[3]
+        self.assertIsInstance(return_stmt, ReturnStmt)
+
+
 
 
 

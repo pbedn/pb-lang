@@ -12,10 +12,15 @@ class FunctionDef:
     params: List[str]
     body: List['Stmt']
     return_type: Optional[str]
+    globals_declared: Optional[set] = None
 
 @dataclass
 class ReturnStmt:
     value: 'Expr'
+
+@dataclass
+class GlobalStmt:
+    names: List[str]
 
 @dataclass
 class IfStmt:
@@ -100,7 +105,7 @@ class UnaryOp:
 # Union Types
 Stmt = Union[
     FunctionDef, ReturnStmt, IfStmt, AssignStmt, WhileStmt, ForStmt,
-    BreakStmt, ContinueStmt, AugAssignStmt
+    BreakStmt, ContinueStmt, AugAssignStmt, GlobalStmt,
 ]
 
 Expr = Union[

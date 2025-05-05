@@ -42,6 +42,16 @@ class Parser:
             expr = self.parse_expr()
             self.expect(TokenType.NEWLINE)
             return ReturnStmt(expr)
+
+        elif self.match(TokenType.GLOBAL):
+            names = []
+            while True:
+                names.append(self.expect(TokenType.IDENTIFIER).value)
+                if not self.match(TokenType.COMMA):
+                    break
+            self.expect(TokenType.NEWLINE)
+            return GlobalStmt(names)
+
         elif self.match(TokenType.IF):
             return self.parse_if()
         elif self.match(TokenType.WHILE):
@@ -130,10 +140,13 @@ class Parser:
         self.expect(TokenType.NEWLINE)
         self.expect(TokenType.INDENT)
         body = []
+        globals_declared = set()
         while not self.match(TokenType.DEDENT):
             stmt = self.parse_stmt()
+            if isinstance(stmt, GlobalStmt):
+                globals_declared.update(stmt.names)
             body.append(stmt)
-        return FunctionDef(name_tok.value, params, body, return_type)
+        return FunctionDef(name_tok.value, params, body, return_type, globals_declared=globals_declared)
 
     def parse_if(self):
         cond = self.parse_expr()

@@ -1,11 +1,14 @@
 from lang_ast import *
 
 class CCodeGenerator:
-    def __init__(self, functions=None):
+    def __init__(self, functions=None, global_vars=None):
         self.indent_level = 0
         self.output = []
         self.defined_vars = dict()  # dict: name -> type
+        self.in_function = False
         self.functions = functions or {}
+        self.global_vars = global_vars or set()
+        self.current_function_globals = set()
 
     def indent(self):
         return '    ' * self.indent_level
@@ -17,12 +20,15 @@ class CCodeGenerator:
         self.emit("#include <stdio.h>")
         self.emit("#include <stdbool.h>")
         self.emit("")
+        self.in_function = False
         for stmt in program.body:
             self.gen_stmt(stmt)
         return '\n'.join(self.output)
 
     def gen_stmt(self, stmt: Stmt):
         if isinstance(stmt, FunctionDef):
+            self.in_function = True
+            self.current_function_globals = stmt.globals_declared or set()
             ret_type = stmt.return_type or "void"
             args = ", ".join(
                 f"int {p}" if isinstance(p, str) else f"{p[1]} {p[0]}"
@@ -36,6 +42,7 @@ class CCodeGenerator:
             self.indent_level -= 1
             self.emit("}")
             self.emit("")
+            self.in_function = False
 
         elif isinstance(stmt, ReturnStmt):
             expr = self.gen_expr(stmt.value)
@@ -45,20 +52,43 @@ class CCodeGenerator:
             expr = self.gen_expr(stmt.value)
             expr_type = self.infer_type(stmt.value)
 
-            if isinstance(stmt.value, ListExpr):
-                elem_c_type = self.map_type(stmt.value.elem_type or "int")
-                if stmt.target in self.defined_vars:
-                    self.emit(f"// Warning: cannot reassign array {stmt.target} in C")
+            if self.in_function:
+                # Check if it's a List (array) assignment
+                if isinstance(stmt.value, ListExpr):
+                    elem_c_type = self.map_type(stmt.value.elem_type or "int")
+                    if stmt.target in self.current_function_globals:
+                        # Globals: no redeclaration, only assignment
+                        self.emit(f"// Global array update not supported directly in C, ensure it's handled properly")
+                        self.emit(f"// {stmt.target} = ...;  // (manual update needed if required)")
+                    elif stmt.target in self.defined_vars:
+                        self.emit(f"// Warning: cannot reassign array {stmt.target} in C")
+                    else:
+                        self.emit(f"{elem_c_type} {stmt.target}[] = {expr};")
+                        self.defined_vars[stmt.target] = expr_type
                 else:
+                    if stmt.target in self.current_function_globals:
+                        # It's a global var: just assign (no type, no redeclare)
+                        self.emit(f"{stmt.target} = {expr};  // global update")
+                    elif stmt.target in self.defined_vars:
+                        # Already declared local: assign
+                        self.emit(f"{stmt.target} = {expr};")
+                    else:
+                        # New local var: declare with type
+                        c_type = self.map_type(expr_type)
+                        self.emit(f"{c_type} {stmt.target} = {expr};")
+                        self.defined_vars[stmt.target] = expr_type
+            else:
+                # Top-level: always declare (globals are defined here)
+                # Check if it's a List (array) assignment
+                if isinstance(stmt.value, ListExpr):
+                    elem_c_type = self.map_type(stmt.value.elem_type or "int")
                     self.emit(f"{elem_c_type} {stmt.target}[] = {expr};")
                     self.defined_vars[stmt.target] = expr_type
-            else:
-                if stmt.target in self.defined_vars:
-                    self.emit(f"{stmt.target} = {expr};")
                 else:
                     c_type = self.map_type(expr_type)
                     self.emit(f"{c_type} {stmt.target} = {expr};")
                     self.defined_vars[stmt.target] = expr_type
+            self.current_function_globals = set()
 
         elif isinstance(stmt, AugAssignStmt):
             expr = self.gen_expr(stmt.value)

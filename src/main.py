@@ -4,7 +4,7 @@ import argparse
 from lexer import Lexer
 from parser import Parser
 from codegen import CCodeGenerator
-from type_checker import TypeChecker, TypeError
+from type_checker import TypeChecker, LangTypeError
 from pprint import pprint
 
 def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = False, debug: bool = False):
@@ -22,11 +22,12 @@ def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = F
         checker.check(ast)
         if verbose: print("🔎 Registered functions:", checker.functions)
         functions = checker.functions
-    except TypeError as e:
+    except LangTypeError as e:
         print(f"❌ Type Error: {e}")
         return False
 
-    codegen = CCodeGenerator(functions=functions)
+    global_vars = set(checker.global_env.keys())
+    codegen = CCodeGenerator(functions=functions, global_vars=global_vars)
     c_code = codegen.generate(ast)
 
     output_path = get_build_output_path(output_file)

@@ -38,4 +38,9 @@ class TestLexer(unittest.TestCase):
         self.assertIn("SLASHEQ", types)
         self.assertIn("PERCENTEQ", types)
 
-
+    def test_global_keyword(self):
+        code = 'global x, y'
+        lexer = Lexer(code)
+        tokens = lexer.tokenize()
+        types = [t.type.name for t in tokens]
+        self.assertIn("GLOBAL", types)

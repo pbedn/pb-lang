@@ -1,6 +1,6 @@
 import unittest
 from lang_ast import *
-from type_checker import TypeChecker, TypeError
+from type_checker import TypeChecker, LangTypeError
 
 class TestTypeChecker(unittest.TestCase):
     def check_ok(self, node):
@@ -9,7 +9,7 @@ class TestTypeChecker(unittest.TestCase):
 
     def check_type_error(self, node):
         checker = TypeChecker()
-        with self.assertRaises(TypeError):
+        with self.assertRaises(LangTypeError):
             checker.check(node)
 
     def test_valid_function(self):

@@ -2,6 +2,9 @@
 # This file demonstrates all currently implemented features of the language.
 # Each section includes comments describing what is tested.
 
+# === Global variable declaration ===
+counter = 100
+
 # === Function definition with parameters and return value ===
 def add(x: int, y: int) -> int:
     # Local variable assignment and arithmetic expression
@@ -23,6 +26,15 @@ def is_even(n: int) -> bool:
 
 # === Main function showcasing all features ===
 def main() -> int:
+    print("=== Global Variable Before Update ===")
+    print(counter)
+
+    global counter
+    counter = 200
+
+    print("=== Global Variable After Update ===")
+    print(counter)
+
     # Function call and assignment
     print("=== Function Call ===")
     total = add(10, 5)
@@ -36,10 +48,10 @@ def main() -> int:
     
     # While loop with condition and local variable update
     print("=== While Loop ===")
-    counter = 0
-    while counter < 3:
-        print(counter)
-        counter = counter + 1  # Reassignment
+    loop_counter = 0
+    while loop_counter < 3:
+        print(loop_counter)
+        loop_counter = loop_counter + 1  # Reassignment
     
     # For loop using range(start, end)
     print("=== For Loop with range(0, 3) ===")
