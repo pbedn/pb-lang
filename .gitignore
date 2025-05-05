@@ -1,5 +1,6 @@
 __pycache__/
-*.c
+build/
 !ref/ref_lang.c
 *.exe
 *.zip
+*.txt
