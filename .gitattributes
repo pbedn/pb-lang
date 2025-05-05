@@ -1,0 +1,3 @@
+*.pb linguist-language=Python
+*.peg linguist-language=Text
+*.ebnf linguist-language=Text
