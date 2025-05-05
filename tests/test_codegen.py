@@ -139,5 +139,85 @@ class TestCodegen(unittest.TestCase):
         c_code = CCodeGenerator().generate(ast)
         self.assertIn('printf("%f\\n", 50.0);', c_code)
 
+    def test_list_of_floats_codegen(self):
+        prog = Program([
+            FunctionDef(
+                name="main",
+                params=[],
+                body=[
+                    AssignStmt("floats", ListExpr([Literal(1.0), Literal(2.0), Literal(3.0)])),
+                    ReturnStmt(Literal(0))
+                ],
+                return_type="int"
+            )
+        ])
+        c_code = CCodeGenerator().generate(prog)
+        self.assertIn("double floats[] = { 1.0, 2.0, 3.0 };", c_code)
+
+    def test_augassign_float_codegen(self):
+        prog = Program([
+            FunctionDef(
+                name="main",
+                params=[],
+                body=[
+                    VarDecl("value", "float", Literal(1.5)),
+                    AugAssignStmt("value", "+", Literal(2.5)),
+                    ReturnStmt(Literal(0))
+                ],
+                return_type="int"
+            )
+        ])
+        c_code = CCodeGenerator().generate(prog)
+        self.assertIn("double value = 1.5;", c_code)
+        self.assertIn("value += 2.5;", c_code)
+
+    def test_complex_logical_expr_codegen(self):
+        prog = Program([
+            FunctionDef(
+                name="main",
+                params=[("x", "bool"), ("y", "bool"), ("z", "bool")],
+                body=[
+                    IfStmt(
+                        condition=BinOp(
+                            BinOp(Identifier("x"), "and", UnaryOp("not", Identifier("y"))),
+                            "or",
+                            Identifier("z")
+                        ),
+                        then_body=[ReturnStmt(Literal(1))],
+                        else_body=[ReturnStmt(Literal(0))]
+                    )
+                ],
+                return_type="int"
+            )
+        ])
+        c_code = CCodeGenerator().generate(prog)
+        self.assertIn("if (((x && (!y)) || z))", c_code)
+
+    def test_function_call_with_float_param_codegen(self):
+        prog = Program([
+            FunctionDef(
+                name="square",
+                params=[("x", "float")],
+                body=[
+                    ReturnStmt(BinOp(Identifier("x"), "*", Identifier("x")))
+                ],
+                return_type="float"
+            ),
+            FunctionDef(
+                name="main",
+                params=[],
+                body=[
+                    CallExpr(Identifier("print"), [CallExpr(Identifier("square"), [Literal(2.5)])]),
+                    ReturnStmt(Literal(0))
+                ],
+                return_type="int"
+            )
+        ])
+        c_code = CCodeGenerator().generate(prog)
+        self.assertIn("double square(double x)", c_code)
+        self.assertIn('printf("%f\\n", square(2.5));', c_code)
+
+
+
 if __name__ == "__main__":
     unittest.main()

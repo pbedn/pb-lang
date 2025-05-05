@@ -29,11 +29,13 @@ class CCodeGenerator:
         if isinstance(stmt, FunctionDef):
             self.in_function = True
             self.current_function_globals = stmt.globals_declared or set()
-            ret_type = stmt.return_type or "void"
+            ret_type = self.map_type(stmt.return_type or "void")
             args = ", ".join(
                 f"int {p}" if isinstance(p, str) else f"{self.map_type(p[1])} {p[0]}"
                 for p in stmt.params
             )
+            # Register function signature for later type inference
+            self.functions[stmt.name] = (stmt.params, stmt.return_type)
             self.emit(f"{ret_type} {stmt.name}({args}) {{")
             self.indent_level += 1
             self.defined_vars = dict()  # reset per function
@@ -70,7 +72,15 @@ class CCodeGenerator:
             if self.in_function:
                 # Check if it's a List (array) assignment
                 if isinstance(stmt.value, ListExpr):
-                    elem_c_type = self.map_type(stmt.value.elem_type or "int")
+                    # Sometimes .elem_type is not set
+                    # This ensures if AST doesn't annotate the list type, it will infer it from the elements
+                    if stmt.value.elem_type:
+                        elem_type = stmt.value.elem_type
+                    else:
+                        elem_types = [self.infer_type(e) for e in stmt.value.elements]
+                        elem_type = elem_types[0] if elem_types else "int"
+                    elem_c_type = self.map_type(elem_type)
+
                     if stmt.target in self.current_function_globals:
                         # Globals: no redeclaration, only assignment
                         self.emit(f"// Global array update not supported directly in C, ensure it's handled properly")
@@ -193,7 +203,7 @@ class CCodeGenerator:
             if isinstance(expr.value, bool):
                 return "true" if expr.value else "false"
             elif isinstance(expr.value, float):
-                return f"{expr.value}"    # ensures float is explicit
+                return f"{expr.value:.1f}"
             elif isinstance(expr.value, str):
                 return f'"{expr.value}"'  # warning: string support in C is basic
             return str(expr.value)
@@ -212,8 +222,10 @@ class CCodeGenerator:
                 for arg in expr.args:
                     arg_str = self.gen_expr(arg)
                     arg_type = self.infer_type(arg)
-                    # print(f"[DEBUG] arg: {arg_str}, inferred type: {arg_type}")
-                    if arg_type == "string":
+                    if arg_type.startswith("list"):
+                        raise NotImplementedError("Cannot print lists")    
+                    print(f"[DEBUG] arg: {arg_str}, inferred type: {arg_type}")
+                    if arg_type == "str":
                         self.emit(f'printf("%s\\n", {arg_str});')
                     elif arg_type == "int":
                         self.emit(f'printf("%d\\n", {arg_str});')
@@ -248,6 +260,8 @@ class CCodeGenerator:
             t = t[1]  # Defensive: grab the return type if it's a (params, return_type)
         if not t:
             return "int"
+        if t == "void":
+            return "void"
         if t.startswith("list["):
             elem_type = t[5:-1]
             return self.map_type(elem_type)
@@ -257,7 +271,7 @@ class CCodeGenerator:
             return "bool"
         elif t == "float":
             return "double"
-        elif t == "string":
+        elif t == "str":
             return "const char*"
         return "int"
 
@@ -268,7 +282,7 @@ class CCodeGenerator:
             elif isinstance(expr.value, float):
                 return "float"
             elif isinstance(expr.value, str):
-                return "string"
+                return "str"
             else:
                 return "int"
 

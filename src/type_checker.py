@@ -89,11 +89,17 @@ class TypeChecker:
                 raise LangTypeError(f"Augmented assignment type mismatch: {target_type} {stmt.op}= {value_type}")
 
         elif isinstance(stmt, ReturnStmt):
-            val_type = self.check_expr(stmt.value)
-            if self.current_function_return_type != val_type:
-                raise LangTypeError(
-                    f"Function declared to return '{self.current_function_return_type}' but got '{val_type}'"
-                )
+            if self.current_function_return_type == "void":
+                if stmt.value is not None and not (isinstance(stmt.value, Literal) and stmt.value.value is None):
+                    raise LangTypeError(
+                        "Cannot return a value from a function declared as void"
+                    )
+            else:
+                val_type = self.check_expr(stmt.value)
+                if self.current_function_return_type != val_type:
+                    raise LangTypeError(
+                        f"Function declared to return '{self.current_function_return_type}' but got '{val_type}'"
+                    )
 
         elif isinstance(stmt, IfStmt):
             cond_type = self.check_expr(stmt.condition)
@@ -190,7 +196,9 @@ class TypeChecker:
             fname = expr.func.name
             if fname == "print":
                 for arg in expr.args:
-                    self.check_expr(arg)
+                    arg_type = self.check_expr(arg)
+                    if arg_type.startswith("list["):
+                        raise LangTypeError("Cannot print a list directly")
                 return "void"
 
             if fname == "range":
