@@ -19,7 +19,7 @@ class TestPipeline(unittest.TestCase):
         checker = TypeChecker()
         checker.check(ast)
 
-        global_vars = set(checker.global_env.keys())
+        global_vars = checker.global_env
         codegen = CCodeGenerator(global_vars=global_vars)
         return codegen.generate(ast)
 

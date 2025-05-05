@@ -7,7 +7,7 @@ class CCodeGenerator:
         self.defined_vars = dict()  # dict: name -> type
         self.in_function = False
         self.functions = functions or {}
-        self.global_vars = global_vars or set()
+        self.global_vars = global_vars or {}
         self.current_function_globals = set()
 
     def indent(self):
@@ -289,6 +289,8 @@ class CCodeGenerator:
         elif isinstance(expr, Identifier):
             if expr.name in self.defined_vars:
                 return self.defined_vars[expr.name]
+            if expr.name in self.global_vars:
+                return self.global_vars[expr.name]
             if expr.name == "True" or expr.name == "False":
                 return "bool"
             elif expr.name == "None":

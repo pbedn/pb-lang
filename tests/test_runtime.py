@@ -13,8 +13,11 @@ class TestPipelineRuntime(unittest.TestCase):
         # Compile full pipeline
         tokens = Lexer(code).tokenize()
         ast = Parser(tokens).parse()
-        TypeChecker().check(ast)
-        c_code = CCodeGenerator().generate(ast)
+        checker = TypeChecker()
+        checker.check(ast)
+        c_code = CCodeGenerator(global_vars=checker.global_env).generate(ast)
+        print("=== Generated C ===")
+        print(c_code)
 
         # Save C code
         with tempfile.NamedTemporaryFile(suffix=".c", delete=False) as c_file:
@@ -77,6 +80,23 @@ class TestPipelineRuntime(unittest.TestCase):
         lines = output.splitlines()
         self.assertEqual(lines[0], "1")
         self.assertEqual(lines[1], "42")
+
+    def test_global_float_update_runtime(self):
+        code = (
+            "x: float = 1.5\n"
+            "\n"
+            "def main() -> int:\n"
+            "    print(x)\n"
+            "    global x\n"
+            "    x = 3.5\n"
+            "    print(x)\n"
+            "    return 0\n"
+        )
+        output = self.compile_and_run(code)
+        lines = output.strip().splitlines()
+        self.assertEqual(lines[0], "1.500000")
+        self.assertEqual(lines[1], "3.500000")
+
 
 if __name__ == "__main__":
     unittest.main()

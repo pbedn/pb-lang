@@ -20,13 +20,20 @@ def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = F
     try:
         checker = TypeChecker()
         checker.check(ast)
-        if verbose: print("🔎 Registered functions:", checker.functions)
+        if verbose:
+            print(f"-- Registered globals:")
+            for k,v in checker.global_env.items():
+                print(f"{k} -> {v}")
+            print("-- Registered functions:")
+            for k, v in checker.functions.items():
+                print(f"{k}: {v}")
+            print("\n")
         functions = checker.functions
     except LangTypeError as e:
         print(f"❌ Type Error: {e}")
         return False
 
-    global_vars = set(checker.global_env.keys())
+    global_vars = checker.global_env  # Dict: name -> type
     codegen = CCodeGenerator(functions=functions, global_vars=global_vars)
     c_code = codegen.generate(ast)
 
@@ -38,7 +45,7 @@ def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = F
 
 
 def build(source_code: str, output_file: str, verbose: bool = False, debug: bool = False) -> bool:
-    success = compile_to_c(source_code, f"{output_file}.c", verbose=verbose)
+    success = compile_to_c(source_code, f"{output_file}.c", verbose=verbose, debug=debug)
     if not success:
         print("⚠️ Skipping GCC build because type checking failed.")
         return False
@@ -59,7 +66,7 @@ def build(source_code: str, output_file: str, verbose: bool = False, debug: bool
 
 
 def run(source_code: str, output_file: str, verbose: bool = False, debug: bool = False):
-    success = build(source_code, output_file)
+    success = build(source_code, output_file, verbose=verbose, debug=debug)
     if not success:
         print("⚠️ Skipping run because compilation failed.")
         return
