@@ -27,18 +27,12 @@ class TypeChecker:
                     )
                 self.global_env[stmt.name] = stmt.declared_type
 
-            elif isinstance(stmt, AssignStmt):
-                # Top-level AssignStmt is invalid (must use VarDecl)
-                raise LangTypeError(
-                    f"Global variable '{stmt.target}' must be declared with a type"
-                )
-
             elif isinstance(stmt, FunctionDef):
                 self.functions[stmt.name] = (stmt.params, stmt.return_type or "void")
                 self.check_stmt(stmt)
 
             else:
-                self.check_stmt(stmt)
+                raise LangTypeError(f"Invalid statement at top level: {stmt}")
 
     def check_stmt(self, stmt: Stmt):
         if isinstance(stmt, FunctionDef):
@@ -63,6 +57,8 @@ class TypeChecker:
                     raise LangTypeError(f"Global variable '{name}' not defined")
 
         elif isinstance(stmt, VarDecl):
+            if stmt.value is None:
+                raise LangTypeError(f"Global variable '{stmt.name}' must be initialized")
             val_type = self.check_expr(stmt.value)
             if val_type != stmt.declared_type:
                 raise LangTypeError(

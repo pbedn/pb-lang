@@ -31,9 +31,21 @@ class Parser:
     def parse(self):
         body = []
         while self.current().type != TokenType.EOF:
-            stmt = self.parse_stmt()
+            stmt = self.parse_global_stmt()
             body.append(stmt)
         return Program(body)
+
+    def parse_global_stmt(self):
+        if self.match(TokenType.DEF):
+            return self.parse_function()
+
+        elif self.current().type == TokenType.IDENTIFIER:
+            # Peek ahead for VarDecl (Identifier : Type = ...)
+            next_type = self.tokens[self.pos + 1].type
+            if next_type == TokenType.COLON:
+                return self.parse_vardecl()
+        raise ParserError(f"Only function definitions and typed variable declarations are allowed at the top level (line {self.current().line})")
+
 
     def parse_stmt(self):
         if self.match(TokenType.DEF):
@@ -99,7 +111,8 @@ class Parser:
         if not type_tok:
             raise ParserError(f"Expected type after ':' at line {self.current().line}")
         declared_type = type_tok.value
-        self.expect(TokenType.EQ)
+        if not self.match(TokenType.EQ):
+            raise ParserError(f"Global variable declaration must include an initializer (line {self.current().line})")
         value = self.parse_expr()
         self.expect(TokenType.NEWLINE)
         return VarDecl(name, declared_type, value)

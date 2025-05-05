@@ -1,5 +1,7 @@
 import unittest
 from lang_ast import *
+from parser import Parser, ParserError
+from lexer import Lexer
 from type_checker import TypeChecker, LangTypeError
 
 class TestTypeChecker(unittest.TestCase):
@@ -143,10 +145,13 @@ class TestTypeChecker(unittest.TestCase):
                 return_type="int"
             )
         ])
-        checker = TypeChecker()
-        with self.assertRaises(LangTypeError) as ctx:
-            checker.check(prog)
-        self.assertIn("Global variable 'counter' must be declared with a type", str(ctx.exception))
+        with self.assertRaises(ParserError) as ctx:
+            # Simulate parsing the invalid top-level assignment
+            lexer = Lexer("counter = 100")
+            tokens = lexer.tokenize()
+            parser = Parser(tokens)
+            parser.parse()
+        self.assertIn("Only function definitions and typed variable declarations are allowed", str(ctx.exception))
 
     def test_global_vardecl_is_valid(self):
         prog = Program([

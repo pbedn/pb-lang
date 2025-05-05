@@ -1,6 +1,6 @@
 import unittest
 from lexer import Lexer
-from parser import Parser
+from parser import Parser, ParserError
 from codegen import CCodeGenerator
 from lang_ast import (
     FunctionDef, IfStmt, ReturnStmt, AssignStmt, WhileStmt, ForStmt, PassStmt, AugAssignStmt, Literal,
@@ -114,7 +114,7 @@ class TestParser(unittest.TestCase):
 
     def test_parser_with_top_level_and_function_global(self):
         code = (
-            "counter = 100\n"
+            "counter: int = 100\n"
             "\n"
             "def main() -> int:\n"
             "    global counter, value\n"
@@ -132,11 +132,11 @@ class TestParser(unittest.TestCase):
         self.assertEqual(len(ast.body), 2)
 
         # --- Top-level global var ---
-        top_level_assign = ast.body[0]
-        self.assertIsInstance(top_level_assign, AssignStmt)
-        self.assertEqual(top_level_assign.target, "counter")
-        self.assertIsInstance(top_level_assign.value, Literal)
-        self.assertEqual(top_level_assign.value.value, 100)
+        top_level_vardecl = ast.body[0]
+        self.assertIsInstance(top_level_vardecl, VarDecl)
+        self.assertEqual(top_level_vardecl.name, "counter")
+        self.assertEqual(top_level_vardecl.declared_type, "int")
+        self.assertEqual(top_level_vardecl.value, Literal(100))
 
         # --- Function def ---
         func_def = ast.body[1]
@@ -180,6 +180,21 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(vardecl, VarDecl)
         self.assertEqual(vardecl.name, "x")
         self.assertEqual(vardecl.declared_type, "int")
+
+    def test_parser_should_fail_on_uninitialized_global_var(self):
+        code = (
+            "counter: int\n"  # ❌ invalid: no initializer
+            "\n"
+            "def main() -> int:\n"
+            "    return 0\n"
+        )
+        lexer = Lexer(code)
+        tokens = lexer.tokenize()
+
+        parser = Parser(tokens)
+        with self.assertRaises(ParserError) as ctx:
+            parser.parse()
+        self.assertIn("Global variable declaration must include an initializer", str(ctx.exception))
 
 if __name__ == "__main__":
     unittest.main()
