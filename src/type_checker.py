@@ -6,18 +6,33 @@ class LangTypeError(Exception):
 class TypeChecker:
     def __init__(self):
         self.functions = {
-            "print": ([("value", "int")], "void"),  # accept 1 argument for now
-            "range": ([("start", "int")], "range"),  # support will be handled manually
+            "print": ([("value", "int")], "void"),
+            "range": ([("start", "int")], "range"),
         }
-        # self.functions = {}  # name -> (params: [(name, type)], return_type)
+        self.classes = {}
         self.builtins = {"True": "bool", "False": "bool", "None": "int"}
-        self.env = {}        # local variables -> type (per function)
-        self.global_env = {} # global variables -> type
-        self.current_function_globals = set()  # names declared with `global`
+        self.env = {}        # local vars (per function/method)
+        self.global_env = {} # global vars
+        self.current_function_globals = set()
         self.current_function_return_type = None
         self.in_loop = 0
 
     def check(self, program: Program):
+        # First pass: register classes & functions signatures
+        for stmt in program.body:
+            if isinstance(stmt, ClassDef):
+                if stmt.name in self.classes:
+                    raise LangTypeError(f"Duplicate class '{stmt.name}'")
+                # Register the class early
+                field_types = {field.name: field.declared_type for field in stmt.fields}
+                self.classes[stmt.name] = {
+                    "fields": field_types,
+                    "methods": {method.name: method for method in stmt.methods},
+                }
+            elif isinstance(stmt, FunctionDef):
+                self.functions[stmt.name] = (stmt.params, stmt.return_type or "void")
+
+        # Second pass: type check everything
         for stmt in program.body:
             if isinstance(stmt, VarDecl):
                 val_type = self.check_expr(stmt.value)
@@ -28,11 +43,42 @@ class TypeChecker:
                 self.global_env[stmt.name] = stmt.declared_type
 
             elif isinstance(stmt, FunctionDef):
-                self.functions[stmt.name] = (stmt.params, stmt.return_type or "void")
                 self.check_stmt(stmt)
+
+            elif isinstance(stmt, ClassDef):
+                # Validate fields
+                class_info = self.classes[stmt.name]
+                for field in stmt.fields:
+                    val_type = self.check_expr(field.value)
+                    if val_type != field.declared_type:
+                        raise LangTypeError(
+                            f"Type mismatch in field '{field.name}' of class '{stmt.name}': expected '{field.declared_type}' but got '{val_type}'"
+                        )
+                # Validate methods
+                for method in stmt.methods:
+                    self.check_method(method, stmt.name)
 
             else:
                 raise LangTypeError(f"Invalid statement at top level: {stmt}")
+
+    def check_method(self, method: FunctionDef, class_name: str):
+        self.env = {}
+        self.current_function_globals = set()
+        self.current_function_return_type = method.return_type or "void"
+
+        if not method.params:
+            raise LangTypeError(f"Method '{method.name}' in class '{class_name}' must have 'self' as first parameter")
+        first_param_name, first_param_type = method.params[0]
+        if first_param_type != class_name:
+            raise LangTypeError(f"First parameter of method '{method.name}' must be '{class_name}', got '{first_param_type}'")
+
+        # Register method params
+        for param in method.params:
+            name, typ = param
+            self.env[name] = typ
+
+        for s in method.body:
+            self.check_stmt(s)
 
     def check_stmt(self, stmt: Stmt):
         if isinstance(stmt, FunctionDef):
@@ -40,25 +86,18 @@ class TypeChecker:
             self.current_function_globals = set()
             self.current_function_return_type = stmt.return_type or "void"
             for param in stmt.params:
-                if isinstance(param, tuple):
-                    name, typ = param
-                else:
-                    name, typ = param, "int"  # default type
+                name, typ = param
                 self.env[name] = typ
-
             for s in stmt.body:
                 self.check_stmt(s)
 
         elif isinstance(stmt, GlobalStmt):
             for name in stmt.names:
                 self.current_function_globals.add(name)
-                # Validate: global must already be defined at top level
                 if name not in self.global_env:
                     raise LangTypeError(f"Global variable '{name}' not defined")
 
         elif isinstance(stmt, VarDecl):
-            if stmt.value is None:
-                raise LangTypeError(f"Global variable '{stmt.name}' must be initialized")
             val_type = self.check_expr(stmt.value)
             if val_type != stmt.declared_type:
                 raise LangTypeError(
@@ -71,18 +110,42 @@ class TypeChecker:
 
         elif isinstance(stmt, AssignStmt):
             val_type = self.check_expr(stmt.value)
-            if stmt.target in self.current_function_globals:
-                self.global_env[stmt.target] = val_type
+            if isinstance(stmt.target, Identifier):
+                target_name = stmt.target.name
+                if target_name in self.current_function_globals:
+                    self.global_env[target_name] = val_type
+                elif target_name in self.env:
+                    self.env[target_name] = val_type
+                else:
+                    raise LangTypeError(
+                        f"Variable '{target_name}' assigned before declaration"
+                    )
+            elif isinstance(stmt.target, AttributeExpr):
+                self.check_expr(stmt.target)  # Ensures it's a valid attribute
             else:
-                self.env[stmt.target] = val_type
+                raise LangTypeError(f"Invalid assignment target: {stmt.target}")
 
         elif isinstance(stmt, AugAssignStmt):
-            if stmt.target not in self.env:
-                raise LangTypeError(f"Variable '{stmt.target}' not defined before augmented assignment")
-            target_type = self.env[stmt.target]
+            if isinstance(stmt.target, Identifier):
+                target_name = stmt.target.name
+                if target_name in self.current_function_globals:
+                    if target_name not in self.global_env:
+                        raise LangTypeError(f"Global variable '{target_name}' not defined before augmented assignment")
+                    target_type = self.global_env[target_name]
+                elif target_name in self.env:
+                    target_type = self.env[target_name]
+                else:
+                    raise LangTypeError(f"Variable '{target_name}' not declared before augmented assignment")
+            elif isinstance(stmt.target, AttributeExpr):
+                target_type = self.check_expr(stmt.target)
+            else:
+                raise LangTypeError(f"Invalid augmented assignment target: {stmt.target}")
+
             value_type = self.check_expr(stmt.value)
             if target_type != value_type:
-                raise LangTypeError(f"Augmented assignment type mismatch: {target_type} {stmt.op}= {value_type}")
+                raise LangTypeError(
+                    f"Augmented assignment type mismatch: {target_type} {stmt.op}= {value_type}"
+                )
 
         elif isinstance(stmt, ReturnStmt):
             if self.current_function_return_type == "void":
@@ -153,6 +216,16 @@ class TypeChecker:
                 return self.global_env[expr.name]
             raise LangTypeError(f"Undefined variable '{expr.name}'")
 
+        elif isinstance(expr, AttributeExpr):
+            obj_type = self.check_expr(expr.obj)
+            if obj_type not in self.classes:
+                raise LangTypeError(f"Cannot access attribute of non-class type '{obj_type}'")
+            class_info = self.classes[obj_type]
+            fields = class_info["fields"]
+            if expr.attr not in fields:
+                raise LangTypeError(f"Class '{obj_type}' has no field '{expr.attr}'")
+            return fields[expr.attr]
+
         elif isinstance(expr, BinOp):
             left = self.check_expr(expr.left)
             right = self.check_expr(expr.right)
@@ -182,7 +255,7 @@ class TypeChecker:
                 raise LangTypeError("Can only index into lists")
             if index_type != "int":
                 raise LangTypeError("List index must be an integer")
-            elem_type = base_type[5:-1]  # Extract type inside 'list[...]'
+            elem_type = base_type[5:-1]
             expr.elem_type = elem_type
             return elem_type
 
@@ -225,7 +298,7 @@ class TypeChecker:
             for t in elem_types:
                 if t != first_type:
                     raise LangTypeError("All elements of a list must have the same type")
-            expr.elem_type = first_type  # Save the type for codegen
+            expr.elem_type = first_type
             return f"list[{first_type}]"
 
         elif isinstance(expr, DictExpr):
