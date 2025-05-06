@@ -19,6 +19,18 @@ class ReturnStmt:
     value: 'Expr'
 
 @dataclass
+class ClassDef:
+    name: str
+    base: Optional[str]
+    fields: List['VarDecl']
+    methods: List['FunctionDef']
+
+@dataclass
+class AttributeExpr:
+    obj: 'Expr'
+    attr: str
+
+@dataclass
 class GlobalStmt:
     names: List[str]
 
@@ -36,12 +48,12 @@ class IfStmt:
 
 @dataclass
 class AssignStmt:
-    target: str
+    target: 'Expr'
     value: 'Expr'
 
 @dataclass
 class AugAssignStmt:
-    target: str
+    target: 'Expr'
     op: str
     value: 'Expr'
 
@@ -55,6 +67,10 @@ class ForStmt:
     var_name: str
     iterable: 'Expr'
     body: List['Stmt']
+
+@dataclass
+class AssertStmt:
+    condition: 'Expr'
 
 @dataclass
 class BreakStmt:
@@ -108,14 +124,13 @@ class UnaryOp:
     op: str
     operand: 'Expr'
 
-# Union Types
 Stmt = Union[
     FunctionDef, ReturnStmt, IfStmt, AssignStmt, WhileStmt, ForStmt,
-    BreakStmt, ContinueStmt, AugAssignStmt, GlobalStmt, VarDecl
+    BreakStmt, ContinueStmt, AugAssignStmt, GlobalStmt, VarDecl,
+    PassStmt, ClassDef, AssertStmt
 ]
 
 Expr = Union[
-    BinOp, Identifier, Literal, CallExpr, UnaryOp, ListExpr, DictExpr, IndexExpr
+    BinOp, Identifier, Literal, CallExpr, UnaryOp, ListExpr, DictExpr,
+    IndexExpr, AttributeExpr
 ]
-
-

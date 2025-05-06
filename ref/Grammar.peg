@@ -2,6 +2,7 @@ Program        <- _ Statement* EOF
 
 # Statements
 Statement      <- FunctionDef
+               / ClassDef
                / VarDecl
                / AugAssignment
                / Assignment
@@ -9,12 +10,14 @@ Statement      <- FunctionDef
                / WhileStmt
                / ForStmt
                / ReturnStmt
+               / AssertStmt
                / BreakStmt
                / ContinueStmt
                / PassStmt
                / ExprStmt
 
 FunctionDef    <- "def" _ Identifier _ "(" _ ParamList? _ ")" _ "->" _ Type _ ":" _ NEWLINE INDENT Statement+ DEDENT
+ClassDef       <- "class" _ Identifier _ ("(" _ Identifier _ ")")? _ ":" _ NEWLINE INDENT Statement+ DEDENT
 ParamList      <- Param ("," _ Param)*
 Param          <- Identifier _ ":" _ Type
 
@@ -22,6 +25,7 @@ VarDecl        <- Identifier _ ":" _ Type _ "=" _ Expression NEWLINE
 Assignment     <- Identifier _ "=" _ Expression NEWLINE
 AugAssignment  <- Identifier _ ("+=" / "-=" / "*=" / "/=" / "%=") _ Expression NEWLINE
 ReturnStmt     <- "return" _ Expression? NEWLINE
+AssertStmt     <- "assert" _ Expression NEWLINE
 BreakStmt      <- "break" NEWLINE
 ContinueStmt   <- "continue" NEWLINE
 PassStmt       <- "pass" NEWLINE
@@ -44,7 +48,7 @@ RelationalExpr <- AddExpr (("<" / "<=" / ">" / ">=") _ AddExpr)*
 AddExpr        <- MulExpr (("+" / "-") _ MulExpr)*
 MulExpr        <- UnaryExpr (("*" / "/" / "%") _ UnaryExpr)*
 UnaryExpr      <- ("not" / "-")? _ PrimaryExpr
-PrimaryExpr    <- Atom ( "[" _ Expression _ "]" )*
+PrimaryExpr    <- Atom ( "[" _ Expression _ "]" / "." _ Identifier )*)*
 Atom           <- ListExpr
                / CallExpr
                / Number

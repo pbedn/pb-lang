@@ -16,7 +16,7 @@ class TokenType(Enum):
     COLON = auto(); COMMA = auto(); LPAREN = auto(); RPAREN = auto()
     LBRACKET = auto(); RBRACKET = auto(); LBRACE = auto(); RBRACE = auto()
     ASSIGN = auto(); PLUS = auto(); MINUS = auto(); STAR = auto(); SLASH = auto(); PERCENT = auto()
-    DOT = auto()
+    DOT = auto(); SEMICOLON = auto()
 
     ## augmented assignment
     PLUSEQ = auto(); MINUSEQ = auto(); STAREQ = auto(); SLASHEQ = auto(); PERCENTEQ = auto()
@@ -105,6 +105,7 @@ TOKEN_REGEX = [
     (r'\{', TokenType.LBRACE),
     (r'\}', TokenType.RBRACE),
     (r':', TokenType.COLON),
+    (r';', TokenType.SEMICOLON),
     (r',', TokenType.COMMA),
     (r'=', TokenType.ASSIGN),
     (r'\+', TokenType.PLUS),

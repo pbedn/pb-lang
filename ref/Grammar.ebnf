@@ -3,6 +3,7 @@ Program         ::= { Statement } EOF ;
 
 (* Statements *)
 Statement       ::= FunctionDef
+                  | ClassDef
                   | VarDecl
                   | AugAssignment
                   | Assignment
@@ -10,12 +11,14 @@ Statement       ::= FunctionDef
                   | WhileStmt
                   | ForStmt
                   | ReturnStmt
+                  | AssertStmt
                   | BreakStmt
                   | ContinueStmt
                   | PassStmt
                   | ExprStmt ;
 
 FunctionDef     ::= "def" Identifier "(" [ ParamList ] ")" "->" Type ":" NEWLINE INDENT { Statement } DEDENT ;
+ClassDef        ::= "class" Identifier [ "(" Identifier ")" ] ":" NEWLINE INDENT { Statement } DEDENT ;
 ParamList       ::= Param { "," Param } ;
 Param           ::= Identifier ":" Type ;
 
@@ -23,6 +26,7 @@ VarDecl         ::= Identifier ":" Type "=" Expression NEWLINE ;
 Assignment      ::= Identifier "=" Expression NEWLINE ;
 AugAssignment   ::= Identifier ( "+=" | "-=" | "*=" | "/=" | "%=" ) Expression NEWLINE ;
 ReturnStmt      ::= "return" [ Expression ] NEWLINE ;
+AssertStmt      ::= "assert" Expression NEWLINE ;
 BreakStmt       ::= "break" NEWLINE ;
 ContinueStmt    ::= "continue" NEWLINE ;
 PassStmt        ::= "pass" NEWLINE ;
@@ -45,7 +49,7 @@ RelationalExpr  ::= AddExpr { ( "<" | "<=" | ">" | ">=" ) AddExpr } ;
 AddExpr         ::= MulExpr { ( "+" | "-" ) MulExpr } ;
 MulExpr         ::= UnaryExpr { ( "*" | "/" | "%" ) UnaryExpr } ;
 UnaryExpr       ::= [ "not" | "-" ] PrimaryExpr ;
-PrimaryExpr     ::= Atom { "[" Expression "]" } ;
+PrimaryExpr     ::= Atom { ( "[" Expression "]" ) | ( "." Identifier ) } ;
 Atom            ::= ListExpr
                   | CallExpr
                   | Number
