@@ -10,17 +10,17 @@ class TokenType(Enum):
     WHILE = auto(); FOR = auto(); IN = auto(); IS = auto()
     INT = auto(); FLOAT = auto(); BOOL = auto(); STR = auto(); NOT = auto()
     AND = auto(); OR = auto(); BREAK = auto(); CONTINUE = auto(); PASS = auto()
-    GLOBAL = auto()
+    GLOBAL = auto(); CLASS = auto()
 
     # Symbols
     COLON = auto(); COMMA = auto(); LPAREN = auto(); RPAREN = auto()
     LBRACKET = auto(); RBRACKET = auto(); LBRACE = auto(); RBRACE = auto()
-    EQ = auto(); PLUS = auto(); MINUS = auto(); STAR = auto(); SLASH = auto(); PERCENT = auto()
+    ASSIGN = auto(); PLUS = auto(); MINUS = auto(); STAR = auto(); SLASH = auto(); PERCENT = auto()
 
     ## augmented assignment
     PLUSEQ = auto(); MINUSEQ = auto(); STAREQ = auto(); SLASHEQ = auto(); PERCENTEQ = auto()
 
-    EQEQ = auto(); NOTEQ = auto(); LT = auto(); LTE = auto(); GT = auto(); GTE = auto()
+    EQ = auto(); NOTEQ = auto(); LT = auto(); LTE = auto(); GT = auto(); GTE = auto()
     ARROW = auto()
 
     # Structure
@@ -63,6 +63,7 @@ class LexerError(Exception):
 
 KEYWORDS = {
     "def": TokenType.DEF,
+    "class": TokenType.CLASS,
     "return": TokenType.RETURN,
     "global": TokenType.GLOBAL,
     "if": TokenType.IF,
@@ -85,7 +86,7 @@ KEYWORDS = {
 }
 
 TOKEN_REGEX = [
-    (r'==', TokenType.EQEQ),
+    (r'==', TokenType.EQ),
     (r'!=', TokenType.NOTEQ),
     (r'<=', TokenType.LTE),
     (r'>=', TokenType.GTE),
@@ -103,7 +104,7 @@ TOKEN_REGEX = [
     (r'\}', TokenType.RBRACE),
     (r':', TokenType.COLON),
     (r',', TokenType.COMMA),
-    (r'=', TokenType.EQ),
+    (r'=', TokenType.ASSIGN),
     (r'\+', TokenType.PLUS),
     (r'-', TokenType.MINUS),
     (r'\*', TokenType.STAR),
@@ -204,11 +205,3 @@ class Lexer:
                 raise LexerError("Unknown token", self.line_num, pos + 1)
 
         self.tokens.append(Token(TokenType.NEWLINE, "", self.line_num, len(line)))
-
-if __name__ == "__main__":
-    with open("2.pb") as f:
-        code = f.read()
-    lexer = Lexer(code)
-    tokens = lexer.tokenize()
-    for token in tokens:
-        pprint(token)
