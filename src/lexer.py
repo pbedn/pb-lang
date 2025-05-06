@@ -10,12 +10,13 @@ class TokenType(Enum):
     WHILE = auto(); FOR = auto(); IN = auto(); IS = auto()
     INT = auto(); FLOAT = auto(); BOOL = auto(); STR = auto(); NOT = auto()
     AND = auto(); OR = auto(); BREAK = auto(); CONTINUE = auto(); PASS = auto()
-    GLOBAL = auto(); CLASS = auto()
+    GLOBAL = auto(); CLASS = auto(); ASSERT = auto()
 
     # Symbols
     COLON = auto(); COMMA = auto(); LPAREN = auto(); RPAREN = auto()
     LBRACKET = auto(); RBRACKET = auto(); LBRACE = auto(); RBRACE = auto()
     ASSIGN = auto(); PLUS = auto(); MINUS = auto(); STAR = auto(); SLASH = auto(); PERCENT = auto()
+    DOT = auto()
 
     ## augmented assignment
     PLUSEQ = auto(); MINUSEQ = auto(); STAREQ = auto(); SLASHEQ = auto(); PERCENTEQ = auto()
@@ -66,6 +67,7 @@ KEYWORDS = {
     "class": TokenType.CLASS,
     "return": TokenType.RETURN,
     "global": TokenType.GLOBAL,
+    "assert": TokenType.ASSERT,
     "if": TokenType.IF,
     "else": TokenType.ELSE,
     "elif": TokenType.ELIF,
@@ -112,6 +114,7 @@ TOKEN_REGEX = [
     (r'%', TokenType.PERCENT),
     (r'<', TokenType.LT),
     (r'>', TokenType.GT),
+    (r'\.', TokenType.DOT),
     # Order matters: more specific first
     (r'\d+\.\d+[eE][+-]?\d+', TokenType.FLOAT_LIT),
     (r'\d+[eE][+-]?\d+', TokenType.FLOAT_LIT),

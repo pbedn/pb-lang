@@ -171,3 +171,80 @@ class TestLexer(unittest.TestCase):
         self.assertIn("ASSIGN", types)
         self.assertIn("LBRACKET", types)
         self.assertIn("RBRACKET", types)
+
+    def test_assert_keyword(self):
+        code = (
+            "def main() -> int:\n"
+            "    assert x > 0\n"
+            "    return 0\n"
+        )
+        lexer = Lexer(code)
+        tokens = lexer.tokenize()
+        types = [t.type.name for t in tokens]
+
+        self.assertIn("ASSERT", types)
+
+    def test_2d_list_indexing(self):
+        code = (
+            "grid = [[1, 2], [3, 4]]\n"
+            "y = grid[1][0]\n"
+        )
+        lexer = Lexer(code)
+        tokens = lexer.tokenize()
+        types = [t.type.name for t in tokens]
+
+        # Check multiple bracket tokens exist
+        self.assertGreaterEqual(types.count("LBRACKET"), 4)
+        self.assertGreaterEqual(types.count("RBRACKET"), 4)
+
+    def test_function_parameter_type_single_arg(self):
+        code = (
+            "def apply_twice(f: (int) -> int, x: int) -> int:\n"
+            "    return f(f(x))\n"
+        )
+        lexer = Lexer(code)
+        tokens = lexer.tokenize()
+        types = [t.type.name for t in tokens]
+
+        self.assertIn("DEF", types)
+        self.assertIn("IDENTIFIER", types)
+        self.assertIn("LPAREN", types)
+        self.assertIn("RPAREN", types)
+        self.assertIn("ARROW", types)
+        self.assertIn("COLON", types)
+        self.assertIn("INT", types)
+
+    def test_function_parameter_type_multi_arg(self):
+        code = (
+            "def apply_op(f: (int, int) -> int, a: int, b: int) -> int:\n"
+            "    return f(a, b)\n"
+        )
+        lexer = Lexer(code)
+        tokens = lexer.tokenize()
+        types = [t.type.name for t in tokens]
+
+        self.assertIn("DEF", types)
+        self.assertIn("LPAREN", types)
+        self.assertIn("COMMA", types)
+        self.assertIn("ARROW", types)
+        self.assertIn("COLON", types)
+        self.assertIn("INT", types)
+
+    def test_class_as_function_parameter(self):
+        code = (
+            "class Player:\n"
+            "    hp: int\n"
+            "\n"
+            "def heal(target: Player, amount: int):\n"
+            "    target.hp += amount\n"
+        )
+        lexer = Lexer(code)
+        tokens = lexer.tokenize()
+        types = [t.type.name for t in tokens]
+
+        self.assertIn("CLASS", types)
+        self.assertIn("DEF", types)
+        self.assertIn("IDENTIFIER", types)
+        self.assertIn("COLON", types)
+        self.assertIn("INT", types)
+        self.assertIn("DOT", types)
