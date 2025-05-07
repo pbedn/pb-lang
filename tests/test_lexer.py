@@ -1,14 +1,26 @@
+# test_lexer.py
 import unittest
 
 from lexer import Lexer, LexerError
 
 class TestLexer(unittest.TestCase):
     def test_keywords_and_literals(self):
-        code = 'def main() -> int:\n    return 42\n    print("hello")\n    if x == 1:\n        pass\n    else:\n        pass'
+        code = (
+            'def main() -> int:\n'
+            '    return 42\n'
+            '    print("hello")\n'
+            '    if x == 1:\n'
+            '        pass\n'
+            '    else:\n'
+            '        pass'
+        )
         lexer = Lexer(code)
         tokens = lexer.tokenize()
         types = [t.type.name for t in tokens]
-        for expected in ["DEF", "RETURN", "INT_LIT", "STRING_LIT", "IF", "ELSE", "EQ"]:
+        for expected in [
+            "DEF", "RETURN", "INT_LIT",
+            "STRING_LIT", "IF", "ELSE", "EQ"
+        ]:
             self.assertIn(expected, types)
 
     def test_operators(self):
@@ -67,20 +79,14 @@ class TestLexer(unittest.TestCase):
             "w /= 4\n"
             "v %= 5\n"
         )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
+        tokens = Lexer(code).tokenize()
         types = [t.type.name for t in tokens]
-        self.assertIn("PLUSEQ", types)
-        self.assertIn("MINUSEQ", types)
-        self.assertIn("STAREQ", types)
-        self.assertIn("SLASHEQ", types)
-        self.assertIn("PERCENTEQ", types)
+        for aug in ["PLUSEQ", "MINUSEQ", "STAREQ", "SLASHEQ", "PERCENTEQ"]:
+            self.assertIn(aug, types)
 
     def test_global_keyword(self):
         code = 'global x, y'
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        types = [t.type.name for t in tokens]
+        types = [t.type.name for t in Lexer(code).tokenize()]
         self.assertIn("GLOBAL", types)
 
     def test_simple_class(self):
@@ -248,3 +254,32 @@ class TestLexer(unittest.TestCase):
         self.assertIn("COLON", types)
         self.assertIn("INT", types)
         self.assertIn("DOT", types)
+
+    def test_import_keyword(self):
+        code = 'import utils\n'
+        types = [t.type.name for t in Lexer(code).tokenize()]
+        self.assertIn("IMPORT", types)
+
+    def test_boolean_literals(self):
+        code = 'x = True\ny = False\n'
+        types = [t.type.name for t in Lexer(code).tokenize()]
+        self.assertIn("TRUE", types)
+        self.assertIn("FALSE", types)
+
+    def test_numeric_literal_underscores(self):
+        code = (
+            'a = 1_000\n'
+            'b = 3.14_15\n'
+            'c = 2_5\n'
+            'd = 6.022_140e+23\n'
+        )
+        tokens = Lexer(code).tokenize()
+        ints = [t for t in tokens if t.type.name == "INT_LIT"]
+        floats = [t for t in tokens if t.type.name == "FLOAT_LIT"]
+        self.assertTrue(any(tok.value == '1000' for tok in ints))
+        self.assertTrue(any(tok.value == '3.1415' for tok in floats))
+        self.assertTrue(any(tok.value == '25' for tok in ints))
+        self.assertTrue(any(tok.value.replace('.', '').startswith('6022140') for tok in floats))
+
+if __name__ == "__main__":
+    unittest.main()

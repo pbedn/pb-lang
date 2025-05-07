@@ -1,3 +1,4 @@
+# lexer.py
 import re
 from pprint import pprint
 from enum import Enum, auto
@@ -10,16 +11,19 @@ class TokenType(Enum):
     WHILE = auto(); FOR = auto(); IN = auto(); IS = auto()
     INT = auto(); FLOAT = auto(); BOOL = auto(); STR = auto(); NOT = auto()
     AND = auto(); OR = auto(); BREAK = auto(); CONTINUE = auto(); PASS = auto()
-    GLOBAL = auto(); CLASS = auto(); ASSERT = auto()
+    GLOBAL = auto(); IMPORT = auto(); CLASS = auto(); ASSERT = auto()
+    TRUE = auto(); FALSE = auto()
+    TRY = auto(); EXCEPT = auto(); RAISE = auto()
 
     # Symbols
     COLON = auto(); COMMA = auto(); LPAREN = auto(); RPAREN = auto()
     LBRACKET = auto(); RBRACKET = auto(); LBRACE = auto(); RBRACE = auto()
-    ASSIGN = auto(); PLUS = auto(); MINUS = auto(); STAR = auto(); SLASH = auto(); PERCENT = auto()
-    DOT = auto(); SEMICOLON = auto()
+    ASSIGN = auto(); PLUS = auto(); MINUS = auto(); STAR = auto(); SLASH = auto()
+    PERCENT = auto(); FLOORDIV = auto(); DOT = auto(); SEMICOLON = auto()
 
     ## augmented assignment
-    PLUSEQ = auto(); MINUSEQ = auto(); STAREQ = auto(); SLASHEQ = auto(); PERCENTEQ = auto()
+    PLUSEQ = auto(); MINUSEQ = auto(); STAREQ = auto(); SLASHEQ = auto()
+    PERCENTEQ = auto(); FLOORDIVEQ = auto()
 
     EQ = auto(); NOTEQ = auto(); LT = auto(); LTE = auto(); GT = auto(); GTE = auto()
     ARROW = auto()
@@ -28,8 +32,8 @@ class TokenType(Enum):
     NEWLINE = auto(); INDENT = auto(); DEDENT = auto(); EOF = auto()
 
     # Literals & Identifiers
-    IDENTIFIER = auto(); INT_LIT = auto(); FLOAT_LIT = auto(); STRING_LIT = auto()
-
+    IDENTIFIER = auto(); INT_LIT = auto(); FLOAT_LIT = auto()
+    STRING_LIT = auto(); FSTRING_LIT = auto()
 
 class Token(NamedTuple):
     type: TokenType
@@ -67,6 +71,7 @@ KEYWORDS = {
     "class": TokenType.CLASS,
     "return": TokenType.RETURN,
     "global": TokenType.GLOBAL,
+    "import": TokenType.IMPORT,
     "assert": TokenType.ASSERT,
     "if": TokenType.IF,
     "else": TokenType.ELSE,
@@ -85,6 +90,11 @@ KEYWORDS = {
     "not": TokenType.NOT,
     "and": TokenType.AND,
     "or": TokenType.OR,
+    "try": TokenType.TRY,
+    "except": TokenType.EXCEPT,
+    "raise": TokenType.RAISE,
+    "True": TokenType.TRUE,
+    "False": TokenType.FALSE,
 }
 
 TOKEN_REGEX = [
@@ -96,8 +106,10 @@ TOKEN_REGEX = [
     (r'\+=', TokenType.PLUSEQ),
     (r'-=', TokenType.MINUSEQ),
     (r'\*=', TokenType.STAREQ),
+    (r'//=', TokenType.FLOORDIVEQ),
     (r'/=', TokenType.SLASHEQ),
     (r'%=', TokenType.PERCENTEQ),
+    (r'//', TokenType.FLOORDIV),
     (r'\(', TokenType.LPAREN),
     (r'\)', TokenType.RPAREN),
     (r'\[', TokenType.LBRACKET),
@@ -116,11 +128,15 @@ TOKEN_REGEX = [
     (r'<', TokenType.LT),
     (r'>', TokenType.GT),
     (r'\.', TokenType.DOT),
-    # Order matters: more specific first
-    (r'\d+\.\d+[eE][+-]?\d+', TokenType.FLOAT_LIT),
-    (r'\d+[eE][+-]?\d+', TokenType.FLOAT_LIT),
-    (r'\d+\.\d+', TokenType.FLOAT_LIT),
-    (r'\d+', TokenType.INT_LIT),
+    
+    # F-string patterns must precede regular string patterns
+    (r'f"(?:\\.|[^"\\])*"', TokenType.FSTRING_LIT),
+    (r"f'(?:\\.|[^'\\])*'", TokenType.FSTRING_LIT),
+    # Numeric literals with optional underscores
+    (r'\d[\d_]*\.\d[\d_]*[eE][+-]?\d[\d_]*', TokenType.FLOAT_LIT), # Fraction + Exponent; 12.34e5, 6.02_2e+23
+    (r'\d[\d_]*[eE][+-]?\d[\d_]*', TokenType.FLOAT_LIT),           # Integer + Exponent; 10e-3, 1_6e2
+    (r'\d[\d_]*\.\d[\d_]*', TokenType.FLOAT_LIT),                  # Simple Fraction (no exponent); 3.1415, 0.5, 2_5.0
+    (r'\d[\d_]*', TokenType.INT_LIT),
     (r'"(?:\\.|[^"\\])*"', TokenType.STRING_LIT),
     (r"'(?:\\.|[^'\\])*'", TokenType.STRING_LIT),
     (r'[A-Za-z_][A-Za-z0-9_]*', TokenType.IDENTIFIER),
@@ -195,7 +211,9 @@ class Lexer:
 
                     if ttype == TokenType.IDENTIFIER and text in KEYWORDS:
                         ttype = KEYWORDS[text]
-                    elif ttype == TokenType.STRING_LIT:
+                    elif ttype in [TokenType.INT_LIT, TokenType.FLOAT_LIT]:
+                        value = text.replace('_', '')
+                    elif ttype in [TokenType.STRING_LIT, TokenType.FSTRING_LIT]:
                         try:
                             value = bytes(text[1:-1], "utf-8").decode("unicode_escape")
                         except Exception:
