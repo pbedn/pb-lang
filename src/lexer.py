@@ -227,3 +227,15 @@ class Lexer:
                 raise LexerError("Unknown token", self.line_num, pos + 1)
 
         self.tokens.append(Token(TokenType.NEWLINE, "", self.line_num, len(line)))
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) < 2:
+        print("Provide sample code")
+        exit(1)
+
+    source = sys.argv[1]
+    lexer = Lexer(source)
+    tokens = lexer.tokenize()
+    for token in tokens:
+        print(token)

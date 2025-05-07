@@ -1,14 +1,18 @@
 Program        <- _ Statement* EOF
 
-# Statements
+# ─────────── Statements ───────────
 Statement      <- FunctionDef
                / ClassDef
+               / ImportStmt
+               / GlobalStmt
                / VarDecl
                / AugAssignment
                / Assignment
                / IfStmt
                / WhileStmt
                / ForStmt
+               / TryStmt
+               / RaiseStmt
                / ReturnStmt
                / AssertStmt
                / BreakStmt
@@ -16,39 +20,58 @@ Statement      <- FunctionDef
                / PassStmt
                / ExprStmt
 
-FunctionDef    <- "def" _ Identifier _ "(" _ ParamList? _ ")" _ "->" _ Type _ ":" _ NEWLINE INDENT Statement+ DEDENT
-ClassDef       <- "class" _ Identifier _ ("(" _ Identifier _ ")")? _ ":" _ NEWLINE INDENT Statement+ DEDENT
-ParamList      <- Param ("," _ Param)*
+FunctionDef    <- "def" _ Identifier _ "(" _ ParamList? _ ")" _ "->" _ Type _
+                  ":" _ NEWLINE INDENT Statement+ DEDENT
+ClassDef       <- "class" _ Identifier _ ("(" _ Identifier _ ")")? _
+                  ":" _ NEWLINE INDENT Statement+ DEDENT
+
+ImportStmt     <- "import" _ Identifier (_ "." _ Identifier)* NEWLINE
+GlobalStmt     <- "global" _ Identifier (_ "," _ Identifier)* NEWLINE
+
+ParamList      <- Param (_ "," _ Param)*
 Param          <- Identifier _ ":" _ Type
 
 VarDecl        <- Identifier _ ":" _ Type _ "=" _ Expression NEWLINE
 Assignment     <- Identifier _ "=" _ Expression NEWLINE
-AugAssignment  <- Identifier _ ("+=" / "-=" / "*=" / "/=" / "%=") _ Expression NEWLINE
+AugAssignment  <- Identifier _
+                  ("+=" / "-=" / "*=" / "/=" / "//=" / "%=") _
+                  Expression NEWLINE
+
 ReturnStmt     <- "return" _ Expression? NEWLINE
 AssertStmt     <- "assert" _ Expression NEWLINE
+RaiseStmt      <- "raise" _ Identifier NEWLINE
 BreakStmt      <- "break" NEWLINE
 ContinueStmt   <- "continue" NEWLINE
 PassStmt       <- "pass" NEWLINE
 ExprStmt       <- Expression NEWLINE
 
-IfStmt         <- "if" _ Expression _ ":" _ NEWLINE INDENT Statement+ DEDENT ElifElseBlock?
+IfStmt         <- "if" _ Expression _ ":" _ NEWLINE INDENT Statement+ DEDENT
+                  ElifElseBlock?
 ElifElseBlock  <- (ElifBlock+ ElseBlock?) / ElseBlock
 ElifBlock      <- "elif" _ Expression _ ":" _ NEWLINE INDENT Statement+ DEDENT
 ElseBlock      <- "else" _ ":" _ NEWLINE INDENT Statement+ DEDENT
 
 WhileStmt      <- "while" _ Expression _ ":" _ NEWLINE INDENT Statement+ DEDENT
-ForStmt        <- "for" _ Identifier _ "in" _ Expression _ ":" _ NEWLINE INDENT Statement+ DEDENT
+ForStmt        <- "for" _ Identifier _ "in" _ Expression _
+                  ":" _ NEWLINE INDENT Statement+ DEDENT
 
-# Expressions
+TryStmt        <- "try" _ ":" _ NEWLINE INDENT Statement+ DEDENT
+                  ExceptBlock+
+ExceptBlock    <- "except" _ Identifier _ ":" _ NEWLINE
+                  INDENT Statement+ DEDENT
+
+# ─────────── Expressions ───────────
 Expression     <- OrExpr
-OrExpr         <- AndExpr ("or" _ AndExpr)*
-AndExpr        <- EqualityExpr ("and" _ EqualityExpr)*
-EqualityExpr   <- RelationalExpr (("==" / "!=" / "is" / "is not") _ RelationalExpr)*
-RelationalExpr <- AddExpr (("<" / "<=" / ">" / ">=") _ AddExpr)*
-AddExpr        <- MulExpr (("+" / "-") _ MulExpr)*
-MulExpr        <- UnaryExpr (("*" / "/" / "%") _ UnaryExpr)*
-UnaryExpr      <- ("not" / "-")? _ PrimaryExpr
-PrimaryExpr    <- Atom ( "[" _ Expression _ "]" / "." _ Identifier )*)*
+OrExpr         <- AndExpr (_ "or" _ AndExpr)*
+AndExpr        <- EqualityExpr (_ "and" _ EqualityExpr)*
+EqualityExpr   <- RelationalExpr (_ ( "==" / "!=" / "is" / "is not" ) _
+                                  RelationalExpr)*
+RelationalExpr <- AddExpr (_ ( "<" / "<=" / ">" / ">=" ) _ AddExpr)*
+AddExpr        <- MulExpr (_ ( "+" / "-" ) _ MulExpr)*
+MulExpr        <- UnaryExpr (_ ( "*" / "/" / "//" / "%" ) _ UnaryExpr)*
+UnaryExpr      <- ( "not" / "-" )? _ PrimaryExpr
+PrimaryExpr    <- Atom ( _ ( "[" _ Expression _ "]"
+                           / "." _ Identifier ) )*
 Atom           <- ListExpr
                / CallExpr
                / Number
@@ -56,21 +79,22 @@ Atom           <- ListExpr
                / Bool
                / Identifier
                / "(" _ Expression _ ")"
-ListExpr       <- "[" _ (Expression ("," _ Expression)*)? _ "]"
+ListExpr       <- "[" _ (Expression (_ "," _ Expression)*)? _ "]"
 CallExpr       <- Identifier _ "(" _ ArgList? _ ")"
-ArgList        <- Expression ("," _ Expression)*
+ArgList        <- Expression (_ "," _ Expression)*
 
-# Terminals
-Identifier     <- [a-zA-Z_][a-zA-Z0-9_]*
+# ─────────── Terminals & helpers ───────────
+Identifier     <- [A-Za-z_][A-Za-z0-9_]*
 Type           <- "int" / "float" / "bool" / "str"
 
-Number         <- [0-9]+ ("." [0-9]+)? ([eE] [+\-]? [0-9]+)?
-String         <- '"' [^"]* '"'
+Number         <- [0-9] ([0-9_]*)
+                  ("." [0-9] ([0-9_]*) )?
+                  ([eE] [+\-]? [0-9] ([0-9_]*) )?
+String         <- '"' (!'"' .)* '"'
 Bool           <- "True" / "False"
 
-# Whitespace and indentation (assumes an external preprocessor or indent-aware parser)
 _              <- [ \t]*
 NEWLINE        <- "\n"
-INDENT         <-  // handled by indent-aware parser
-DEDENT         <-  // handled by indent-aware parser
+INDENT         <-  # produced by lexer
+DEDENT         <-  # produced by lexer
 EOF            <- !.

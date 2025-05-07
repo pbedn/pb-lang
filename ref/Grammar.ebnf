@@ -1,76 +1,96 @@
 (* Program *)
-Program         ::= { Statement } EOF ;
+Program          ::= { Statement } EOF ;
 
-(* Statements *)
-Statement       ::= FunctionDef
-                  | ClassDef
-                  | VarDecl
-                  | AugAssignment
-                  | Assignment
-                  | IfStmt
-                  | WhileStmt
-                  | ForStmt
-                  | ReturnStmt
-                  | AssertStmt
-                  | BreakStmt
-                  | ContinueStmt
-                  | PassStmt
-                  | ExprStmt ;
+(* Statements – ordered to keep the LL(1) parser unambiguous *)
+Statement        ::= FunctionDef
+                   | ClassDef
+                   | ImportStmt
+                   | GlobalStmt
+                   | VarDecl
+                   | AugAssignment
+                   | Assignment
+                   | IfStmt
+                   | WhileStmt
+                   | ForStmt
+                   | TryStmt
+                   | RaiseStmt
+                   | ReturnStmt
+                   | AssertStmt
+                   | BreakStmt
+                   | ContinueStmt
+                   | PassStmt
+                   | ExprStmt ;
 
-FunctionDef     ::= "def" Identifier "(" [ ParamList ] ")" "->" Type ":" NEWLINE INDENT { Statement } DEDENT ;
-ClassDef        ::= "class" Identifier [ "(" Identifier ")" ] ":" NEWLINE INDENT { Statement } DEDENT ;
-ParamList       ::= Param { "," Param } ;
-Param           ::= Identifier ":" Type ;
+FunctionDef      ::= "def" Identifier "(" [ ParamList ] ")" "->" Type
+                     ":" NEWLINE INDENT { Statement } DEDENT ;
+ClassDef         ::= "class" Identifier [ "(" Identifier ")" ]
+                     ":" NEWLINE INDENT { Statement } DEDENT ;
 
-VarDecl         ::= Identifier ":" Type "=" Expression NEWLINE ;
-Assignment      ::= Identifier "=" Expression NEWLINE ;
-AugAssignment   ::= Identifier ( "+=" | "-=" | "*=" | "/=" | "%=" ) Expression NEWLINE ;
-ReturnStmt      ::= "return" [ Expression ] NEWLINE ;
-AssertStmt      ::= "assert" Expression NEWLINE ;
-BreakStmt       ::= "break" NEWLINE ;
-ContinueStmt    ::= "continue" NEWLINE ;
-PassStmt        ::= "pass" NEWLINE ;
-ExprStmt        ::= Expression NEWLINE ;
+ImportStmt       ::= "import" Identifier { "." Identifier } NEWLINE ;
+GlobalStmt       ::= "global" Identifier { "," Identifier } NEWLINE ;
 
-IfStmt          ::= "if" Expression ":" NEWLINE INDENT { Statement } DEDENT [ ElifElseBlock ] ;
-ElifElseBlock   ::= { ElifBlock } [ ElseBlock ] | ElseBlock ;
-ElifBlock       ::= "elif" Expression ":" NEWLINE INDENT { Statement } DEDENT ;
-ElseBlock       ::= "else" ":" NEWLINE INDENT { Statement } DEDENT ;
+ParamList        ::= Param { "," Param } ;
+Param            ::= Identifier ":" Type ;
 
-WhileStmt       ::= "while" Expression ":" NEWLINE INDENT { Statement } DEDENT ;
-ForStmt         ::= "for" Identifier "in" Expression ":" NEWLINE INDENT { Statement } DEDENT ;
+VarDecl          ::= Identifier ":" Type "=" Expression NEWLINE ;
+Assignment       ::= Identifier "=" Expression NEWLINE ;
+AugAssignment    ::= Identifier
+                     ( "+=" | "-=" | "*=" | "/=" | "//=" | "%=" )
+                     Expression NEWLINE ;
 
-(* Expressions *)
-Expression      ::= OrExpr ;
-OrExpr          ::= AndExpr { "or" AndExpr } ;
-AndExpr         ::= EqualityExpr { "and" EqualityExpr } ;
-EqualityExpr    ::= RelationalExpr { ( "==" | "!=" | "is" | "is not" ) RelationalExpr } ;
-RelationalExpr  ::= AddExpr { ( "<" | "<=" | ">" | ">=" ) AddExpr } ;
-AddExpr         ::= MulExpr { ( "+" | "-" ) MulExpr } ;
-MulExpr         ::= UnaryExpr { ( "*" | "/" | "%" ) UnaryExpr } ;
-UnaryExpr       ::= [ "not" | "-" ] PrimaryExpr ;
-PrimaryExpr     ::= Atom { ( "[" Expression "]" ) | ( "." Identifier ) } ;
-Atom            ::= ListExpr
-                  | CallExpr
-                  | Number
-                  | String
-                  | Bool
-                  | Identifier
-                  | "(" Expression ")" ;
-ListExpr        ::= "[" [ Expression { "," Expression } ] "]" ;
-CallExpr        ::= Identifier "(" [ ArgList ] ")" ;
-ArgList         ::= Expression { "," Expression } ;
+ReturnStmt       ::= "return" [ Expression ] NEWLINE ;
+AssertStmt       ::= "assert" Expression NEWLINE ;
+RaiseStmt        ::= "raise" Identifier NEWLINE ;
+BreakStmt        ::= "break" NEWLINE ;
+ContinueStmt     ::= "continue" NEWLINE ;
+PassStmt         ::= "pass" NEWLINE ;
+ExprStmt         ::= Expression NEWLINE ;
+
+IfStmt           ::= "if" Expression ":" NEWLINE INDENT { Statement } DEDENT
+                     [ ElifElseBlock ] ;
+ElifElseBlock    ::= { ElifBlock } [ ElseBlock ] | ElseBlock ;
+ElifBlock        ::= "elif" Expression ":" NEWLINE INDENT { Statement } DEDENT ;
+ElseBlock        ::= "else" ":" NEWLINE INDENT { Statement } DEDENT ;
+
+WhileStmt        ::= "while" Expression ":" NEWLINE INDENT { Statement } DEDENT ;
+ForStmt          ::= "for" Identifier "in" Expression ":"
+                     NEWLINE INDENT { Statement } DEDENT ;
+
+TryStmt          ::= "try" ":" NEWLINE INDENT { Statement } DEDENT
+                     { ExceptBlock } ;
+ExceptBlock      ::= "except" Identifier ":" NEWLINE INDENT { Statement } DEDENT ;
+
+(* Expressions – precedence, lowest → highest *)
+Expression       ::= OrExpr ;
+OrExpr           ::= AndExpr { "or" AndExpr } ;
+AndExpr          ::= EqualityExpr { "and" EqualityExpr } ;
+EqualityExpr     ::= RelationalExpr
+                     { ( "==" | "!=" | "is" | "is not" ) RelationalExpr } ;
+RelationalExpr   ::= AddExpr { ( "<" | "<=" | ">" | ">=" ) AddExpr } ;
+AddExpr          ::= MulExpr { ( "+" | "-" ) MulExpr } ;
+MulExpr          ::= UnaryExpr { ( "*" | "/" | "//" | "%" ) UnaryExpr } ;
+UnaryExpr        ::= [ "not" | "-" ] PrimaryExpr ;
+PrimaryExpr      ::= Atom { "[" Expression "]" | "." Identifier } ;
+Atom             ::= ListExpr
+                   | CallExpr
+                   | Number
+                   | String
+                   | Bool
+                   | Identifier
+                   | "(" Expression ")" ;
+
+ListExpr         ::= "[" [ Expression { "," Expression } ] "]" ;
+CallExpr         ::= Identifier "(" [ ArgList ] ")" ;
+ArgList          ::= Expression { "," Expression } ;
 
 (* Terminals *)
-Identifier      ::= ? matches [a-zA-Z_][a-zA-Z0-9_]* ? ;
-Type            ::= "int" | "float" | "bool" | "str" ;
+Identifier       ::= ? [a-zA-Z_][a-zA-Z0-9_]* ? ;
+Type             ::= "int" | "float" | "bool" | "str" ;
 
-Number          ::= ? matches [0-9]+ ("." [0-9]+)? ([eE] [+\-]? [0-9]+)? ? ;
-String          ::= ? matches '"' [^"]* '"' ? ;
-Bool            ::= "True" | "False" ;
+Number           ::= ? [0-9]([0-9_]*)("."[0-9]([0-9_]*)?)?([eE][+\-]?[0-9]([0-9_]*)?)? ? ;
+String           ::= ? '\"' ( '\\\"' | ~'\"' )* '\"' ? ;
+Bool             ::= "True" | "False" ;
 
-(* Whitespace and indentation are handled externally *)
-NEWLINE         ::= ? newline character ? ;
-INDENT          ::= (* handled by indent-aware parser *) ;
-DEDENT          ::= (* handled by indent-aware parser *) ;
-EOF             ::= (* end of file marker *) ;
+NEWLINE          ::= ? newline ? ;
+INDENT, DEDENT   ::= (* produced by the lexer *) ;
+EOF              ::= (* end-of-file marker *) ;
