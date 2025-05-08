@@ -281,5 +281,42 @@ class TestLexer(unittest.TestCase):
         self.assertTrue(any(tok.value == '25' for tok in ints))
         self.assertTrue(any(tok.value.replace('.', '').startswith('6022140') for tok in floats))
 
+    def test_f_string_literal(self):
+        code = 'a = f"hello {name}"\n'
+        tokens = Lexer(code).tokenize()
+        # there should be one FSTRING_LIT whose value includes the braces
+        fstr = [t for t in tokens if t.type.name == "FSTRING_LIT"]
+        self.assertEqual(len(fstr), 1)
+        self.assertEqual(fstr[0].value, "hello {name}")
+
+    def test_hash_inside_string(self):
+        code = 's = "#notcomment"\n'
+        tokens = Lexer(code).tokenize()
+        lits = [t for t in tokens if t.type.name == "STRING_LIT"]
+        self.assertEqual(len(lits), 1)
+        self.assertEqual(lits[0].value, "#notcomment")
+
+    def test_blank_line_generates_NEWLINE(self):
+        code = "a=1\n\nb=2\n"
+        tokens = Lexer(code).tokenize()
+        newlines = [t for t in tokens if t.type.name is "NEWLINE"]
+        # a=1, blank line, b=2 all generate NEWLINE, so at least 3
+        self.assertGreaterEqual(len(newlines), 3)
+
+    def test_indent_dedent_column(self):
+        code = "if True:\n    x=1\n"
+        tokens = Lexer(code).tokenize()
+        indents = [t for t in tokens if t.type.name is "INDENT"]
+        dedents = [t for t in tokens if t.type.name is "DEDENT"]
+        self.assertTrue(indents and indents[0].column == 1)
+        # the final DEDENT (after EOF) should also carry column 1
+        self.assertTrue(dedents and all(d.column == 1 for d in dedents))
+
+    def test_unknown_token_includes_lexeme(self):
+        code = "a @ b\n"
+        with self.assertRaises(LexerError) as cm:
+            Lexer(code).tokenize()
+        self.assertIn("@", str(cm.exception))
+
 if __name__ == "__main__":
     unittest.main()

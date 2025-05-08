@@ -1,6 +1,4 @@
-# lexer.py
 import re
-from pprint import pprint
 from enum import Enum, auto
 from typing import List, NamedTuple
 
@@ -13,7 +11,7 @@ class TokenType(Enum):
     AND = auto(); OR = auto(); BREAK = auto(); CONTINUE = auto(); PASS = auto()
     GLOBAL = auto(); IMPORT = auto(); CLASS = auto(); ASSERT = auto()
     TRUE = auto(); FALSE = auto()
-    TRY = auto(); EXCEPT = auto(); RAISE = auto()
+    TRY = auto(); EXCEPT = auto(); RAISE = auto(); AS = auto()
 
     # Symbols
     COLON = auto(); COMMA = auto(); LPAREN = auto(); RPAREN = auto()
@@ -54,7 +52,8 @@ class Token(NamedTuple):
     def _compute_end_position(self):
         if not self.value:
             return self.line, self.column
-        lines = self.value.splitlines()
+        text = self.value if isinstance(self.value, str) else str(self.value)
+        lines = text.splitlines()
         if len(lines) == 1:
             return self.line, self.column + len(lines[0])
         else:
@@ -92,140 +91,179 @@ KEYWORDS = {
     "or": TokenType.OR,
     "try": TokenType.TRY,
     "except": TokenType.EXCEPT,
+    "as": TokenType.AS,
     "raise": TokenType.RAISE,
     "True": TokenType.TRUE,
     "False": TokenType.FALSE,
 }
 
 TOKEN_REGEX = [
-    (r'==', TokenType.EQ),
-    (r'!=', TokenType.NOTEQ),
-    (r'<=', TokenType.LTE),
-    (r'>=', TokenType.GTE),
-    (r'->', TokenType.ARROW),
-    (r'\+=', TokenType.PLUSEQ),
-    (r'-=', TokenType.MINUSEQ),
-    (r'\*=', TokenType.STAREQ),
-    (r'//=', TokenType.FLOORDIVEQ),
-    (r'/=', TokenType.SLASHEQ),
-    (r'%=', TokenType.PERCENTEQ),
-    (r'//', TokenType.FLOORDIV),
-    (r'\(', TokenType.LPAREN),
-    (r'\)', TokenType.RPAREN),
-    (r'\[', TokenType.LBRACKET),
-    (r'\]', TokenType.RBRACKET),
-    (r'\{', TokenType.LBRACE),
-    (r'\}', TokenType.RBRACE),
-    (r':', TokenType.COLON),
-    (r';', TokenType.SEMICOLON),
-    (r',', TokenType.COMMA),
-    (r'=', TokenType.ASSIGN),
-    (r'\+', TokenType.PLUS),
-    (r'-', TokenType.MINUS),
-    (r'\*', TokenType.STAR),
-    (r'/', TokenType.SLASH),
-    (r'%', TokenType.PERCENT),
-    (r'<', TokenType.LT),
-    (r'>', TokenType.GT),
-    (r'\.', TokenType.DOT),
-    
-    # F-string patterns must precede regular string patterns
-    (r'f"(?:\\.|[^"\\])*"', TokenType.FSTRING_LIT),
-    (r"f'(?:\\.|[^'\\])*'", TokenType.FSTRING_LIT),
-    # Numeric literals with optional underscores
-    (r'\d[\d_]*\.\d[\d_]*[eE][+-]?\d[\d_]*', TokenType.FLOAT_LIT), # Fraction + Exponent; 12.34e5, 6.02_2e+23
-    (r'\d[\d_]*[eE][+-]?\d[\d_]*', TokenType.FLOAT_LIT),           # Integer + Exponent; 10e-3, 1_6e2
-    (r'\d[\d_]*\.\d[\d_]*', TokenType.FLOAT_LIT),                  # Simple Fraction (no exponent); 3.1415, 0.5, 2_5.0
-    (r'\d[\d_]*', TokenType.INT_LIT),
-    (r'"(?:\\.|[^"\\])*"', TokenType.STRING_LIT),
-    (r"'(?:\\.|[^'\\])*'", TokenType.STRING_LIT),
-    (r'[A-Za-z_][A-Za-z0-9_]*', TokenType.IDENTIFIER),
+    (re.compile(r'=='), TokenType.EQ),
+    (re.compile(r'!='), TokenType.NOTEQ),
+    (re.compile(r'<='), TokenType.LTE),
+    (re.compile(r'>='), TokenType.GTE),
+    (re.compile(r'->'), TokenType.ARROW),
+    (re.compile(r'\+='), TokenType.PLUSEQ),
+    (re.compile(r'-='), TokenType.MINUSEQ),
+    (re.compile(r'\*='), TokenType.STAREQ),
+    (re.compile(r'//='), TokenType.FLOORDIVEQ),
+    (re.compile(r'/='), TokenType.SLASHEQ),
+    (re.compile(r'%='), TokenType.PERCENTEQ),
+    (re.compile(r'//'), TokenType.FLOORDIV),
+    (re.compile(r'\('), TokenType.LPAREN),
+    (re.compile(r'\)'), TokenType.RPAREN),
+    (re.compile(r'\['), TokenType.LBRACKET),
+    (re.compile(r'\]'), TokenType.RBRACKET),
+    (re.compile(r'\{'), TokenType.LBRACE),
+    (re.compile(r'\}'), TokenType.RBRACE),
+    (re.compile(r':'), TokenType.COLON),
+    (re.compile(r';'), TokenType.SEMICOLON),
+    (re.compile(r','), TokenType.COMMA),
+    (re.compile(r'='), TokenType.ASSIGN),
+    (re.compile(r'\+'), TokenType.PLUS),
+    (re.compile(r'-'), TokenType.MINUS),
+    (re.compile(r'\*'), TokenType.STAR),
+    (re.compile(r'/'), TokenType.SLASH),
+    (re.compile(r'%'), TokenType.PERCENT),
+    (re.compile(r'<'), TokenType.LT),
+    (re.compile(r'>'), TokenType.GT),
+    (re.compile(r'\.'), TokenType.DOT),
+    # F-strings
+    (re.compile(r'f"(?:\\.|[^"\\])*"'), TokenType.FSTRING_LIT),
+    (re.compile(r"f'(?:\\.|[^'\\])*'"), TokenType.FSTRING_LIT),
+    # Numeric literals (underscore allowed)
+    (re.compile(r'\d[\d_]*\.\d[\d_]*[eE][+-]?\d[\d_]*'), TokenType.FLOAT_LIT),  # Fraction + Exponent; 12.34e5, 6.02_2e+23
+    (re.compile(r'\d[\d_]*[eE][+-]?\d[\d_]*'), TokenType.FLOAT_LIT),            # Integer + Exponent; 10e-3, 1_6e2
+    (re.compile(r'\d[\d_]*\.\d[\d_]*'), TokenType.FLOAT_LIT),                   # Simple Fraction (no exponent); 3.1415, 0.5, 2_5.0
+    (re.compile(r'\d[\d_]*'), TokenType.INT_LIT),
+    # String literals
+    (re.compile(r'"(?:\\.|[^"\\])*"'), TokenType.STRING_LIT),
+    (re.compile(r"'(?:\\.|[^'\\])*'"), TokenType.STRING_LIT),
+    # Identifiers
+    (re.compile(r'[A-Za-z_][A-Za-z0-9_]*'), TokenType.IDENTIFIER),
 ]
-
 
 WHITESPACE = re.compile(r'[ \t]*')
 
+def strip_comments(line: str) -> str:
+    """
+    Remove comments (starting with #) unless inside a string literal.
+    """
+    result = []
+    in_string = False
+    string_char = ''
+    escape = False
+    for c in line:
+        if escape:
+            result.append(c)
+            escape = False
+        elif c == '\\':
+            result.append(c)
+            escape = True
+        elif in_string:
+            result.append(c)
+            if c == string_char:
+                in_string = False
+        else:
+            if c in ('"', "'"):
+                in_string = True
+                string_char = c
+                result.append(c)
+            elif c == '#':
+                break
+            else:
+                result.append(c)
+    return ''.join(result)
 
 class Lexer:
     def __init__(self, source: str):
         self.source = source
         self.tokens: List[Token] = []
-        self.lines = source.splitlines()
+        self.lines = source.splitlines(keepends=False)
         self.indents = [0]
         self.line_num = 0
 
     def tokenize(self) -> List[Token]:
         while self.line_num < len(self.lines):
             self._tokenize_line()
+        # DEDENT to level 0
         while len(self.indents) > 1:
-            self.tokens.append(Token(TokenType.DEDENT, "", self.line_num + 1, 0))
             self.indents.pop()
-        self.tokens.append(Token(TokenType.EOF, "", self.line_num + 1, 0))
+            self.tokens.append(Token(TokenType.DEDENT, "", self.line_num + 1, 1))
+        self.tokens.append(Token(TokenType.EOF, "", self.line_num + 1, 1))
         return self.tokens
 
     def _tokenize_line(self):
         raw_line = self.lines[self.line_num]
         self.line_num += 1
-        line = raw_line.rstrip()
+        line = strip_comments(raw_line).rstrip()
 
-        # Handle comments
-        comment_start = line.find('#')
-        if comment_start != -1:
-            line = line[:comment_start]
-
+        # Emit NEWLINE for blank or comment-only lines
         if not line.strip():
-            return  # skip empty or comment-only line
+            self.tokens.append(Token(TokenType.NEWLINE, "", self.line_num, 1))
+            return
 
-        if '\t' in line and ' ' in line:
-            raise LexerError("Mixed tabs and spaces in indentation", self.line_num, 0)
-        line = line.replace('\t', '    ')
-
+        # Handle indentation (only leading whitespace)
         indent_match = WHITESPACE.match(line)
-        indent = len(indent_match.group(0)) if indent_match else 0
-        pos = indent
+        indent_str = indent_match.group(0) if indent_match else ''
+        if ' ' in indent_str and '\t' in indent_str:
+            raise LexerError("Mixed tabs and spaces in indentation", self.line_num, 1)
 
-        # Indentation handling
-        if indent > self.indents[-1]:
+        # Replace tabs only in indent
+        indent = len(indent_str.replace('\t', '    '))
+        pos = indent
+        current_indent = self.indents[-1]
+        if indent > current_indent:
             self.indents.append(indent)
-            self.tokens.append(Token(TokenType.INDENT, "", self.line_num, 0))
-        elif indent < self.indents[-1]:
+            self.tokens.append(Token(TokenType.INDENT, "", self.line_num, 1))
+        elif indent < current_indent:
             while indent < self.indents[-1]:
                 self.indents.pop()
-                self.tokens.append(Token(TokenType.DEDENT, "", self.line_num, 0))
+                self.tokens.append(Token(TokenType.DEDENT, "", self.line_num, 1))
             if indent != self.indents[-1]:
-                raise LexerError("Inconsistent indentation", self.line_num, 0)
+                raise LexerError("Inconsistent indentation", self.line_num, 1)
 
-        while pos < len(line):
+        # Tokenize rest of line
+        line_len = len(line)
+        while pos < line_len:
             char = line[pos]
             if char in ' \t':
                 pos += 1
                 continue
 
             matched = False
-            for pattern, ttype in TOKEN_REGEX:
-                regex = re.compile(pattern)
+            for regex, ttype in TOKEN_REGEX:
                 match = regex.match(line, pos)
-                if match:
-                    text = match.group(0)
-                    value = text
+                if not match:
+                    continue
 
-                    if ttype == TokenType.IDENTIFIER and text in KEYWORDS:
-                        ttype = KEYWORDS[text]
-                    elif ttype in [TokenType.INT_LIT, TokenType.FLOAT_LIT]:
-                        value = text.replace('_', '')
-                    elif ttype in [TokenType.STRING_LIT, TokenType.FSTRING_LIT]:
-                        try:
-                            value = bytes(text[1:-1], "utf-8").decode("unicode_escape")
-                        except Exception:
-                            raise LexerError("Invalid string escape sequence", self.line_num, pos + 1)
-
-                    self.tokens.append(Token(ttype, value, self.line_num, pos + 1))
-                    pos = match.end()
-                    matched = True
-                    break
+                text = match.group(0)
+                value = text
+                # Keyword promotion
+                if ttype == TokenType.IDENTIFIER and text in KEYWORDS:
+                    ttype = KEYWORDS[text]
+                # Numeric literals: keep raw digits (underscores stripped)
+                elif ttype in [TokenType.INT_LIT, TokenType.FLOAT_LIT]:
+                    value = text.replace('_', '')
+                # Strings and f-strings: decode escapes
+                elif ttype in [TokenType.STRING_LIT, TokenType.FSTRING_LIT]:
+                    if ttype == TokenType.FSTRING_LIT:
+                        inner = text[2:-1]
+                    else:
+                        inner = text[1:-1]
+                    try:
+                        # strip quotes and decode
+                        value = bytes(inner, "utf-8").decode("unicode_escape")
+                    except Exception:
+                        raise LexerError(f"Invalid string escape {text!r}", self.line_num, pos+1)
+                self.tokens.append(Token(ttype, value, self.line_num, pos + 1))
+                pos = match.end()
+                matched = True
+                break
             if not matched:
-                raise LexerError("Unknown token", self.line_num, pos + 1)
-
+                bad = line[pos:pos+10]
+                raise LexerError(f"Unknown token {bad!r}", self.line_num, pos+1)
+        # End-of-line marker
         self.tokens.append(Token(TokenType.NEWLINE, "", self.line_num, len(line)))
 
 if __name__ == "__main__":
@@ -233,8 +271,12 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Provide sample code")
         exit(1)
-
-    source = sys.argv[1]
+    source = ''
+    try:
+        with open(sys.argv[1], 'r') as fin:
+            source = fin.read()
+    except (FileExistsError, FileNotFoundError):
+        source = sys.argv[1]
     lexer = Lexer(source)
     tokens = lexer.tokenize()
     for token in tokens:
