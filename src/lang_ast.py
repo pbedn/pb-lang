@@ -17,7 +17,7 @@ Conventions
   helper attributes (e.g. inferred types) live in those later passes.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Tuple, Union, Optional, Set
 
 # === Root module ===
@@ -30,11 +30,15 @@ class Program:
 # ---------------------------------------------------------------------------
 
 @dataclass
-class FunctionDef:
-    """``def name(param: type, ...) -> return_type: ...``"""
-
+class Parameter:
     name: str
-    params: List[Tuple[str, str]]                # (parameter name, static type)
+    type: Optional[str]               # None means not annotated
+    default: Optional[Expr] = None    # None ⇒ no default
+
+@dataclass
+class FunctionDef:
+    name: str
+    params: List[Parameter]
     body: List[Stmt]
     return_type: Optional[str]                   # None => void
     globals_declared: Optional[Set[str]] = None  #  filled in by parser/type-checker
@@ -44,8 +48,8 @@ class FunctionDef:
 class ClassDef:
     name: str
     base: Optional[str]             # single inheritance only
-    fields: List["VarDecl"]         # field decls (VarDecl) and methods (FunctionDef)
-    methods: List["FunctionDef"]
+    fields: List["VarDecl"]         # field decls (VarDecl) 
+    methods: List["FunctionDef"]    # methods (FunctionDef)
 
 
 @dataclass
@@ -74,24 +78,19 @@ class AugAssignStmt:
 
 
 @dataclass
-class IfStmt:
-    condition: Expr
-    then_body: List[Stmt]
-    elif_blocks: List[ElifStmt]
-    else_body: Optional[List[Stmt]] = None
-
+class IfBranch:
+    condition: Optional[Expr]  # None for 'else'
+    body: List[Stmt]
 
 @dataclass
-class ElifStmt:
-    condition: Expr
-    body: List[Stmt]
+class IfStmt:
+    branches: List[IfBranch]
 
 
 @dataclass
 class WhileStmt:
     condition: Expr
     body: List[Stmt]
-    else_body: Optional[List[Stmt]] = None
 
 
 @dataclass
@@ -173,7 +172,12 @@ class Literal:
 @dataclass
 class StringLiteral:
     value: str
-    is_fstring: bool             # True if f"...", else False
+
+
+@dataclass
+class FStringLiteral:
+    raw: str                     # text between the quotes (without the leading f)
+    vars: List[str] = field(default_factory=list)       # names found between {…} - filled by lexer
 
 
 @dataclass
@@ -231,8 +235,8 @@ Stmt = Union[
     VarDecl,
     AssignStmt,
     AugAssignStmt,
+    IfBranch,
     IfStmt,
-    ElifStmt,
     WhileStmt,
     ForStmt,
     TryExceptStmt,
@@ -251,6 +255,7 @@ Expr = Union[
     Identifier,
     Literal,
     StringLiteral,
+    FStringLiteral,
     BinOp,
     UnaryOp,
     CallExpr,

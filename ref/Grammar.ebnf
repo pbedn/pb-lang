@@ -23,15 +23,14 @@ Statement        ::= FunctionDef
 
 FunctionDef      ::= "def" Identifier "(" [ ParamList ] ")" "->" Type
                      ":" NEWLINE INDENT { Statement } DEDENT ;
+ParamList        ::= Param { "," Param } ;
+Param            ::= Identifier ":" Type ;
 
 ClassDef         ::= "class" Identifier [ "(" Identifier ")" ]
                      ":" NEWLINE INDENT { Statement } DEDENT ;
 
 ImportStmt       ::= "import" Identifier { "." Identifier } NEWLINE ;
 GlobalStmt       ::= "global" Identifier { "," Identifier } NEWLINE ;
-
-ParamList        ::= Param { "," Param } ;
-Param            ::= Identifier ":" Type ;
 
 VarDecl          ::= Identifier ":" Type "=" Expression NEWLINE ;
 Assignment       ::= Identifier "=" Expression NEWLINE ;

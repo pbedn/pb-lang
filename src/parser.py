@@ -1,479 +1,985 @@
-from lexer import TokenType
-from lang_ast import *
+from typing import Generic, List, Type, Optional
+from lexer import Token, TokenType
+from lang_ast import (
+    Program,
+    Identifier,
+    Literal,
+    Stmt,
+    StringLiteral,
+    FStringLiteral,
+    UnaryOp,
+    Expr,
+    BinOp,
+    ExprStmt,
+    ReturnStmt,
+    VarDecl,
+    AssignStmt,
+    AugAssignStmt,
+    IfBranch,
+    IfStmt,
+    WhileStmt,
+    ForStmt,
+    BreakStmt,
+    ContinueStmt,
+    PassStmt,
+    Parameter,
+    FunctionDef,
+    ClassDef,
+    GlobalStmt,
+    AssertStmt,
+    RaiseStmt,
+    TryExceptStmt,
+    ExceptBlock,
+    CallExpr,
+    AttributeExpr,
+    IndexExpr,
+    ListExpr,
+    DictExpr,
+    ImportStmt,
+)
+
 
 class ParserError(Exception):
     pass
 
-class Parser:
-    def __init__(self, tokens):
-        self.tokens = tokens
-        self.pos = 0
-        self.in_function_body = False
 
-    def current(self):
+class Parser:
+    def __init__(self, tokens: List[Token]):
+        self.tokens: List[Token] = tokens
+        self.pos: int = 0
+        self.loop_depth: int = 0      # > 0 → inside while/for
+        self.fn_depth:   int = 0      # > 0 → inside def
+
+    # ───────────────────────── low‑level helpers ─────────────────────────
+    def current(self) -> Token:
         return self.tokens[self.pos]
 
-    def advance(self):
-        self.pos += 1
+    def advance(self) -> None:
+        if not self.at_end():
+            self.pos += 1
 
-    def check(self, *types):
+    def check(self, *types) -> bool:
         return self.current().type in types
 
-    def match(self, *types):
+    def match(self, *types: TokenType) -> bool:
         if self.current().type in types:
-            tok = self.current()
             self.advance()
-            return tok
-        return None
+            return True
+        return False
 
-    def expect(self, type_):
-        tok = self.match(type_)
-        if not tok:
-            print(f"[DEBUG] expect failed: expected {type_}, but got {self.current()}")
-            raise ParserError(f"Expected {type_} at line {self.current().line}")
+    def peek(self, offset=1) -> Token:
+        index = self.pos + offset
+        if index < len(self.tokens):
+            return self.tokens[index]
+        return self.tokens[-1]
+
+    def peek_debug(self, offset=0) -> Token:
+        tok = self.peek(offset)
+        print(f"[DEBUG] peek({offset}) = {tok}")
         return tok
 
-    def parse(self):
-        body = []
-        while self.current().type != TokenType.EOF:
-            stmt = self.parse_global_stmt()
+    def expect(self, type_: TokenType) -> Token:
+        tok = self.current()
+        if tok.type != type_:
+            raise ParserError(f"Expected {type_.name}, got {tok.type.name} at {tok.line},{tok.column}")
+        self.advance()
+        return tok
+
+    def at_end(self) -> bool:
+        return self.current().type == TokenType.EOF
+
+    # ───────────────────────── entry‑point ─────────────────────────
+
+    def parse(self) -> Program:
+        """Parse a complete program
+
+        This is the top-level entry point.
+        
+        Grammar fragment:
+        Program ::= { Statement } EOF
+        AST target: Program(body)
+        """
+        body: list[Stmt] = []
+
+        while not self.at_end():
+            if self.check(TokenType.NEWLINE):
+                self.advance()
+                continue
+            # print(f"[DEBUG]: Peek next token: {self.peek()}")
+            stmt = self.parse_statement()
             body.append(stmt)
+
         return Program(body)
 
-    def parse_global_stmt(self):
-        if self.match(TokenType.DEF):
-            return self.parse_function()
-        elif self.match(TokenType.CLASS):
-                return self.parse_class_def()
-        elif self.current().type == TokenType.IDENTIFIER:
-            # Peek ahead for VarDecl (Identifier : Type = ...)
-            next_type = self.tokens[self.pos + 1].type
-            if next_type == TokenType.COLON:
-                return self.parse_vardecl()
-        raise ParserError(f"Only function definitions and typed variable declarations are allowed at the top level (line {self.current().line})")
+    # ───────────────────────── expressions ─────────────────────────
 
-    def finish_assignment(self, expr):
-        if not isinstance(expr, (Identifier, AttributeExpr, IndexExpr)):
-            raise ParserError(f"Invalid assignment target at line {self.current().line}")
-        self.expect(TokenType.ASSIGN)
-        value = self.parse_expr()
-        self.expect(TokenType.NEWLINE)
-        return AssignStmt(expr, value)
+    def parse_identifier(self) -> Expr:
+        """Parse a single indentifier like: x, foo, my_var
+        
+        Grammar fragment: Identifier ::= <IDENTIFIER>
+        AST target: Indentifier(name)
+        """
+        tok = self.expect(TokenType.IDENTIFIER)
+        return Identifier(name=tok.value)
 
-    def finish_aug_assignment(self, expr):
-        if not isinstance(expr, (Identifier, AttributeExpr, IndexExpr)):
-            raise ParserError(f"Invalid assignment target at line {self.current().line}")
-        op_tok = self.match(
-            TokenType.PLUSEQ, TokenType.MINUSEQ, TokenType.STAREQ,
-            TokenType.SLASHEQ, TokenType.PERCENTEQ,
-        )
-        op_map = {
-            TokenType.PLUSEQ: "+",
-            TokenType.MINUSEQ: "-",
-            TokenType.STAREQ: "*",
-            TokenType.SLASHEQ: "/",
-            TokenType.PERCENTEQ: "%",
-        }
-        op = op_map[op_tok.type]
-        value = self.parse_expr()
-        self.expect(TokenType.NEWLINE)
-        return AugAssignStmt(expr, op, value)
-
-    def parse_stmt(self):
-        if self.match(TokenType.DEF):
-            if self.in_function_body:
-                raise ParserError(f"Nested function definitions are not allowed (line {self.current().line})")
-            return self.parse_function()
-
-        elif self.match(TokenType.CLASS):
-            return self.parse_class_def()
-
-        elif self.match(TokenType.RETURN):
-            expr = self.parse_expr()
-            self.expect(TokenType.NEWLINE)
-            return ReturnStmt(expr)
-
-        elif self.match(TokenType.GLOBAL):
-            names = []
-            while True:
-                names.append(self.expect(TokenType.IDENTIFIER).value)
-                if not self.match(TokenType.COMMA):
-                    break
-            self.expect(TokenType.NEWLINE)
-            return GlobalStmt(names)
-
-        elif self.match(TokenType.IF):
-            return self.parse_if()
-
-        elif self.match(TokenType.WHILE):
-            return self.parse_while()
-
-        elif self.match(TokenType.FOR):
-            return self.parse_for()
-
-        elif self.match(TokenType.BREAK):
-            self.expect(TokenType.NEWLINE)
-            return BreakStmt()
-
-        elif self.match(TokenType.CONTINUE):
-            self.expect(TokenType.NEWLINE)
-            return ContinueStmt()
-
-        if self.match(TokenType.ASSERT):
-            return self.parse_assert_stmt()
-
-        elif self.match(TokenType.PASS):
-            self.expect(TokenType.NEWLINE)
-            return PassStmt()
-
-        elif self.current().type == TokenType.IDENTIFIER:
-            if self.pos + 1 < len(self.tokens) and self.tokens[self.pos + 1].type == TokenType.COLON:
-                return self.parse_vardecl()
-            expr = self.parse_identifier_or_call()
-            if self.check(TokenType.ASSIGN):
-                return self.finish_assignment(expr)
-            elif self.check(
-                TokenType.PLUSEQ, TokenType.MINUSEQ, TokenType.STAREQ,
-                TokenType.SLASHEQ, TokenType.PERCENTEQ,
-            ):
-                return self.finish_aug_assignment(expr)
-            else:
-                self.expect(TokenType.NEWLINE)
-                return expr
-
-        else:
-            raise ParserError(f"Unknown statement at line {self.current().line}")
-
-    def parse_vardecl(self):
-        name = self.expect(TokenType.IDENTIFIER).value
-        self.expect(TokenType.COLON)
-        type_tok = self.match(TokenType.IDENTIFIER, TokenType.INT, TokenType.FLOAT, TokenType.BOOL, TokenType.STR)
-        if not type_tok:
-            raise ParserError(f"Expected type after ':' at line {self.current().line}")
-        declared_type = type_tok.value
-        if not self.match(TokenType.ASSIGN):
-            raise ParserError(f"Global variable declaration must include an initializer (line {self.current().line})")
-        value = self.parse_expr()
-        self.expect(TokenType.NEWLINE)
-        return VarDecl(name, declared_type, value)
-
-    def parse_assignment(self):
-        target = self.parse_assignment_target()
-        self.expect(TokenType.ASSIGN)
-        value = self.parse_expr()
-        self.expect(TokenType.NEWLINE)
-        return AssignStmt(target, value)
-
-
-    def parse_aug_assignment(self):
-        target = self.parse_assignment_target()
-        op_tok = self.match(
-            TokenType.PLUSEQ, TokenType.MINUSEQ, TokenType.STAREQ,
-            TokenType.SLASHEQ, TokenType.PERCENTEQ,
-        )
-        if not op_tok:
-            raise ParserError(f"Expected augmented assignment operator at line {self.current().line}")
-        op_map = {
-            TokenType.PLUSEQ: "+",
-            TokenType.MINUSEQ: "-",
-            TokenType.STAREQ: "*",
-            TokenType.SLASHEQ: "/",
-            TokenType.PERCENTEQ: "%",
-        }
-        op = op_map[op_tok.type]
-        value = self.parse_expr()
-        self.expect(TokenType.NEWLINE)
-        return AugAssignStmt(target, op, value)
-
-    def parse_assignment_target(self):
-        expr = self.parse_identifier_or_call()
-        if isinstance(expr, CallExpr):
-            raise ParserError(f"Invalid assignment target at line {self.current().line}")
-        # Optionally: enforce valid targets here: Identifier, AttributeExpr, IndexExpr
-        if not isinstance(expr, (Identifier, AttributeExpr, IndexExpr)):
-            raise ParserError(f"Invalid assignment target at line {self.current().line}")
-        return expr
-
-    def parse_function(self):
-        print(f"[DEBUG] parse_function: current token before name: {self.current()}")
-        name_tok = self.expect(TokenType.IDENTIFIER)
-        print(f"[DEBUG] parse_function: got function name: {name_tok.value}")
-        self.expect(TokenType.LPAREN)
-        params = []
-        if self.current().type != TokenType.RPAREN:
-            while True:
-                param_name = self.expect(TokenType.IDENTIFIER).value
-                param_type = "int"  # default type
-                if self.match(TokenType.COLON):
-                    type_tok = self.match(TokenType.IDENTIFIER, TokenType.INT, TokenType.FLOAT, TokenType.BOOL, TokenType.STR)
-                    if not type_tok:
-                        raise ParserError(f"Expected type after ':' at line {self.current().line}")
-                    param_type = type_tok.value
-                params.append((param_name, param_type))
-                if not self.match(TokenType.COMMA):
-                    break
-
-        self.expect(TokenType.RPAREN)
-
-        return_type = None
-        if self.match(TokenType.ARROW):
-            return_type_tok = self.match(TokenType.IDENTIFIER, TokenType.INT, TokenType.FLOAT, TokenType.BOOL, TokenType.STR)
-            if not return_type_tok:
-                raise ParserError(f"Expected return type at line {self.current().line}")
-            return_type = return_type_tok.value
-
-        self.expect(TokenType.COLON)
-        self.expect(TokenType.NEWLINE)
-        self.expect(TokenType.INDENT)
-        body = []
-        globals_declared = set()
-        self.in_function_body = True
-        while not self.match(TokenType.DEDENT):
-            stmt = self.parse_stmt()
-            if isinstance(stmt, GlobalStmt):
-                globals_declared.update(stmt.names)
-            body.append(stmt)
-        self.in_function_body = False
-        return FunctionDef(name_tok.value, params, body, return_type, globals_declared=globals_declared)
-
-    def parse_class_def(self):
-        name = self.expect(TokenType.IDENTIFIER).value
-        base = None
-        if self.match(TokenType.LPAREN):
-            base = self.expect(TokenType.IDENTIFIER).value
-            self.expect(TokenType.RPAREN)
-        self.expect(TokenType.COLON)
-        self.expect(TokenType.NEWLINE)
-        self.expect(TokenType.INDENT)
-
-        fields = []
-        methods = []
-        saw_method = False
-
-        while not self.match(TokenType.DEDENT):
-            print(f"[DEBUG] parse_class_def: current token at start of loop: {self.current()}")
-            if self.match(TokenType.NEWLINE):
-                continue
-
-            if self.check(TokenType.PASS):
-                if fields or methods:
-                    raise ParserError(f"'pass' must be the only statement in class body (line {self.current().line})")
-                pass_stmt = self.parse_stmt()
-                methods.append(pass_stmt)
-
-                # After pass, nothing else allowed before dedent:
-                while not self.match(TokenType.DEDENT):
-                    if self.match(TokenType.NEWLINE):
-                        continue
-                    raise ParserError(f"No statements allowed after 'pass' in class body (line {self.current().line})")
-                break  # Exit the class body
-
-            if self.match(TokenType.DEF):
-                print(f"[DEBUG] parse_class_def: entering method parsing")
-                method = self.parse_function()
-                methods.append(method)
-                saw_method = True
-            elif self.check(TokenType.IDENTIFIER):
-                if saw_method:
-                    raise ParserError(f"Fields must be declared before methods (line {self.current().line})")
-                # Field
-                next_type = self.tokens[self.pos + 1].type
-                if next_type == TokenType.COLON:
-                    field = self.parse_vardecl()
-                    fields.append(field)
-                else:
-                    raise ParserError(f"Unexpected statement in class body at line {self.current().line}")
-            else:
-                raise ParserError(f"Only methods, fields, or 'pass' allowed in class body (line {self.current().line})")
-
-        return ClassDef(name, base, fields, methods)
-
-    def parse_assert_stmt(self):
-        expr = self.parse_expr()
-        self.expect(TokenType.NEWLINE)
-        return AssertStmt(expr)
-
-    def parse_if(self):
-        cond = self.parse_expr()
-        self.expect(TokenType.COLON)
-        self.expect(TokenType.NEWLINE)
-        self.expect(TokenType.INDENT)
-        then_body = []
-        while not self.match(TokenType.DEDENT):
-            then_body.append(self.parse_stmt())
-
-        else_body = None
-        if self.match(TokenType.ELIF):
-            else_body = [self.parse_if()]  # desugar elif into nested if
-        elif self.match(TokenType.ELSE):
-            self.expect(TokenType.COLON)
-            self.expect(TokenType.NEWLINE)
-            self.expect(TokenType.INDENT)
-            else_body = []
-            while not self.match(TokenType.DEDENT):
-                else_body.append(self.parse_stmt())
-
-        return IfStmt(cond, then_body, else_body)
-
-
-    def parse_while(self):
-        cond = self.parse_expr()
-        self.expect(TokenType.COLON)
-        self.expect(TokenType.NEWLINE)
-        self.expect(TokenType.INDENT)
-        body = []
-        while not self.match(TokenType.DEDENT):
-            body.append(self.parse_stmt())
-        return WhileStmt(cond, body)
-
-    def parse_for(self):
-        var_name = self.expect(TokenType.IDENTIFIER).value
-        self.expect(TokenType.IN)
-        iterable = self.parse_expr()
-        self.expect(TokenType.COLON)
-        self.expect(TokenType.NEWLINE)
-        self.expect(TokenType.INDENT)
-        body = []
-        while not self.match(TokenType.DEDENT):
-            body.append(self.parse_stmt())
-        return ForStmt(var_name, iterable, body)
-
-    def parse_expr(self):
-        return self.parse_or()
-
-    def parse_or(self):
-        expr = self.parse_and()
-        while self.match(TokenType.OR):
-            right = self.parse_and()
-            expr = BinOp(expr, "or", right)
-        return expr
-
-    def parse_and(self):
-        expr = self.parse_comparison()
-        while self.match(TokenType.AND):
-            right = self.parse_comparison()
-            expr = BinOp(expr, "and", right)
-        return expr
-
-    def parse_comparison(self):
-        expr = self.parse_add_sub()
-        while self.current().type in {
-            TokenType.EQ, TokenType.NOTEQ,
-            TokenType.LT, TokenType.LTE,
-            TokenType.GT, TokenType.GTE,
-            TokenType.IS
-        }:
-            if self.current().type == TokenType.IS:
-                self.advance()
-                if self.match(TokenType.NOT):
-                    op = "is not"
-                else:
-                    op = "is"
-            else:
-                op = self.current().value
-                self.advance()
-            right = self.parse_add_sub()
-            expr = BinOp(expr, op, right)
-        return expr
-
-    def parse_add_sub(self):
-        expr = self.parse_term()
-        while self.current().type in (TokenType.PLUS, TokenType.MINUS):
-            op = self.current().value
-            self.advance()
-            right = self.parse_term()
-            expr = BinOp(expr, op, right)
-        return expr
-
-    def parse_term(self):
-        expr = self.parse_factor()
-        while self.current().type in (TokenType.STAR, TokenType.SLASH, TokenType.PERCENT):
-            op = self.current().value
-            self.advance()
-            right = self.parse_factor()
-            expr = BinOp(expr, op, right)
-        return expr
-
-    def parse_factor(self):
+    def parse_literal(self) -> Expr:
+        """Parse raw literals like: 123, 3.14, "hello"
+        
+        Grammar fragment: Literal ::= INT_LIT | FLOAT_LIT | STRING_LIT
+        AST target: Literal(raw), StringLiteral(value, is_fstring)
+        """
         tok = self.current()
-        if tok.type == TokenType.MINUS:
+        if tok.type in (TokenType.INT_LIT, TokenType.FLOAT_LIT):
             self.advance()
-            return UnaryOp('-', self.parse_factor())
-        elif tok.type == TokenType.NOT:
+            return Literal(raw=tok.value)
+        if tok.type in (TokenType.TRUE, TokenType.FALSE, TokenType.NONE):
             self.advance()
-            return UnaryOp('not', self.parse_factor())
-        elif tok.type == TokenType.INT_LIT:
+            return Literal(raw=tok.value)
+        if tok.type == TokenType.STRING_LIT:
             self.advance()
-            return Literal(int(tok.value))
-        elif tok.type == TokenType.FLOAT_LIT:
+            return StringLiteral(value=tok.value)
+        if tok.type == TokenType.FSTRING_LIT:
             self.advance()
-            return Literal(float(tok.value))
-        elif tok.type == TokenType.STRING_LIT:
-            self.advance()
-            return Literal(tok.value)
-        elif tok.type == TokenType.IDENTIFIER:
-            return self.parse_identifier_or_call()
-        elif tok.type == TokenType.LPAREN:
-            self.advance()
-            expr = self.parse_expr()
-            self.expect(TokenType.RPAREN)
-            return expr
-        elif tok.type == TokenType.LBRACKET:
-            return self.parse_list()
-        elif tok.type == TokenType.LBRACE:
-            return self.parse_dict()
-        else:
-            raise ParserError(f"Unexpected token {tok.type} at line {tok.line}")
+            raw, vars_ = tok.value
+            return FStringLiteral(raw=raw, vars=vars_)
+        raise ParserError(f"Expected literal, got {tok.type.name} at {tok.line},{tok.column}")
 
-    def parse_identifier_or_call(self):
-        name = self.expect(TokenType.IDENTIFIER).value
-        expr = Identifier(name)
-        # Function call
-        if self.match(TokenType.LPAREN):
-            args = []
-            if self.current().type != TokenType.RPAREN:
-                while True:
-                    args.append(self.parse_expr())
-                    if not self.match(TokenType.COMMA):
-                        break
-            self.expect(TokenType.RPAREN)
-            expr = CallExpr(expr, args)
+    def parse_unary(self) -> Expr:
+        """Handle unary operators like: -x, not x
 
+        Grammar: UnaryExpr ::= ("-" | "not") UnaryExpr | Primary
+        This is recursive: unary ops apply to another unary or primary expression.
+        AST: UnaryOp(op, operand)
+        """
+        if self.match(TokenType.MINUS):
+            operand = self.parse_unary()
+            return UnaryOp("-", operand)
+        elif self.match(TokenType.NOT):
+            operand = self.parse_unary()
+            return UnaryOp("not", operand)
+
+        return self.parse_postfix_expr()
+
+    def parse_postfix_expr(self) -> Expr:
+        """Parse a primary expression with optional postfix operators
+
+        Grammar fragment:
+        PostfixExpr ::= Primary { "(" [Expr { "," Expr}] ")" }
+        
+        This supports function calls like:
+            - foo()
+            - foo(x, y + 1)
+            - (a + b)(c)
+
+        Returns:
+            CallExpr, Identifier, Literal, etc.
+        """
+        expr = self.parse_primary()
+        return self.parse_postfix(expr)
+
+    def parse_postfix(self, expr: Expr) -> Expr:
+        """Parse any postfix operations after a primary expression:
+        - Function calls: expr(...)
+        - Attribute access: expr.attr
+          AttributeExpr ::= Expr "." Identifier
+        - Indexing: expr[expr]
+          IndexExpr ::= Expr "[" Expr "]"
+        """
         while True:
-            # Handle indexing (mylist[0][1] ...)
-            if self.match(TokenType.LBRACKET):
+            if self.match(TokenType.LPAREN):
+                args = []
+                if not self.check(TokenType.RPAREN):
+                    args.append(self.parse_expr())
+                    while self.match(TokenType.COMMA):
+                        args.append(self.parse_expr())
+                self.expect(TokenType.RPAREN)
+                expr = CallExpr(func=expr, args=args)
+
+            elif self.match(TokenType.DOT):
+                attr_token = self.expect(TokenType.IDENTIFIER)
+                expr = AttributeExpr(obj=expr, attr=attr_token.value)
+
+            elif self.match(TokenType.LBRACKET):
                 index = self.parse_expr()
                 self.expect(TokenType.RBRACKET)
-                expr = IndexExpr(expr, index)
-            elif self.match(TokenType.DOT):
-                attr = self.expect(TokenType.IDENTIFIER).value
-                expr = AttributeExpr(expr, attr)
+                expr = IndexExpr(base=expr, index=index)
+
             else:
                 break
 
         return expr
 
-    def parse_list(self):
-        self.expect(TokenType.LBRACKET)
-        elements = []
-        if self.current().type != TokenType.RBRACKET:
-            while True:
-                elements.append(self.parse_expr())
-                if not self.match(TokenType.COMMA):
-                    break
-        self.expect(TokenType.RBRACKET)
-        return ListExpr(elements)
+    def parse_primary(self) -> Expr:
+        """Handle the simplest atomic expressions and post‑fix calls:
+        Identifiers: foo
+        Literals: 123, 3.14, 'hello'
+        Grouped expressions: (x + 1)
+        Function calls: foo(), bar(x), obj.method(x)
 
-    def parse_dict(self):
-        self.expect(TokenType.LBRACE)
-        pairs = []
-        if self.current().type != TokenType.RBRACE:
-            while True:
+        Grammar: Primary ::= Atom { "(" [Args] ")" }
+        AST: Identifier, Literal, StringLiteral, CallExpr
+        """
+        tok = self.current()
+
+        if tok.type == TokenType.IDENTIFIER:
+            return self.parse_identifier()
+        elif tok.type in (TokenType.INT_LIT, TokenType.FLOAT_LIT, TokenType.STRING_LIT, TokenType.FSTRING_LIT, TokenType.TRUE, TokenType.FALSE, TokenType.NONE):
+            return self.parse_literal()
+        elif tok.type == TokenType.LPAREN:
+            self.advance()
+            expr = self.parse_expr()
+            self.expect(TokenType.RPAREN)
+        elif tok.type == TokenType.LBRACKET:
+            self.advance()
+            elements = []
+            if not self.check(TokenType.RBRACKET):
+                elements.append(self.parse_expr())
+                while self.match(TokenType.COMMA):
+                    elements.append(self.parse_expr())
+            self.expect(TokenType.RBRACKET)
+            return ListExpr(elements)
+        elif tok.type == TokenType.LBRACE:
+            self.advance()
+            keys = []
+            values = []
+            if not self.check(TokenType.RBRACE):
                 key = self.parse_expr()
                 self.expect(TokenType.COLON)
                 value = self.parse_expr()
-                pairs.append((key, value))
-                if not self.match(TokenType.COMMA):
-                    break
-        self.expect(TokenType.RBRACE)
-        return DictExpr(pairs)
+                keys.append(key)
+                values.append(value)
+                while self.match(TokenType.COMMA):
+                    if self.check(TokenType.RBRACE):
+                        break  # allow trailing comma
+                    key = self.parse_expr()
+                    self.expect(TokenType.COLON)
+                    value = self.parse_expr()
+                    keys.append(key)
+                    values.append(value)
+            self.expect(TokenType.RBRACE)
+            return DictExpr(keys, values)
+        else:
+            raise ParserError(f"Expected primary expression, got {tok.type.name} at {tok.line},{tok.column}")
+
+        # Handle chained function calls: foo(), bar(x, y)
+        while self.match(TokenType.LPAREN):
+            args = []
+            if not self.check(TokenType.RPAREN):
+                args.append(self.parse_expr())
+                while self.match(TokenType.COMMA):
+                    args.append(self.parse_expr())
+            self.expect(TokenType.RPAREN)
+            expr = CallExpr(func=expr, args=args)
+
+        return expr
+
+    def parse_term(self) -> Expr:
+        """Handle multiplicative expressions
+
+        Builds the full left-associative expression tree in-place as it goes.
+
+        a * b
+        a / b
+        a // b
+        a % b
+        Grammar fragment: Term ::= UnaryExpr { ("*" | "/" | "//" | "%") UnaryExpr }
+        AST target: BinOp(left, op, right)
+        """
+        left = self.parse_unary()
+
+        while self.current().type in (
+            TokenType.STAR,
+            TokenType.SLASH,
+            TokenType.FLOORDIV,
+            TokenType.PERCENT,
+        ):
+            op_token = self.current()
+            self.advance()
+            right = self.parse_unary()
+            left = BinOp(left, op_token.value, right)
+
+        return left
+
+    def parse_arith_expr(self) -> Expr:
+        """Handle additive expressions
+
+        Builds the full left-associative expression tree in-place.
+
+        a + b
+        a - b
+        a + b - c
+
+        Grammar fragment: ArithExpr ::= Term { ("+" | "-") Term }
+        AST target: BinOp(left, op, right)
+        """
+        left = self.parse_term()
+
+        while self.current().type in (TokenType.PLUS, TokenType.MINUS):
+            op_token = self.current()
+            self.advance()
+            right = self.parse_term()
+            left = BinOp(left, op_token.value, right)
+
+        return left
+
+    def parse_comparison(self) -> Expr:
+        """Handle comparison expressions
+
+        Supports single comparisons only (no chaining).
+        
+        a == b
+        a != b
+        a < b
+        a is b
+
+        Grammar fragment:
+        Comparison ::= ArithExpr [ ( \"==\" | \"!=\" | \"<\" | \"<=\" | \">\" | \">=\" | \"is\" ) ArithExpr ]
+        AST target: BinOp(left, op, right)
+        """
+        left = self.parse_arith_expr()
+
+        # special-case "is not" (two tokens)
+        if self.current().type == TokenType.IS and self.peek().type == TokenType.NOT:
+            self.advance()            # 'is'
+            self.advance()            # 'not'
+            right = self.parse_arith_expr()
+
+            # Reject chained comparisons (a < b < c)
+            if self.current().type in (
+                TokenType.EQ, TokenType.NOTEQ, TokenType.LT, TokenType.LTE,
+                TokenType.GT, TokenType.GTE, TokenType.IS
+            ):
+                raise ParserError("chained comparisons are not supported "
+                                  f"at {self.current().line},{self.current().column}")
+            return BinOp(left, "is not", right)
+
+        if self.current().type in (
+            TokenType.EQ,
+            TokenType.NOTEQ,
+            TokenType.LT,
+            TokenType.LTE,
+            TokenType.GT,
+            TokenType.GTE,
+            TokenType.IS,
+        ):
+            op_token = self.current()
+            self.advance()
+            right = self.parse_arith_expr()
+
+            # Reject chained comparisons (a < b < c)
+            if self.current().type in (
+                TokenType.EQ, TokenType.NOTEQ, TokenType.LT, TokenType.LTE,
+                TokenType.GT, TokenType.GTE, TokenType.IS, TokenType.NOT
+            ):
+                raise ParserError("chained comparisons are not supported "
+                                  f"at {self.current().line},{self.current().column}")
+            return BinOp(left, op_token.value, right)
+
+        return left
+
+    def parse_not_expr(self) -> Expr:
+        """Handle logical negation
+
+        Recursive rule:
+        not x
+        not x == y → not (x == y)
+
+        Grammar fragment:
+        NotExpr ::= "not" NotExpr | Comparison
+        AST target: UnaryOp(op="not", operand=...)
+        """
+        if self.match(TokenType.NOT):
+            operand = self.parse_not_expr()
+            return UnaryOp("not", operand)
+
+        return self.parse_comparison()
+
+    def parse_and_expr(self) -> Expr:
+        """Handle logical conjunction
+
+        Builds left-associative binary trees.
+
+        a and b
+        a and b and c
+
+        Grammar fragment:
+        AndExpr ::= NotExpr { "and" NotExpr }
+        AST target: BinOp(left, op, right)
+        """
+        left = self.parse_not_expr()
+
+        while self.match(TokenType.AND):
+            right = self.parse_not_expr()
+            left = BinOp(left, "and", right)
+
+        return left
+
+    def parse_or_expr(self) -> Expr:
+        """Handle logical disjunction
+
+        Builds left-associative binary trees.
+
+        a or b
+        a or b or c
+
+        Grammar fragment:
+        OrExpr ::= AndExpr { "or" AndExpr }
+        AST target: BinOp(left, op, right)
+        """
+        left = self.parse_and_expr()
+
+        while self.match(TokenType.OR):
+            right = self.parse_and_expr()
+            left = BinOp(left, "or", right)
+
+        return left
+
+    def parse_expr(self) -> Expr:
+        """Top-level entry point for parsing expressions
+
+        This simply delegates to the highest-precedence rule: OrExpr.
+
+        Grammar fragment:
+        Expr ::= OrExpr
+        AST target: same as returned by OrExpr (e.g., BinOp, Identifier, Literal)
+        """
+        return self.parse_or_expr()
+
+    # ───────────────────────── statements ─────────────────────────
+
+    def parse_statement(self) -> Stmt:
+        """Top-level dispatcher for parsing a single statement
+
+        Determines the appropriate statement rule based on the current token.
+        """
+
+        tok = self.current()
+
+        if tok.type == TokenType.IMPORT:
+            return self.parse_import_stmt()
+
+        if tok.type == TokenType.CLASS:
+            return self.parse_class_def()
+
+        if tok.type == TokenType.DEF:
+            return self.parse_function_def()
+
+        if tok.type == TokenType.GLOBAL:
+            return self.parse_global_stmt()
+
+        if tok.type == TokenType.RETURN:
+            return self.parse_return_stmt()
+
+        if tok.type == TokenType.ASSERT:
+            return self.parse_assert_stmt()
+
+        if tok.type == TokenType.RAISE:
+            return self.parse_raise_stmt()
+
+        if tok.type == TokenType.TRY:
+            return self.parse_try_except_stmt()
+
+        if tok.type == TokenType.IF:
+            return self.parse_if_stmt()
+
+        if tok.type == TokenType.WHILE:
+            return self.parse_while_stmt()
+
+        if tok.type == TokenType.FOR:
+            return self.parse_for_stmt()
+
+        if tok.type == TokenType.IDENTIFIER:
+            # Handle variable declaration
+            if self.peek().type == TokenType.COLON:
+                return self.parse_var_decl()
+
+            # Start by parsing the expression (could be variable, call, attribute, etc.)
+            expr = self.parse_expr()
+
+            # Assignment
+            if self.check(TokenType.ASSIGN):
+                self.advance()
+                value = self.parse_expr()
+                self.expect(TokenType.NEWLINE)
+                return AssignStmt(expr, value)
+
+            # Augmented assignment
+            if self.check(TokenType.PLUSEQ, TokenType.MINUSEQ, TokenType.STAREQ,
+                          TokenType.SLASHEQ, TokenType.FLOORDIVEQ, TokenType.PERCENTEQ):
+                op = self.current().value
+                self.advance()
+                value = self.parse_expr()
+                self.expect(TokenType.NEWLINE)
+                return AugAssignStmt(expr, op, value)
+
+            # Fallback: plain expression statement
+            self.expect(TokenType.NEWLINE)
+            return ExprStmt(expr)
+
+        if tok.type == TokenType.BREAK:
+            return self.parse_break_stmt()
+
+        if tok.type == TokenType.CONTINUE:
+            return self.parse_continue_stmt()
+
+        if tok.type == TokenType.PASS:
+            return self.parse_pass_stmt()
+
+        # Fallback: treat as expression statement
+        return self.parse_expr_stmt()
+
+    def parse_expr_stmt(self) -> ExprStmt:
+        """Parse an expression used as a statement
+
+        This is the fallback form of a statement in PB:
+        any expression followed by a newline.
+
+        Grammar fragment:
+        ExprStmt ::= Expr NEWLINE
+        AST target: ExprStmt(expr)
+        """
+        expr = self.parse_expr()
+        self.expect(TokenType.NEWLINE)
+        return ExprStmt(expr)
+
+    def parse_return_stmt(self) -> ReturnStmt:
+        """Parse a return statement
+
+        Handles both `return` and `return <expr>`
+
+        Grammar fragment:
+        ReturnStmt ::= "return" [Expr] NEWLINE
+        AST target: ReturnStmt(value)
+        """
+        if self.fn_depth == 0:
+            raise ParserError("'return' outside function "
+                              f"at {self.current().line},{self.current().column}")
+        self.expect(TokenType.RETURN)
+
+        if self.check(TokenType.NEWLINE):
+            self.expect(TokenType.NEWLINE)
+            return ReturnStmt(None)
+
+        value = self.parse_expr()
+        self.expect(TokenType.NEWLINE)
+        return ReturnStmt(value)
+    
+    def parse_var_decl(self) -> VarDecl:
+        """Parse a typed variable declaration with initializer
+
+        Grammar fragment:
+        VarDecl ::= Identifier \":\" Type \"=\" Expr NEWLINE
+        AST target: VarDecl(name, declared_type, value)
+        """
+        name = self.expect(TokenType.IDENTIFIER).value
+        self.expect(TokenType.COLON)
+        type_tok = self.current()
+
+        if type_tok.type not in (
+            TokenType.IDENTIFIER, TokenType.INT, TokenType.FLOAT,
+            TokenType.BOOL, TokenType.STR
+        ):
+            raise ParserError(f"Expected type name, got {type_tok.type.name} at {type_tok.line},{type_tok.column}")
+
+        declared_type = type_tok.value
+        self.advance()
+        self.expect(TokenType.ASSIGN)
+        value = self.parse_expr()
+        self.expect(TokenType.NEWLINE)
+        return VarDecl(name, declared_type, value)
+
+    def parse_assign_stmt(self) -> AssignStmt:
+        """Parse an assignment statement
+
+        Supports assignment to variables or attributes.
+        Example: x = 42
+
+        Grammar fragment:
+        Assignment ::= Expr \"=\" Expr NEWLINE
+        AST target: AssignStmt(target, value)
+        """
+        target = self.parse_expr()
+        self.expect(TokenType.ASSIGN)
+        value = self.parse_expr()
+        self.expect(TokenType.NEWLINE)
+        return AssignStmt(target, value)
+
+    def parse_aug_assign_stmt(self) -> AugAssignStmt:
+        """Parse an augmented assignment statement
+
+        Supports operators like +=, -=, *=, etc.
+
+        Grammar fragment:
+        AugAssignment ::= Expr AugOp Expr NEWLINE
+        AST target: AugAssignStmt(target, op, value)
+        """
+        target = self.parse_expr()
+        op_token = self.current()
+
+        if op_token.type not in (
+            TokenType.PLUSEQ,
+            TokenType.MINUSEQ,
+            TokenType.STAREQ,
+            TokenType.SLASHEQ,
+            TokenType.FLOORDIVEQ,
+            TokenType.PERCENTEQ,
+        ):
+            raise ParserError(f"Expected augmented assignment operator, got {op_token.type.name} at {op_token.line},{op_token.column}")
+
+        self.advance()
+        value = self.parse_expr()
+        self.expect(TokenType.NEWLINE)
+        return AugAssignStmt(target, op_token.value, value)
+
+    def parse_if_stmt(self) -> IfStmt:
+        """Parse an if/elif/else statement
+
+        Grammar fragment:
+        IfStmt ::= \"if\" Expr \":\" NEWLINE INDENT { Statement } DEDENT
+                   { \"elif\" Expr \":\" NEWLINE INDENT { Statement } DEDENT }
+                   [ \"else\" \":\" NEWLINE INDENT { Statement } DEDENT ]
+
+        AST target: IfStmt(branches=[IfBranch(condition, body)])
+        """
+        branches = []
+
+        def parse_branch(with_condition: bool) -> IfBranch:
+            cond = self.parse_expr() if with_condition else None
+            self.expect(TokenType.COLON)
+            self.expect(TokenType.NEWLINE)
+            self.expect(TokenType.INDENT)
+
+            body = []
+            while not self.match(TokenType.DEDENT):
+                stmt = self.parse_statement()
+                body.append(stmt)
+
+            return IfBranch(cond, body)
+
+        self.expect(TokenType.IF)
+        branches.append(parse_branch(with_condition=True))
+
+        while self.match(TokenType.ELIF):
+            branches.append(parse_branch(with_condition=True))
+
+        if self.match(TokenType.ELSE):
+            branches.append(parse_branch(with_condition=False))
+
+        return IfStmt(branches)
+
+    def parse_while_stmt(self) -> WhileStmt:
+        """Parse a while loop
+
+        Grammar fragment:
+        WhileStmt ::= \"while\" Expression \":\" NEWLINE INDENT { Statement } DEDENT
+        AST target: WhileStmt(condition, body)
+        """
+        self.expect(TokenType.WHILE)
+        condition = self.parse_expr()
+        self.expect(TokenType.COLON)
+        self.expect(TokenType.NEWLINE)
+        self.expect(TokenType.INDENT)
+
+        body: List[Stmt] = []
+        self.loop_depth += 1
+        while not self.match(TokenType.DEDENT):
+            body.append(self.parse_statement())
+        self.loop_depth -= 1
+
+        return WhileStmt(condition, body)
+
+    def parse_for_stmt(self) -> ForStmt:
+        """Parse a for-in loop
+
+        Grammar fragment:
+        ForStmt ::= \"for\" Identifier \"in\" Expression \":\" NEWLINE INDENT { Statement } DEDENT
+        AST target: ForStmt(var, iterable, body)
+        """
+        self.expect(TokenType.FOR)
+        var = self.expect(TokenType.IDENTIFIER).value
+        self.expect(TokenType.IN)
+        iterable = self.parse_expr()
+        self.expect(TokenType.COLON)
+        self.expect(TokenType.NEWLINE)
+        self.expect(TokenType.INDENT)
+
+        body: List[Stmt] = []
+        self.loop_depth += 1
+        while not self.match(TokenType.DEDENT):
+            body.append(self.parse_statement())
+        self.loop_depth -= 1
+
+        return ForStmt(var, iterable, body)
+
+    def parse_break_stmt(self) -> BreakStmt:
+        """Parse a break statement
+
+        Grammar: BreakStmt ::= "break" NEWLINE
+        AST: BreakStmt()
+        """
+        if self.loop_depth == 0:
+            raise ParserError("'break' outside loop "
+                              f"at {self.current().line},{self.current().column}")
+        self.expect(TokenType.BREAK)
+        self.expect(TokenType.NEWLINE)
+        return BreakStmt()
+
+    def parse_continue_stmt(self) -> ContinueStmt:
+        """Parse a continue statement
+
+        Grammar: ContinueStmt ::= "continue" NEWLINE
+        AST: ContinueStmt()
+        """
+        if self.loop_depth == 0:
+            raise ParserError("'continue' outside loop "
+                              f"at {self.current().line},{self.current().column}")
+        self.expect(TokenType.CONTINUE)
+        self.expect(TokenType.NEWLINE)
+        return ContinueStmt()
+
+    def parse_pass_stmt(self) -> PassStmt:
+        """Parse a pass statement
+
+        Grammar: PassStmt ::= "pass" NEWLINE
+        AST: PassStmt()
+        """
+        self.expect(TokenType.PASS)
+        self.expect(TokenType.NEWLINE)
+        return PassStmt()
+
+
+    def parse_function_def(self) -> FunctionDef:
+        """Parse a function definition
+
+        Grammar:
+        FunctionDef ::= "def" Identifier "(" [ Parameters ] ")" "->" Type ":" NEWLINE INDENT { Statement } DEDENT
+        AST: FunctionDef(name, params, body, return_type)
+        """
+        self.expect(TokenType.DEF)
+        name = self.expect(TokenType.IDENTIFIER).value
+        self.expect(TokenType.LPAREN)
+
+        params: List[Parameter] = []
+        if not self.check(TokenType.RPAREN):
+            params.append(self.parse_parameter())
+            while self.match(TokenType.COMMA):
+                params.append(self.parse_parameter())
+
+        # Duplicate parameter names are an error
+        names_seen = set()
+        for p in params:
+            if p.name in names_seen:
+                raise ParserError(f"duplicate parameter '{p.name}' "
+                                  f"in function '{name}'")
+            names_seen.add(p.name)
+
+        self.expect(TokenType.RPAREN)
+        self.expect(TokenType.ARROW)
+        return_type = self.expect_type_name()
+        self.expect(TokenType.COLON)
+        self.expect(TokenType.NEWLINE)
+        self.expect(TokenType.INDENT)
+
+        body: List[Stmt] = []
+        self.fn_depth += 1
+        while not self.match(TokenType.DEDENT):
+            if self.check(TokenType.NEWLINE):
+                self.advance()
+                continue
+            body.append(self.parse_statement())
+        self.fn_depth -= 1
+
+        if not body:
+            raise ParserError("function body cannot be empty "
+                              f"(see {self.current().line},{self.current().column})")
+
+        return FunctionDef(name, params, body, return_type)
+
+    def parse_parameter(self) -> Parameter:
+        name = self.expect(TokenType.IDENTIFIER).value
+        type_name = None
+        default = None
+        if self.match(TokenType.COLON):
+            type_name = self.expect_type_name()
+        if self.match(TokenType.ASSIGN):      # "=" sign
+            default = self.parse_expr()
+        return Parameter(name, type_name, default)
+
+    def expect_type_name(self) -> str:
+        tok = self.current()
+        if tok.type not in (TokenType.IDENTIFIER, TokenType.INT, TokenType.FLOAT, TokenType.STR, TokenType.BOOL, TokenType.NONE):
+            raise ParserError(f"Expected type name, got {tok.type.name} at {tok.line},{tok.column}")
+        self.advance()
+        return tok.value
+
+    def parse_class_def(self) -> ClassDef:
+        """Parse a class definition with optional single inheritance
+
+        Grammar:
+        ClassDef ::= "class" Identifier [ "(" Identifier ")" ] ":" NEWLINE INDENT { Statement } DEDENT
+
+        AST: ClassDef(name, base, fields, methods)
+        """
+        self.expect(TokenType.CLASS)
+        name = self.expect(TokenType.IDENTIFIER).value
+
+        base: Optional[str] = None
+        if self.match(TokenType.LPAREN):
+            base = self.expect(TokenType.IDENTIFIER).value
+            self.expect(TokenType.RPAREN)
+
+        self.expect(TokenType.COLON)
+        self.expect(TokenType.NEWLINE)
+        self.expect(TokenType.INDENT)
+
+        fields: List[VarDecl] = []
+        methods: List[FunctionDef] = []
+
+        while not self.match(TokenType.DEDENT):
+            if self.check(TokenType.NEWLINE):
+                self.advance()
+                continue
+            stmt = self.parse_statement()
+            if isinstance(stmt, VarDecl):
+                fields.append(stmt)
+            elif isinstance(stmt, FunctionDef):
+                methods.append(stmt)
+            else:
+                raise ParserError(f"Only variable declarations and methods allowed in class body at line {self.current().line}")
+
+        if not (fields or methods):
+            raise ParserError(f"class '{name}' has no body (line {self.current().line})")
+
+        return ClassDef(name, base, fields, methods)
+
+    def parse_global_stmt(self) -> GlobalStmt:
+        """Parse a global declaration statement
+
+        Grammar:
+        GlobalStmt ::= "global" Identifier { "," Identifier } NEWLINE
+        AST: GlobalStmt(names)
+        """
+        if self.fn_depth == 0:
+            raise ParserError("'global' only allowed inside a function "
+                              f"at {self.current().line},{self.current().column}")
+
+        self.expect(TokenType.GLOBAL)
+        names = [self.expect(TokenType.IDENTIFIER).value]
+
+        while self.match(TokenType.COMMA):
+            names.append(self.expect(TokenType.IDENTIFIER).value)
+
+        self.expect(TokenType.NEWLINE)
+        return GlobalStmt(names)
+
+    def parse_assert_stmt(self) -> AssertStmt:
+        """Parse an assert statement
+
+        Grammar:
+        AssertStmt ::= "assert" Expr NEWLINE
+        AST: AssertStmt(condition)
+        """
+        self.expect(TokenType.ASSERT)
+        condition = self.parse_expr()
+        self.expect(TokenType.NEWLINE)
+        return AssertStmt(condition)
+
+    def parse_raise_stmt(self) -> RaiseStmt:
+        """Parse a raise statement
+
+        Grammar:
+        RaiseStmt ::= "raise" Expr NEWLINE
+        AST: RaiseStmt(exception)
+        """
+        self.expect(TokenType.RAISE)
+        expr = self.parse_expr()
+        self.expect(TokenType.NEWLINE)
+        return RaiseStmt(expr)
+
+    def parse_try_except_stmt(self) -> TryExceptStmt:
+        """Parse a try/except statement
+
+        Grammar:
+        TryExceptStmt ::= "try" ":" NEWLINE INDENT { Statement } DEDENT
+                          { "except" [Identifier] [ "as" Identifier ] ":" NEWLINE INDENT { Statement } DEDENT }
+        AST: TryExceptStmt(try_body, except_blocks)
+        """
+        self.expect(TokenType.TRY)
+        self.expect(TokenType.COLON)
+        self.expect(TokenType.NEWLINE)
+        self.expect(TokenType.INDENT)
+
+        try_body: List[Stmt] = []
+        while not self.match(TokenType.DEDENT):
+            try_body.append(self.parse_statement())
+
+        except_blocks: List[ExceptBlock] = []
+
+        while self.match(TokenType.EXCEPT):
+            # Optional type
+            if self.check(TokenType.IDENTIFIER):
+                exc_type = self.expect(TokenType.IDENTIFIER).value
+            else:
+                exc_type = None
+
+            # Optional alias
+            alias = None
+            if self.match(TokenType.AS):
+                alias = self.expect(TokenType.IDENTIFIER).value
+
+            self.expect(TokenType.COLON)
+            self.expect(TokenType.NEWLINE)
+            self.expect(TokenType.INDENT)
+
+            body: List[Stmt] = []
+            while not self.match(TokenType.DEDENT):
+                body.append(self.parse_statement())
+
+            except_blocks.append(ExceptBlock(exc_type, alias, body))
+
+        return TryExceptStmt(try_body, except_blocks)
+
+    def parse_import_stmt(self) -> ImportStmt:
+        """Parse an import statement
+
+        Grammar:
+        ImportStmt ::= "import" Identifier { "." Identifier } NEWLINE
+        AST: ImportStmt(module)
+        """
+        self.expect(TokenType.IMPORT)
+        names = [self.expect(TokenType.IDENTIFIER).value]
+
+        while self.match(TokenType.DOT):
+            names.append(self.expect(TokenType.IDENTIFIER).value)
+
+        self.expect(TokenType.NEWLINE)
+        return ImportStmt(names)
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) < 3:
+        print("Usage: python script.py <code> [method]")
+        print("Example: python script.py foo identifier")
+        sys.exit(1)
+
+    source = sys.argv[1]
+    method = sys.argv[2]
+
+    if method == "file":
+        try:
+            with open(f"{sys.argv[1]}", 'r') as fin:
+                source = fin.read()
+        except (FileExistsError, FileNotFoundError) as e:
+            print(e)
+            exit(1)
+
+    from lexer import Lexer
+    lexer = Lexer(source)
+    tokens = lexer.tokenize()
+    import pprint
+    pprint.pprint(tokens)
+    parser = Parser(tokens)
+
+    node = parser.parse_expr()
+    print(node)

@@ -284,10 +284,13 @@ class TestLexer(unittest.TestCase):
     def test_f_string_literal(self):
         code = 'a = f"hello {name}"\n'
         tokens = Lexer(code).tokenize()
-        # there should be one FSTRING_LIT whose value includes the braces
+
         fstr = [t for t in tokens if t.type.name == "FSTRING_LIT"]
         self.assertEqual(len(fstr), 1)
-        self.assertEqual(fstr[0].value, "hello {name}")
+
+        raw, vars_ = fstr[0].value      # token.value is now a tuple
+        self.assertEqual(raw,  "hello {name}")
+        self.assertEqual(vars_, ["name"])
 
     def test_hash_inside_string(self):
         code = 's = "#notcomment"\n'
@@ -299,15 +302,15 @@ class TestLexer(unittest.TestCase):
     def test_blank_line_generates_NEWLINE(self):
         code = "a=1\n\nb=2\n"
         tokens = Lexer(code).tokenize()
-        newlines = [t for t in tokens if t.type.name is "NEWLINE"]
+        newlines = [t for t in tokens if t.type.name == "NEWLINE"]
         # a=1, blank line, b=2 all generate NEWLINE, so at least 3
         self.assertGreaterEqual(len(newlines), 3)
 
     def test_indent_dedent_column(self):
         code = "if True:\n    x=1\n"
         tokens = Lexer(code).tokenize()
-        indents = [t for t in tokens if t.type.name is "INDENT"]
-        dedents = [t for t in tokens if t.type.name is "DEDENT"]
+        indents = [t for t in tokens if t.type.name == "INDENT"]
+        dedents = [t for t in tokens if t.type.name == "DEDENT"]
         self.assertTrue(indents and indents[0].column == 1)
         # the final DEDENT (after EOF) should also carry column 1
         self.assertTrue(dedents and all(d.column == 1 for d in dedents))
@@ -317,6 +320,58 @@ class TestLexer(unittest.TestCase):
         with self.assertRaises(LexerError) as cm:
             Lexer(code).tokenize()
         self.assertIn("@", str(cm.exception))
+
+
+class TestLexerEdgeCases(unittest.TestCase):
+    def lex(self, src: str):
+        return Lexer(src).tokenize()
+
+    # indentation ------------------------------------------------------
+    def test_mixed_tabs_spaces_error(self):
+        src = "def bad():\n\t  pass\n"
+        with self.assertRaises(LexerError):
+            self.lex(src)
+
+    # strings ----------------------------------------------------------
+    def test_unterminated_string(self):
+        with self.assertRaises(LexerError):
+            self.lex('"oops\n')
+
+    # f-strings --------------------------------------------------------
+    def test_invalid_fstring_placeholders(self):
+        bad_sources = [
+            'f"{x + 1}"\n',   # expression
+            'f"{123}"\n',     # numeric
+            'f"{x!r}"\n',     # conversion flag
+        ]
+        for src in bad_sources:
+            with self.subTest(src=src):
+                with self.assertRaises(LexerError):
+                    self.lex(src)
+
+    # numeric literals -------------------------------------------------
+    def test_numeric_underscores(self):
+        toks = self.lex("a = 1_234_567\nb = 3.14_15\n")
+        ints   = [t for t in toks if t.type.name == "INT_LIT"]
+        floats = [t for t in toks if t.type.name == "FLOAT_LIT"]
+
+        self.assertEqual(ints[0].value,   "1234567")
+        self.assertEqual(floats[0].value, "3.1415")
+
+    def test_large_int_and_float(self):
+        toks = self.lex("i = 9223372036854775808\nf = 1e309\n")
+        self.assertTrue(any(t.value == "9223372036854775808" for t in toks))
+        self.assertTrue(any(t.value == "1e309"               for t in toks))
+
+    # token sequence for  `a is not b`
+    def test_token_is_not(self):
+        toks  = self.lex("a is not b\n")
+        kinds = [t.type.name for t in toks if t.type.name not in ("NEWLINE", "EOF")]
+        print(kinds)
+        self.assertEqual(
+            kinds,
+            ["IDENTIFIER", "IS", "NOT", "IDENTIFIER"],
+        )
 
 if __name__ == "__main__":
     unittest.main()

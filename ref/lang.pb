@@ -30,7 +30,7 @@ class Player:
     def get_species_two(self) -> str:
         return self.__class__.species
 
-    def add_to_counter(self):
+    def add_to_counter(self): # assume it returns None
         global counter
         counter += self.hp
 
@@ -183,7 +183,7 @@ def main() -> int:
 
     # Boolean list and indexing
     print("=== Boolean List and Indexing ===")
-    flags = [True, False, True]
+    flags: list[bool] = [True, False, True]
     first_flag: bool = flags[0]
     second_flag: bool = flags[1]
     print(first_flag)

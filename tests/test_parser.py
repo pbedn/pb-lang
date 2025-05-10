@@ -1,602 +1,983 @@
 import unittest
-from lexer import Lexer
+
+from lexer import Lexer, TokenType
 from parser import Parser, ParserError
-from lang_ast import *
 
-class TestParser(unittest.TestCase):
-    def test_function_with_params_and_return(self):
-        code = 'def add(x: int, y: int) -> int:\n    return x + y'
+from lang_ast import (
+    Program,
+
+    Stmt,
+    FunctionDef,
+    ClassDef,
+    GlobalStmt,
+    VarDecl,
+    AssignStmt,
+    AugAssignStmt,
+    IfBranch,
+    IfStmt,
+    WhileStmt,
+    ForStmt,
+    TryExceptStmt,
+    ExceptBlock,
+    RaiseStmt,
+    ReturnStmt,
+    AssertStmt,
+    BreakStmt,
+    ContinueStmt,
+    PassStmt,
+    ExprStmt,
+    ImportStmt,
+
+    Expr,
+    Identifier,
+    Literal,
+    StringLiteral,
+    FStringLiteral,
+    BinOp,
+    UnaryOp,
+    CallExpr,
+    AttributeExpr,
+    IndexExpr,
+    ListExpr,
+    DictExpr,
+)
+
+def parse_tokens(code: str):
+    lexer = Lexer(code)
+    tokens = lexer.tokenize()
+    return Parser(tokens)
+
+class TestParserHelpers(unittest.TestCase):
+    def parse_tokens(self, code: str):
         lexer = Lexer(code)
         tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
-        self.assertIsInstance(ast.body[0], FunctionDef)
-        self.assertEqual(ast.body[0].params, [("x", "int"), ("y", "int")])
+        return Parser(tokens)
 
-    def test_if_else_structure(self):
-        code = 'def main() -> int:\n    if 1 == 1:\n        print("yes")\n    else:\n        print("no")\n    return 0'
+    def test_current_and_peek(self):
+        parser = self.parse_tokens("x + 1")
+        self.assertEqual(parser.current().type, TokenType.IDENTIFIER)
+        self.assertEqual(parser.peek().type, TokenType.PLUS)
+        self.assertEqual(parser.peek(2).type, TokenType.INT_LIT)
+
+    def test_advance(self):
+        parser = self.parse_tokens("x + 1")
+        parser.advance()
+        self.assertEqual(parser.current().type, TokenType.PLUS)
+        parser.advance()
+        self.assertEqual(parser.current().type, TokenType.INT_LIT)
+
+    def test_check(self):
+        parser = self.parse_tokens("x")
+        self.assertTrue(parser.check(TokenType.IDENTIFIER))
+        parser.advance()
+        self.assertFalse(parser.check(TokenType.IDENTIFIER))
+
+    def test_match(self):
+        parser = self.parse_tokens("x + 1")
+        self.assertTrue(parser.match(TokenType.IDENTIFIER))
+        self.assertTrue(parser.match(TokenType.PLUS))
+        self.assertFalse(parser.match(TokenType.PLUS))
+
+    def test_expect_success(self):
+        parser = self.parse_tokens("x")
+        tok = parser.expect(TokenType.IDENTIFIER)
+        self.assertEqual(tok.value, "x")
+
+    def test_expect_failure(self):
+        parser = self.parse_tokens("x")
+        parser.expect(TokenType.IDENTIFIER)
+        with self.assertRaises(ParserError):
+            parser.expect(TokenType.IDENTIFIER)
+
+    def test_at_end(self):
+        parser = self.parse_tokens("x")
+        self.assertFalse(parser.at_end())
+        parser.advance()  # x
+        parser.advance()  # NEWLINE
+        parser.advance()  # EOF
+        self.assertTrue(parser.at_end())
+
+class TestParseExpressions(unittest.TestCase):
+    def parse_tokens(self, code: str):
         lexer = Lexer(code)
         tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
-        func = ast.body[0]
-        self.assertIsInstance(func.body[0], IfStmt)
-        self.assertIsInstance(func.body[-1], ReturnStmt)
+        return Parser(tokens)
 
-    def test_while_and_assignment(self):
-        code = 'def loop() -> int:\n    i = 0\n    while i < 10:\n        i = i + 1\n    return i'
+    def test_parse_identifier(self):
+        parser = self.parse_tokens("foo")
+        ident = parser.parse_identifier()
+
+        # Expected: Identifier("foo")
+        self.assertIsInstance(ident, Identifier)
+        self.assertEqual(ident.name, "foo")
+
+    def test_parse_literal_int(self):
+        parser = self.parse_tokens("42")
+        lit = parser.parse_literal()
+
+        # Expected: Literal("42")
+        self.assertIsInstance(lit, Literal)
+        self.assertEqual(lit.raw, "42")
+
+    def test_parse_literal_float(self):
+        parser = self.parse_tokens("3.14")
+        lit = parser.parse_literal()
+
+        # Expected: Literal("3.14")
+        self.assertIsInstance(lit, Literal)
+        self.assertEqual(lit.raw, "3.14")
+
+    def test_parse_literal_string(self):
+        parser = self.parse_tokens("'hello'")
+        lit = parser.parse_literal()
+
+        # Expected: StringLiteral("hello")
+        self.assertIsInstance(lit, StringLiteral)
+        self.assertEqual(lit.value, "hello")
+
+    def test_parse_literal_fstring(self):
+        parser = self.parse_tokens("f'hello {x}'")
+        lit = parser.parse_literal()
+
+        print(lit)
+
+        # Expected: FStringLiteral(raw='hello {x}', vars=['x'])
+        self.assertIsInstance(lit, FStringLiteral)
+        self.assertEqual(lit.raw, "hello {x}")
+        self.assertEqual(lit.vars, ["x"])
+
+    def test_parse_literal_constants(self):
+        parser = self.parse_tokens("None\nTrue\nFalse")
+        lit = parser.parse_literal()
+        parser.advance()
+        lit2 = parser.parse_literal()
+        parser.advance()
+        lit3 = parser.parse_literal()
+
+        # Expected: Literal("None")
+        self.assertIsInstance(lit, Literal)
+        self.assertEqual(lit.raw, "None")
+        # Expected: Literal("True")
+        self.assertIsInstance(lit2, Literal)
+        self.assertEqual(lit2.raw, "True")
+        # Expected: Literal("False")
+        self.assertIsInstance(lit3, Literal)
+        self.assertEqual(lit3.raw, "False")
+
+    def test_parse_unary_minus(self):
+        parser = self.parse_tokens("-42")
+        expr = parser.parse_unary()
+
+        # Expected: UnaryOp("-", Literal("42"))
+        self.assertIsInstance(expr, UnaryOp)
+        self.assertEqual(expr.op, "-")
+        self.assertIsInstance(expr.operand, Literal)
+        self.assertEqual(expr.operand.raw, "42")
+
+    def test_parse_unary_not(self):
+        parser = self.parse_tokens("not x")
+        expr = parser.parse_unary()
+
+        # Expected: UnaryOp("not", Identifier("x"))
+        self.assertIsInstance(expr, UnaryOp)
+        self.assertEqual(expr.op, "not")
+        self.assertIsInstance(expr.operand, Identifier)
+        self.assertEqual(expr.operand.name, "x")
+
+    def test_parse_call_expr(self):
+        parser = self.parse_tokens("foo(1, 2 + 3)")
+        expr = parser.parse_expr()
+        
+        self.assertIsInstance(expr, CallExpr)
+        self.assertEqual(expr.func.name, "foo")
+        self.assertEqual(len(expr.args), 2)
+        self.assertIsInstance(expr.args[1], BinOp)
+        self.assertEqual(expr.args[1].op, "+")
+
+    def test_parse_postfix_expr(self):
+        parser = self.parse_tokens("f(1, 2 + 3)")
+        expr = parser.parse_postfix_expr()
+
+        self.assertIsInstance(expr, CallExpr)
+        self.assertIsInstance(expr.func, Identifier)
+        self.assertEqual(expr.func.name, "f")
+        self.assertEqual(len(expr.args), 2)
+        self.assertIsInstance(expr.args[0], Literal)
+        self.assertEqual(expr.args[0].raw, "1")
+        self.assertIsInstance(expr.args[1], BinOp)
+        self.assertEqual(expr.args[1].op, "+")
+
+    def test_parse_attribute_expr(self):
+        parser = self.parse_tokens("self.value")
+        expr = parser.parse_expr()
+
+        self.assertIsInstance(expr, AttributeExpr)
+        self.assertIsInstance(expr.obj, Identifier)
+        self.assertEqual(expr.obj.name, "self")
+        self.assertEqual(expr.attr, "value")
+
+    def test_parse_index_expr(self):
+        parser = self.parse_tokens("a[0]")
+        expr = parser.parse_expr()
+
+        self.assertIsInstance(expr, IndexExpr)
+        self.assertIsInstance(expr.base, Identifier)
+        self.assertEqual(expr.base.name, "a")
+        self.assertIsInstance(expr.index, Literal)
+        self.assertEqual(expr.index.raw, "0")
+
+    def test_parse_chained_index_expr(self):
+        parser = self.parse_tokens("matrix[i][j]")
+        expr = parser.parse_expr()
+
+        self.assertIsInstance(expr, IndexExpr)
+        self.assertIsInstance(expr.base, IndexExpr)
+
+        base = expr.base
+        self.assertEqual(base.base.name, "matrix")
+        self.assertEqual(base.index.name, "i")
+        self.assertEqual(expr.index.name, "j")
+
+    def test_parse_primary_identifier(self):
+        parser = self.parse_tokens("foo")
+        expr = parser.parse_primary()
+
+        # Expected: Identifier("foo")
+        self.assertIsInstance(expr, Identifier)
+        self.assertEqual(expr.name, "foo")
+
+    def test_parse_primary_literal(self):
+        parser = self.parse_tokens("42")
+        expr = parser.parse_primary()
+
+        # Expected: Literal("42")
+        self.assertIsInstance(expr, Literal)
+        self.assertEqual(expr.raw, "42")
+
+    def test_parse_term_multiplication(self):
+        parser = self.parse_tokens("a * b")
+        expr = parser.parse_term()
+
+        # Expected: BinOp(Identifier("a"), "*", Identifier("b"))
+        self.assertIsInstance(expr, BinOp)
+        self.assertEqual(expr.op, "*")
+        self.assertIsInstance(expr.left, Identifier)
+        self.assertIsInstance(expr.right, Identifier)
+
+    def test_parse_arith_expr_add_sub(self):
+        parser = self.parse_tokens("a + b - c")
+        expr = parser.parse_arith_expr()
+
+        # Expected AST:
+        # BinOp(
+        #   left=BinOp(
+        #       left=Identifier("a"),
+        #       op="+",
+        #       right=Identifier("b")
+        #   ),
+        #   op="-",
+        #   right=Identifier("c")
+        # )
+        self.assertIsInstance(expr, BinOp)
+        self.assertEqual(expr.op, "-")
+        self.assertIsInstance(expr.left, BinOp)
+        self.assertEqual(expr.left.op, "+")
+        self.assertEqual(expr.left.left.name, "a")
+        self.assertEqual(expr.left.right.name, "b")
+        self.assertEqual(expr.right.name, "c")
+
+    def test_parse_comparison_eq(self):
+        parser = self.parse_tokens("x == 42")
+        expr = parser.parse_comparison()
+
+        # Expected: BinOp(Identifier(\"x\"), \"==\", Literal(\"42\"))
+        self.assertIsInstance(expr, BinOp)
+        self.assertEqual(expr.op, "==")
+        self.assertIsInstance(expr.left, Identifier)
+        self.assertEqual(expr.left.name, "x")
+        self.assertIsInstance(expr.right, Literal)
+        self.assertEqual(expr.right.raw, "42")
+
+    def test_parse_not_expr(self):
+        parser = self.parse_tokens("not x == y")
+        expr = parser.parse_not_expr()
+
+        # Expected:
+        # UnaryOp("not", BinOp(Identifier("x"), "==", Identifier("y")))
+        self.assertIsInstance(expr, UnaryOp)
+        self.assertEqual(expr.op, "not")
+        self.assertIsInstance(expr.operand, BinOp)
+        self.assertEqual(expr.operand.op, "==")
+
+    def test_parse_and_expr(self):
+        parser = self.parse_tokens("a and b and c")
+        expr = parser.parse_and_expr()
+
+        # Expected:
+        # BinOp(
+        #   left=BinOp(Identifier("a"), "and", Identifier("b")),
+        #   op="and",
+        #   right=Identifier("c")
+        # )
+        self.assertIsInstance(expr, BinOp)
+        self.assertEqual(expr.op, "and")
+        self.assertIsInstance(expr.left, BinOp)
+        self.assertEqual(expr.left.op, "and")
+        self.assertEqual(expr.left.left.name, "a")
+        self.assertEqual(expr.left.right.name, "b")
+        self.assertEqual(expr.right.name, "c")
+
+    def test_parse_or_expr(self):
+        parser = self.parse_tokens("a or b or c")
+        expr = parser.parse_or_expr()
+
+        # Expected:
+        # BinOp(
+        #   left=BinOp(Identifier("a"), "or", Identifier("b")),
+        #   op="or",
+        #   right=Identifier("c")
+        # )
+        self.assertIsInstance(expr, BinOp)
+        self.assertEqual(expr.op, "or")
+        self.assertIsInstance(expr.left, BinOp)
+        self.assertEqual(expr.left.op, "or")
+        self.assertEqual(expr.left.left.name, "a")
+        self.assertEqual(expr.left.right.name, "b")
+        self.assertEqual(expr.right.name, "c")
+
+    def test_parse_expr(self):
+        parser = self.parse_tokens("a + b * c or d and not e")
+        expr = parser.parse_expr()
+
+        # Expected structure:
+        # BinOp(
+        #   left=BinOp(
+        #     left=Identifier("a"),
+        #     op="+",
+        #     right=BinOp(
+        #       left=Identifier("b"),
+        #       op="*",
+        #       right=Identifier("c")
+        #     )
+        #   ),
+        #   op="or",
+        #   right=BinOp(
+        #     left=Identifier("d"),
+        #     op="and",
+        #     right=UnaryOp("not", Identifier("e"))
+        #   )
+        # )
+        self.assertIsInstance(expr, BinOp)
+        self.assertEqual(expr.op, "or")
+
+    def test_parse_is_not_comparison(self):
+        """
+        Parser should turn `a is not b` into a single BinOp with op 'is not'.
+        """
+        parser = self.parse_tokens("a is not b\n")
+        expr   = parser.parse_expr()
+
+        self.assertIsInstance(expr, BinOp)
+        self.assertEqual(expr.op, "is not")
+        self.assertIsInstance(expr.left,  Identifier)
+        self.assertIsInstance(expr.right, Identifier)
+        self.assertEqual(expr.left.name,  "a")
+        self.assertEqual(expr.right.name, "b")
+
+
+class TestParseStatements(unittest.TestCase):
+
+    def parse_tokens(self, code: str):
         lexer = Lexer(code)
         tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
-        body = ast.body[0].body
-        self.assertIsInstance(body[0], AssignStmt)
-        self.assertIsInstance(body[1], WhileStmt)
+        # DEBUG
+        for t in tokens: print(t)
+        return Parser(tokens)
 
-    def test_for_loop(self):
-        code = 'def f() -> int:\n    for i in items:\n        print(i)\n    return 0'
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
-        self.assertIsInstance(ast.body[0].body[0], ForStmt)
+    def test_parse_expr_stmt(self):
+        parser = self.parse_tokens("foo + 1\n")
+        stmt = parser.parse_expr_stmt()
 
-    def test_if_elif_else(self):
+        # Expected: ExprStmt(BinOp(Identifier("foo"), "+", Literal("1")))
+        self.assertIsInstance(stmt, ExprStmt)
+        self.assertIsInstance(stmt.expr, BinOp)
+        self.assertEqual(stmt.expr.op, "+")
+        self.assertEqual(stmt.expr.left.name, "foo")
+        self.assertEqual(stmt.expr.right.raw, "1")
+
+    def test_parse_return_stmt_empty(self):
         code = (
-            "def main() -> int:\n"
-            "    if x == 1:\n"
-            "        print(\"one\")\n"
-            "    elif x == 2:\n"
-            "        print(\"two\")\n"
-            "    else:\n"
-            "        print(\"other\")\n"
-            "    return 0\n"
+            "def f() -> None:\n"
+            "    return\n"
         )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
+        parser = self.parse_tokens(code)
+        func   = parser.parse_function_def()          # parse whole function
 
-        if_stmt = ast.body[0].body[0]
-        self.assertIsInstance(if_stmt, IfStmt)
-        # Check elif is desugared into nested if inside else_body
-        nested_if = if_stmt.else_body[0]
-        self.assertIsInstance(nested_if, IfStmt)
-        self.assertEqual(len(nested_if.then_body), 1)
+        # Body should contain exactly one ReturnStmt(None)
+        self.assertEqual(len(func.body), 1)
+        stmt = func.body[0]
+        self.assertIsInstance(stmt, ReturnStmt)
+        self.assertIsNone(stmt.value)
 
-    def test_parser_pass_statement(self):
+    def test_parse_return_stmt_value(self):
+        with self.assertRaises(ParserError):
+            self.parse_tokens("return x + 1\n").parse_return_stmt()
+
+    def test_parse_var_decl(self):
+        parser = self.parse_tokens("x: int = 42\n")
+        stmt = parser.parse_var_decl()
+
+        # Expected: VarDecl("x", "int", Literal("42"))
+        self.assertIsInstance(stmt, VarDecl)
+        self.assertEqual(stmt.name, "x")
+        self.assertEqual(stmt.declared_type, "int")
+        self.assertIsInstance(stmt.value, Literal)
+        self.assertEqual(stmt.value.raw, "42")
+
+    def test_parse_assign_stmt(self):
+        parser = self.parse_tokens("x = y + 1\n")
+        stmt = parser.parse_assign_stmt()
+
+        # Expected: AssignStmt(
+        #   target=Identifier("x"),
+        #   value=BinOp(Identifier("y"), "+", Literal("1"))
+        # )
+        self.assertIsInstance(stmt, AssignStmt)
+        self.assertIsInstance(stmt.target, Identifier)
+        self.assertEqual(stmt.target.name, "x")
+        self.assertIsInstance(stmt.value, BinOp)
+        self.assertEqual(stmt.value.op, "+")
+
+    def test_parse_aug_assign_stmt(self):
+        parser = self.parse_tokens("x += 2\n")
+        stmt = parser.parse_aug_assign_stmt()
+
+        # Expected: AugAssignStmt(
+        #   target=Identifier("x"),
+        #   op="+=",
+        #   value=Literal("2")
+        # )
+        self.assertIsInstance(stmt, AugAssignStmt)
+        self.assertEqual(stmt.op, "+=")
+        self.assertIsInstance(stmt.target, Identifier)
+        self.assertEqual(stmt.target.name, "x")
+        self.assertIsInstance(stmt.value, Literal)
+        self.assertEqual(stmt.value.raw, "2")
+
+    def test_parse_if_stmt(self):
         code = (
-            "def main() -> int:\n"
-            "    if True:\n"
+            "if x:\n"
+            "    print(1)\n"
+            "elif y:\n"
+            "    print(2)\n"
+            "else:\n"
+            "    print(3)\n"
+        )
+        parser = self.parse_tokens(code)
+        stmt = parser.parse_if_stmt()
+
+        # Expected: IfStmt with 3 branches (if, elif, else)
+        self.assertIsInstance(stmt, IfStmt)
+        self.assertEqual(len(stmt.branches), 3)
+        self.assertIsInstance(stmt.branches[0].condition, Identifier)
+
+    def test_parse_statement_combined(self):
+        code = (
+            "def g() -> int:\n"
+            "    x: int = 1\n"
+            "    y = x + 2\n"
+            "    y += 3\n"
+            "    if y > 2:\n"
+            "        return y\n"
+            "    else:\n"
+            "        return 0\n"
+        )
+        parser = self.parse_tokens(code)
+        func   = parser.parse_function_def()
+
+        stmt1, stmt2, stmt3, stmt4 = func.body
+        self.assertIsInstance(stmt1, VarDecl)
+        self.assertIsInstance(stmt2, AssignStmt)
+        self.assertIsInstance(stmt3, AugAssignStmt)
+        self.assertIsInstance(stmt4, IfStmt)
+        self.assertEqual(len(stmt4.branches), 2)
+        # first branch has return
+        self.assertIsInstance(stmt4.branches[0].body[0], ReturnStmt)
+        # else-branch return
+        self.assertIsNone(stmt4.branches[1].condition)
+        self.assertIsInstance(stmt4.branches[1].body[0], ReturnStmt)
+
+    def test_parse_program(self):
+        code = (
+            "x: int = 10\n"
+            "x += 1\n"
+            "if x > 5:\n"
+            "    print(x)\n"
+        )
+        parser = self.parse_tokens(code)
+        prog = parser.parse()
+
+        # Expected: Program with 3 statements
+        self.assertIsInstance(prog, Program)
+        self.assertEqual(len(prog.body), 3)
+        self.assertIsInstance(prog.body[0], VarDecl)
+        self.assertIsInstance(prog.body[1], AugAssignStmt)
+        self.assertIsInstance(prog.body[2], IfStmt)
+
+    def test_parse_while_stmt(self):
+        code = (
+            "while x < 5:\n"
+            "    x += 1\n"
+        )
+        parser = self.parse_tokens(code)
+        stmt = parser.parse_while_stmt()
+
+        # Expected: WhileStmt(condition=BinOp(...), body=[AugAssignStmt(...)])
+        self.assertIsInstance(stmt, WhileStmt)
+        self.assertIsInstance(stmt.condition, BinOp)
+        self.assertEqual(stmt.condition.op, "<")
+        self.assertIsInstance(stmt.body[0], AugAssignStmt)
+
+    def test_parse_for_stmt(self):
+        code = (
+            "for i in data:\n"
+            "    print(i)\n"
+        )
+        parser = self.parse_tokens(code)
+        stmt = parser.parse_for_stmt()
+
+        # Expected: ForStmt(var="i", iterable=Identifier("data"), body=[ExprStmt])
+        self.assertIsInstance(stmt, ForStmt)
+        self.assertEqual(stmt.var_name, "i")
+        self.assertIsInstance(stmt.iterable, Identifier)
+        self.assertIsInstance(stmt.body[0], ExprStmt)
+
+    def test_parse_simple_statements(self):
+        code = (
+            "while True:\n"
+            "    break\n"
+            "    continue\n"
+            "    pass\n"
+        )
+        parser = self.parse_tokens(code)
+        loop   = parser.parse_statement()     # parse the while-loop
+
+        self.assertIsInstance(loop, WhileStmt)
+
+        body = loop.body
+        self.assertIsInstance(body[0], BreakStmt)
+        self.assertIsInstance(body[1], ContinueStmt)
+        self.assertIsInstance(body[2], PassStmt)
+
+    def test_parse_function_def(self):
+        code = (
+            "def add(x: int, y: int) -> int:\n"
+            "    return x + y\n"
+        )
+        parser = self.parse_tokens(code)
+        stmt = parser.parse_function_def()
+
+        # Expected: FunctionDef("add", [x:int, y:int], "int", [...])
+        self.assertIsInstance(stmt, FunctionDef)
+        self.assertEqual(stmt.name, "add")
+        self.assertEqual(len(stmt.params), 2)
+        self.assertEqual(stmt.params[0].name, "x")
+        self.assertEqual(stmt.params[0].type, "int")
+        self.assertEqual(stmt.return_type, "int")
+        self.assertIsInstance(stmt.body[0], ReturnStmt)
+
+    def test_parse_function_def_with_default(self):
+        code = (
+            "def inc(x: int = 1) -> int:\n"
+            "    return x + y\n"
+        )
+        parser = self.parse_tokens(code)
+        stmt = parser.parse_function_def()
+
+        # Expected: FunctionDef("add", [x:int, y:int], "int", [...])
+        self.assertIsInstance(stmt, FunctionDef)
+        self.assertEqual(stmt.name, "inc")
+        self.assertEqual(len(stmt.params), 1)
+        self.assertEqual(stmt.params[0].name, "x")
+        self.assertEqual(stmt.params[0].type, "int")
+        self.assertIsNotNone(stmt.params[0].default)
+        self.assertEqual(stmt.return_type, "int")
+        self.assertIsInstance(stmt.body[0], ReturnStmt)
+
+    def test_parse_class_def(self):
+        code = (
+            "class Point:\n"
+            "    x: int = 0\n"
+            "    y: int = 0\n"
+            "    def reset(self) -> None:\n"
             "        pass\n"
         )
-        tokens = Lexer(code).tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
-        # Look for PassStmt in AST
-        self.assertTrue(any(isinstance(stmt, PassStmt) for func in ast.body for stmt in func.body[0].then_body))
+        parser = self.parse_tokens(code)
+        stmt = parser.parse_class_def()
 
-    def test_augmented_assignment_stmt(self):
+        # Expected: ClassDef(name="Point", base=None, fields=[x, y], methods=[reset])
+        self.assertIsInstance(stmt, ClassDef)
+        self.assertEqual(stmt.name, "Point")
+        self.assertIsNone(stmt.base)
+
+        # Fields
+        self.assertEqual(len(stmt.fields), 2)
+        self.assertIsInstance(stmt.fields[0], VarDecl)
+        self.assertEqual(stmt.fields[0].name, "x")
+        self.assertEqual(stmt.fields[0].declared_type, "int")
+        self.assertEqual(stmt.fields[0].value.raw, "0")
+
+        self.assertEqual(stmt.fields[1].name, "y")
+        self.assertEqual(stmt.fields[1].declared_type, "int")
+
+        # Methods
+        self.assertEqual(len(stmt.methods), 1)
+        method = stmt.methods[0]
+        self.assertIsInstance(method, FunctionDef)
+        self.assertEqual(method.name, "reset")
+        self.assertEqual(method.return_type, "None")
+        self.assertEqual(len(method.params), 1)
+        self.assertEqual(method.params[0].name, "self")
+
+    def test_parse_class_def_with_base(self):
         code = (
-            "def main() -> int:\n"
-            "    x = 10\n"
-            "    x += 5\n"
-            "    return x\n"
+            "class Point(Base):\n"
+            "    x: int = 0\n"
+            "    def move(self) -> None:\n"
+            "        pass\n"
         )
+        parser = self.parse_tokens(code)
+        stmt = parser.parse_class_def()
+
+        # Expected: ClassDef(name="Point", base="Base", fields=[x], methods=[move])
+        self.assertIsInstance(stmt, ClassDef)
+        self.assertEqual(stmt.name, "Point")
+        self.assertEqual(stmt.base, "Base")
+
+        # Fields
+        self.assertEqual(len(stmt.fields), 1)
+        self.assertEqual(stmt.fields[0].name, "x")
+        self.assertEqual(stmt.fields[0].declared_type, "int")
+        self.assertEqual(stmt.fields[0].value.raw, "0")
+
+        # Methods
+        self.assertEqual(len(stmt.methods), 1)
+        self.assertEqual(stmt.methods[0].name, "move")
+        self.assertEqual(stmt.methods[0].return_type, "None")
+
+    def test_parse_global_inside_function(self):
+        code = (
+            "def use_globals() -> None:\n"
+            "    global a, b\n"
+            "    a = 1\n"
+            "    b = 2\n"
+        )
+        parser = self.parse_tokens(code)
+        func = parser.parse_function_def()
+
+        self.assertEqual(func.name, "use_globals")
+        self.assertEqual(len(func.body), 3)
+        self.assertIsInstance(func.body[0], GlobalStmt)
+        self.assertEqual(func.body[0].names, ["a", "b"])
+
+    def test_parse_assert_stmt(self):
+        parser = self.parse_tokens("assert x > 0\n")
+        stmt = parser.parse_assert_stmt()
+
+        # Expected: AssertStmt(condition=BinOp(Identifier("x"), ">", Literal("0")))
+        self.assertIsInstance(stmt, AssertStmt)
+        self.assertIsInstance(stmt.condition, BinOp)
+        self.assertEqual(stmt.condition.op, ">")
+
+    def test_parse_raise_stmt(self):
+        parser = self.parse_tokens("raise ValueError()\n")
+        stmt = parser.parse_raise_stmt()
+
+        self.assertIsInstance(stmt, RaiseStmt)
+        self.assertIsInstance(stmt.exception, CallExpr)
+        self.assertIsInstance(stmt.exception.func, Identifier)
+        self.assertEqual(stmt.exception.func.name, "ValueError")
+
+    def test_parse_try_except_stmt(self):
+        code = (
+            "try:\n"
+            "    risky()\n"
+            "except ValueError as err:\n"
+            "    handle(err)\n"
+            "except:\n"
+            "    pass\n"
+        )
+        parser = self.parse_tokens(code)
+        stmt = parser.parse_try_except_stmt()
+
+        self.assertIsInstance(stmt, TryExceptStmt)
+        self.assertEqual(len(stmt.except_blocks), 2)
+
+        block1 = stmt.except_blocks[0]
+        self.assertEqual(block1.exc_type, "ValueError")
+        self.assertEqual(block1.alias, "err")
+        self.assertIsInstance(block1.body[0], ExprStmt)
+
+        block2 = stmt.except_blocks[1]
+        self.assertIsNone(block2.exc_type)
+        self.assertIsNone(block2.alias)
+        self.assertIsInstance(block2.body[0], PassStmt)
+
+    def test_parse_list_expr(self):
+        parser = self.parse_tokens("[1, 2, x + y]")
+        expr = parser.parse_expr()
+
+        self.assertIsInstance(expr, ListExpr)
+        self.assertEqual(len(expr.elements), 3)
+        self.assertIsInstance(expr.elements[0], Literal)
+        self.assertEqual(expr.elements[0].raw, "1")
+        self.assertIsInstance(expr.elements[2], BinOp)
+        self.assertEqual(expr.elements[2].op, "+")
+
+    def test_parse_dict_expr(self):
+        parser = self.parse_tokens("{'a': 1, 'b': x + 2}")
+        expr = parser.parse_expr()
+
+        self.assertIsInstance(expr, DictExpr)
+        self.assertEqual(len(expr.keys), 2)
+        self.assertEqual(len(expr.values), 2)
+        self.assertIsInstance(expr.keys[0], StringLiteral)
+        self.assertEqual(expr.keys[0].value, "a")
+        self.assertIsInstance(expr.values[1], BinOp)
+        self.assertEqual(expr.values[1].op, "+")
+
+    def test_parse_import_stmt(self):
+        parser = self.parse_tokens("import math.utils.io\n")
+        stmt = parser.parse_import_stmt()
+
+        self.assertIsInstance(stmt, ImportStmt)
+        self.assertEqual(stmt.module, ["math", "utils", "io"])
+
+class TestParseComplexStmtAndExpr(unittest.TestCase):
+
+    def parse_tokens(self, code: str):
         lexer = Lexer(code)
         tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
-        func = ast.body[0]
-        aug_stmt = func.body[1]
-        self.assertIsInstance(aug_stmt, AugAssignStmt)
-        self.assertIsInstance(aug_stmt.target, Identifier)
-        self.assertEqual(aug_stmt.target.name, "x")
-        self.assertEqual(aug_stmt.op, "+")
-        self.assertIsInstance(aug_stmt.value, Literal)
+        # DEBUG
+        for t in tokens: print(t)
+        return Parser(tokens)
 
-    def test_global_stmt_parser(self):
+    def test_parse_full_program(self):
         code = (
-            "def main() -> int:\n"
-            "    global x, y\n"
-            "    x = 10\n"
-            "    return x\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
-        func_body = ast.body[0].body
-        self.assertTrue(any(isinstance(stmt, GlobalStmt) for stmt in func_body))
-
-    def test_parser_with_top_level_and_function_global(self):
-        code = (
+            "import sys.io\n"
             "counter: int = 100\n"
             "\n"
+            "class Counter:\n"
+            "    value: int = 0\n"
+            "    def increment(self) -> None:\n"
+            "        self.value += 1\n"
+            "\n"
             "def main() -> int:\n"
-            "    global counter, value\n"
+            "    global counter\n"
             "    counter = 1\n"
-            "    value = 2\n"
-            "    return counter\n"
+            "    x: int = 10\n"
+            "    while x > 0:\n"
+            "        x -= 1\n"
+            "    if x == 0:\n"
+            "        return x\n"
+            "    else:\n"
+            "        raise ValueError()\n"
         )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
 
-        parser = Parser(tokens)
-        ast = parser.parse()
+        parser = self.parse_tokens(code)
+        prog = parser.parse()
 
-        # Top-level: should have 2 statements: AssignStmt + FunctionDef
-        self.assertEqual(len(ast.body), 2)
+        self.assertIsInstance(prog, Program)
+        # Expect four top-level statements:
+        #   1) import sys.io
+        #   2) counter: int = 100
+        #   3) class Counter …
+        #   4) def main() …
+        self.assertEqual(len(prog.body), 4)
 
-        # --- Top-level global var ---
-        top_level_vardecl = ast.body[0]
-        self.assertIsInstance(top_level_vardecl, VarDecl)
-        self.assertEqual(top_level_vardecl.name, "counter")
-        self.assertEqual(top_level_vardecl.declared_type, "int")
-        self.assertEqual(top_level_vardecl.value, Literal(100))
+        # --- Check Import ---
+        self.assertIsInstance(prog.body[0], ImportStmt)
+        self.assertEqual(prog.body[0].module, ["sys", "io"])
 
-        # --- Function def ---
-        func_def = ast.body[1]
-        self.assertIsInstance(func_def, FunctionDef)
-        self.assertEqual(func_def.name, "main")
+        # --- Check top-level VarDecl ---
+        self.assertIsInstance(prog.body[1], VarDecl)
+        self.assertEqual(prog.body[1].name, "counter")
+        self.assertEqual(prog.body[1].declared_type, "int")
 
-        # Check globals_declared
-        self.assertIsNotNone(func_def.globals_declared)
-        self.assertSetEqual(func_def.globals_declared, {"counter", "value"})
-
-        # Check function body: [GlobalStmt, AssignStmt, AssignStmt, ReturnStmt]
-        body = func_def.body
-        self.assertEqual(len(body), 4)
-
-        global_stmt = body[0]
-        self.assertIsInstance(global_stmt, GlobalStmt)
-        self.assertListEqual(global_stmt.names, ["counter", "value"])
-
-        assign1 = body[1]
-        self.assertIsInstance(assign1.target, Identifier)
-        self.assertEqual(assign1.target.name, "counter")
-
-        assign2 = body[2]
-        self.assertIsInstance(assign2.target, Identifier)
-        self.assertEqual(assign2.target.name, "value")
-
-        return_stmt = body[3]
-        self.assertIsInstance(return_stmt, ReturnStmt)
-
-    def test_vardecl_parser(self):
-        code = (
-            "def main() -> int:\n"
-            "    x: int = 5\n"
-            "    return x\n"
-        )
-        tokens = Lexer(code).tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
-        func_body = ast.body[0].body
-        vardecl = func_body[0]
-        self.assertIsInstance(vardecl, VarDecl)
-        self.assertEqual(vardecl.name, "x")
-        self.assertEqual(vardecl.declared_type, "int")
-
-    def test_parser_should_fail_on_uninitialized_global_var(self):
-        code = (
-            "counter: int\n"  # ❌ invalid: no initializer
-            "\n"
-            "def main() -> int:\n"
-            "    return 0\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-
-        parser = Parser(tokens)
-        with self.assertRaises(ParserError) as ctx:
-            parser.parse()
-        self.assertIn("Global variable declaration must include an initializer", str(ctx.exception))
-
-    def test_attribute_expr_parsing(self):
-        code = (
-            "def main() -> int:\n"
-            "    x = player.hp\n"
-            "    y = game.world.level\n"
-            "    return 0\n"
-        )
-        tokens = Lexer(code).tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
-
-        func = ast.body[0]
-        assign1 = func.body[0]
-        assign2 = func.body[1]
-
-        # First: x = player.hp
-        self.assertIsInstance(assign1.value, AttributeExpr)
-        self.assertEqual(assign1.value.attr, "hp")
-        self.assertIsInstance(assign1.value.obj, Identifier)
-        self.assertEqual(assign1.value.obj.name, "player")
-
-        # Second: y = game.world.level
-        attr_expr = assign2.value
-        self.assertIsInstance(attr_expr, AttributeExpr)
-        self.assertEqual(attr_expr.attr, "level")
-
-        # game.world
-        inner_attr = attr_expr.obj
-        self.assertIsInstance(inner_attr, AttributeExpr)
-        self.assertEqual(inner_attr.attr, "world")
-        self.assertIsInstance(inner_attr.obj, Identifier)
-        self.assertEqual(inner_attr.obj.name, "game")
-
-    def test_classdef_parsing(self):
-        code = (
-            "class Player:\n"
-            "    hp: int = 100\n"
-            "\n"
-            "    def heal(self, amount: int):\n"
-            "        self.hp += amount\n"
-        )
-        tokens = Lexer(code).tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
-
-        class_def = ast.body[0]
-        self.assertIsInstance(class_def, ClassDef)
-        self.assertEqual(class_def.name, "Player")
-        self.assertIsNone(class_def.base)
-
-        # Check field
-        self.assertEqual(len(class_def.fields), 1)
-        field = class_def.fields[0]
-        self.assertIsInstance(field, VarDecl)
-        self.assertEqual(field.name, "hp")
-        self.assertEqual(field.declared_type, "int")
-
-        # Check method
-        self.assertEqual(len(class_def.methods), 1)
-        method = class_def.methods[0]
-        self.assertIsInstance(method, FunctionDef)
-        self.assertEqual(method.name, "heal")
-
-    def test_assert_stmt_parsing(self):
-        code = (
-            "def main() -> int:\n"
-            "    assert x > 0\n"
-            "    return 0\n"
-        )
-        tokens = Lexer(code).tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
-
-        func = ast.body[0]
-        assert_stmt = func.body[0]
-        self.assertIsInstance(assert_stmt, AssertStmt)
-        self.assertIsInstance(assert_stmt.condition, BinOp)
-        self.assertEqual(assert_stmt.condition.op, ">")
-
-
-class TestClassDefParsing(unittest.TestCase):
-
-    def test_class_pass_only(self):
-        code = (
-            "class A:\n"
-            "    pass\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        tree = parser.parse()
-        self.assertEqual(len(tree.body), 1)
-        cls = tree.body[0]
-        self.assertEqual(cls.name, "A")
-        self.assertTrue(any(isinstance(stmt, PassStmt) for stmt in cls.methods))
-
-    def test_class_pass_then_method_should_fail(self):
-        code = (
-            "class A:\n"
-            "    pass\n"
-            "    def foo():\n"
-            "        pass\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        with self.assertRaises(ParserError):
-            parser.parse()
-
-    def test_class_pass_then_field_should_fail(self):
-        code = (
-            "class A:\n"
-            "    pass\n"
-            "    x: int = 5\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        with self.assertRaises(ParserError):
-            parser.parse()
-
-    def test_class_fields_then_methods_ok(self):
-        code = (
-            "class A:\n"
-            "    x: int = 5\n"
-            "    def foo() -> int:\n"
-            "        return self.x\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        tree = parser.parse()
-        cls = tree.body[0]
-        self.assertEqual(len(cls.fields), 1)
-        self.assertEqual(len(cls.methods), 1)
-
-    def test_class_field_after_method_should_fail(self):
-        code = (
-            "class A:\n"
-            "    def foo():\n"
-            "        pass\n"
-            "    x: int = 5\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        with self.assertRaises(ParserError):
-            parser.parse()
-
-    def test_class_expression_should_fail(self):
-        code = (
-            "class A:\n"
-            "    print(123)\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        with self.assertRaises(ParserError):
-            parser.parse()
-
-    def test_multiple_statements_on_one_line_should_fail(self):
-        code = (
-            "def main() -> int:\n"
-            "    print(1); print(2)\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        with self.assertRaises(ParserError):
-            parser.parse()
-
-    def test_assignment_inside_expression_should_fail(self):
-        code = (
-            "def main() -> int:\n"
-            "    y = (x = 5)\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        with self.assertRaises(ParserError):
-            parser.parse()
-
-    def test_list_assignment_target_should_fail(self):
-        code = (
-            "def main() -> int:\n"
-            "    [a, b] = [1, 2]\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        with self.assertRaises(ParserError):
-            parser.parse()
-
-    def test_nested_function_definition_should_fail(self):
-        code = (
-            "def outer() -> int:\n"
-            "    def inner() -> int:\n"
-            "        return 0\n"
-            "    return 1\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        with self.assertRaises(ParserError):
-            parser.parse()
-
-    def test_top_level_expression_should_fail(self):
-        code = (
-            "print(123)\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        with self.assertRaises(ParserError):
-            parser.parse()
-
-    def test_function_with_only_pass(self):
-        code = (
-            "def noop() -> int:\n"
-            "    pass\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
-        func = ast.body[0]
-        self.assertIsInstance(func, FunctionDef)
-        self.assertEqual(func.name, "noop")
-        self.assertEqual(len(func.body), 1)
-        self.assertIsInstance(func.body[0], PassStmt)
-
-    def test_class_with_two_fields_and_two_methods(self):
-        code = (
-            "class A:\n"
-            "    x: int = 1\n"
-            "    y: int = 2\n"
-            "\n"
-            "    def foo() -> int:\n"
-            "        return self.x\n"
-            "\n"
-            "    def bar() -> int:\n"
-            "        return self.y\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        tree = parser.parse()
-        cls = tree.body[0]
+        # --- Check ClassDef ---
+        cls = prog.body[2]
         self.assertIsInstance(cls, ClassDef)
-        self.assertEqual(len(cls.fields), 2)
-        self.assertEqual(len(cls.methods), 2)
-        field_names = [field.name for field in cls.fields]
-        self.assertIn("x", field_names)
-        self.assertIn("y", field_names)
-        method_names = [method.name for method in cls.methods]
-        self.assertIn("foo", method_names)
-        self.assertIn("bar", method_names)
+        self.assertEqual(cls.name, "Counter")
+        self.assertEqual(len(cls.fields), 1)
+        self.assertEqual(cls.fields[0].name, "value")
+        self.assertEqual(cls.fields[0].declared_type, "int")
 
-    def test_assignment_to_nested_attribute(self):
-        code = (
-            "def main() -> int:\n"
-            "    player.stats.hp = 100\n"
-            "    return 0\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
-        assign_stmt = ast.body[0].body[0]
-        self.assertIsInstance(assign_stmt, AssignStmt)
-        target = assign_stmt.target
-        self.assertIsInstance(target, AttributeExpr)
-        # Check it's player.stats.hp
-        self.assertEqual(target.attr, "hp")
-        level2 = target.obj
-        self.assertIsInstance(level2, AttributeExpr)
-        self.assertEqual(level2.attr, "stats")
-        self.assertIsInstance(level2.obj, Identifier)
-        self.assertEqual(level2.obj.name, "player")
+        self.assertEqual(len(cls.methods), 1)
+        self.assertEqual(cls.methods[0].name, "increment")
+        self.assertEqual(cls.methods[0].params[0].name, "self")
 
-    def test_class_pass_then_expression_should_fail(self):
+        # --- Check FunctionDef ---
+        fn = prog.body[3]
+        self.assertIsInstance(fn, FunctionDef)
+        self.assertEqual(fn.name, "main")
+        self.assertEqual(fn.return_type, "int")
+
+        # Inside function: global, assignment, while, if-else
+        stmt_types = [type(s) for s in fn.body]
+        self.assertIn(GlobalStmt, stmt_types)
+        self.assertIn(AssignStmt, stmt_types)
+        self.assertTrue(any(isinstance(s, WhileStmt) for s in fn.body))
+        self.assertTrue(any(isinstance(s, IfStmt) for s in fn.body))
+
+
+    def test_parse_program_with_try_except_and_assert(self):
         code = (
-            "class A:\n"
-            "    pass\n"
-            "    print(123)\n"
+            "def safe_div(x: int, y: int) -> float:\n"
+            "    try:\n"
+            "        return x / y\n"
+            "    except ZeroDivisionError as err:\n"
+            "        print(err)\n"
+            "        assert y != 0\n"
+            "        return 0.0\n"
         )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
+
+        parser = self.parse_tokens(code)
+        prog = parser.parse()
+
+        self.assertIsInstance(prog, Program)
+        self.assertEqual(len(prog.body), 1)
+        fn = prog.body[0]
+        self.assertIsInstance(fn, FunctionDef)
+        self.assertEqual(fn.name, "safe_div")
+        self.assertEqual(len(fn.body), 1)
+
+        try_stmt = fn.body[0]
+        self.assertIsInstance(try_stmt, TryExceptStmt)
+        self.assertEqual(len(try_stmt.except_blocks), 1)
+
+        exc = try_stmt.except_blocks[0]
+        self.assertEqual(exc.exc_type, "ZeroDivisionError")
+        self.assertEqual(exc.alias, "err")
+
+
+class TestParserEdgeCases(unittest.TestCase):
+    def lex(self, src: str):
+        return Lexer(src).tokenize()
+
+    def parse_program(self, src: str):
+        return Parser(self.lex(src)).parse()
+
+    def parse_expr(self, src: str):
+        return Parser(self.lex(src)).parse_expr()
+
+    # precedence -------------------------------------------------------
+    def test_unary_and_mul_precedence(self):
+        expr = self.parse_expr("-x * y\n")
+        self.assertIsInstance(expr, BinOp)
+        self.assertEqual(expr.op, "*")
+        self.assertIsInstance(expr.left, UnaryOp)
+
+    def test_chained_comparison_illegal(self):
+        """
+        We expect a ParserError only when the whole line is parsed
+        as a statement (because the trailing '< c' is left over).
+        """
         with self.assertRaises(ParserError):
-            parser.parse()
+            # parse **program**, not just expression
+            self.parse_program("a < b < c\n")
 
-    def test_complex_assignment_target_attribute_index_chain(self):
-        code = (
-            "def main() -> int:\n"
-            "    game.world[0].player.hp = 100\n"
-            "    return 0\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
-        assign_stmt = ast.body[0].body[0]
-        self.assertIsInstance(assign_stmt, AssignStmt)
-        target = assign_stmt.target
-        self.assertIsInstance(target, AttributeExpr)
-        self.assertEqual(target.attr, "hp")
-        mid = target.obj
-        self.assertIsInstance(mid, AttributeExpr)
-        self.assertEqual(mid.attr, "player")
-        mid_index = mid.obj
-        self.assertIsInstance(mid_index, IndexExpr)
-        self.assertIsInstance(mid_index.index, Literal)
-        self.assertEqual(mid_index.index.value, 0)
-        self.assertIsInstance(mid_index.base, AttributeExpr)
-        self.assertEqual(mid_index.base.attr, "world")
-        self.assertIsInstance(mid_index.base.obj, Identifier)
-        self.assertEqual(mid_index.base.obj.name, "game")
+    # `is` and `is not` -----------------------------------------------
+    def test_parse_is_operator(self):
+        expr = self.parse_expr("a is b\n")
+        self.assertIsInstance(expr, BinOp)
+        self.assertEqual(expr.op, "is")
 
-    def test_empty_function_body_should_fail(self):
-        code = (
-            "def foo() -> int:\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
+    def test_parse_is_not_operator(self):
+        expr = self.parse_expr("a is not b\n")
+        self.assertIsInstance(expr, BinOp)
+        self.assertEqual(expr.op, "is not")
+
+    # parameters -------------------------------------------------------
+    def test_param_with_type_only(self):
+        stmt = self.parse_program("def f(x: int) -> None:\n    pass\n").body[0]
+        param = stmt.params[0]
+        self.assertEqual((param.name, param.type, param.default), ("x", "int", None))
+
+    def test_param_with_default_only(self):
+        stmt = self.parse_program("def f(x = 5) -> None:\n    pass\n").body[0]
+        param = stmt.params[0]
+        self.assertIsNone(param.type)
+        self.assertIsNotNone(param.default)
+
+    def test_param_type_and_default(self):
+        stmt = self.parse_program("def f(x: int = 0) -> None:\n    pass\n").body[0]
+        param = stmt.params[0]
+        self.assertEqual(param.type, "int")
+        self.assertIsNotNone(param.default)
+
+    # literals ---------------------------------------------------------
+    def test_nested_list_and_dict(self):
+        expr = self.parse_expr("[{'a': [1, 2]}]\n")
+        self.assertIsInstance(expr, ListExpr)
+        self.assertIsInstance(expr.elements[0], DictExpr)
+
+    # global stmt ------------------------------------------------------
+    def test_global_multiple_names(self):
         with self.assertRaises(ParserError):
-            parser.parse()
+            self.parse_program("global a, b, c\n")
 
-    def test_empty_class_body_should_fail(self):
-        code = (
-            "class A:\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
+    # VarDecl missing initializer -------------------------------------
+    def test_vardecl_without_initializer(self):
         with self.assertRaises(ParserError):
-            parser.parse()
+            self.parse_program("x: int\n")
 
-    def test_assign_to_literal_should_fail(self):
-        code = (
-            "def f() -> int:\n"
-            "    123 = 5\n"
+    # illegal break ----------------------------------------------------
+    def test_break_outside_loop(self):
+        bad_fun = (
+            "def f() -> None:\n"
+            "    break\n"
         )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
         with self.assertRaises(ParserError):
-            parser.parse()
+            self.parse_program(bad_fun)
 
-    def test_top_level_expression_should_fail(self):
-        code = (
-            "print(123)\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
+    # FStringLiteral vars integrity -----------------------------------
+    def test_fstring_vars_list(self):
+        lit = Parser(self.lex('f"{a}{b}{c}"\n')).parse_literal()
+        self.assertIsInstance(lit, FStringLiteral)
+        self.assertEqual(lit.vars, ["a", "b", "c"])
+
+    def test_break_error(self):
         with self.assertRaises(ParserError):
-            parser.parse()
+            self.parse_program("break\n")
 
-    def test_function_no_parameters(self):
-        code = (
-            "def foo() -> int:\n"
-            "    return 0\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
-        func = ast.body[0]
-        self.assertIsInstance(func, FunctionDef)
-        self.assertEqual(func.name, "foo")
-        self.assertEqual(func.params, [])
-
-    def test_attribute_and_index_chain_in_expr(self):
-        code = (
-            "def main() -> int:\n"
-            "    x = obj[0].field[1]\n"
-            "    return 0\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
-        assign = ast.body[0].body[0]
-        self.assertIsInstance(assign, AssignStmt)
-        value = assign.value
-        self.assertIsInstance(value, IndexExpr)
-        self.assertIsInstance(value.base, AttributeExpr)
-        self.assertEqual(value.base.attr, "field")
-        self.assertIsInstance(value.base.obj, IndexExpr)
-        self.assertIsInstance(value.base.obj.base, Identifier)
-        self.assertEqual(value.base.obj.base.name, "obj")
-
-    def test_class_field_without_initializer_should_fail(self):
-        code = (
-            "class A:\n"
-            "    x: int\n"
-        )
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
+    def test_return_error(self):
         with self.assertRaises(ParserError):
-            parser.parse()
+            self.parse_program("return 1\n")
+
+    def test_global_top_level_error(self):
+        with self.assertRaises(ParserError):
+            self.parse_program("global x\n")
+
+    def test_duplicate_param_error(self):
+        bad = "def f(x: int, x: int) -> None:\n    pass\n"
+        with self.assertRaises(ParserError):
+            self.parse_program(bad)
+
+    def test_empty_function_body_error(self):
+        bad = "def f() -> None:\n    \n"
+        with self.assertRaises(ParserError):
+            self.parse_program(bad)
+
+    def test_empty_class_body_error(self):
+        bad = "class C:\n    \n"
+        with self.assertRaises(ParserError):
+            self.parse_program(bad)
+
+    def test_chained_comparison_error(self):
+        with self.assertRaises(ParserError):
+            self.parse_program("a < b < c\n")
+
+
 
 
 if __name__ == "__main__":
