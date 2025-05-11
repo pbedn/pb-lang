@@ -1,835 +1,1024 @@
+from sys import exception
 import unittest
-from lang_ast import *
-from parser import Parser, ParserError
-from lexer import Lexer
-from type_checker import TypeChecker, LangTypeError
 
-class TestTypeChecker(unittest.TestCase):
-    def check_ok(self, node):
+from type_checker import TypeChecker, TypeError
+from lang_ast import (
+    Program,
+    VarDecl,
+    Literal,
+    Identifier,
+    BinOp,
+    UnaryOp,
+    CallExpr,
+    ReturnStmt,
+    Parameter,
+    FunctionDef,
+    AssignStmt,
+    IndexExpr,
+    AugAssignStmt,
+    IfStmt,
+    IfBranch,
+    WhileStmt,
+    ForStmt,
+    BreakStmt,
+    ContinueStmt,
+    PassStmt,
+    ClassDef,
+    AttributeExpr,
+    IndexExpr,
+    ListExpr,
+    DictExpr,
+    AssertStmt,
+    RaiseStmt,
+    GlobalStmt,
+    TryExceptStmt,
+    ExceptBlock,
+)
+
+
+
+# ────────────────────────────────────────────────────────────────
+# Unit-level tests (method-level granularity)
+# ────────────────────────────────────────────────────────────────
+class TestTypeCheckerInternals(unittest.TestCase):
+    def setUp(self):
+        self.tc = TypeChecker()
+
+    def test_check_var_decl_matches_type(self):
+        decl = VarDecl(name="x", declared_type="int", value=Literal(raw="42"))
+        self.tc.check_var_decl(decl)  # should not raise
+        self.assertEqual(self.tc.env["x"], "int")
+
+    def test_check_var_decl_mismatch(self):
+        decl = VarDecl(name="x", declared_type="float", value=Literal(raw="42"))
+        with self.assertRaises(TypeError):
+            self.tc.check_var_decl(decl)
+
+    def test_check_expr_literal_int(self):
+        typ = self.tc.check_expr(Literal(raw="123"))
+        self.assertEqual(typ, "int")
+
+    def test_check_expr_literal_float(self):
+        typ = self.tc.check_expr(Literal(raw="3.14"))
+        self.assertEqual(typ, "float")
+
+    def test_check_expr_literal_scientific(self):
+        typ = self.tc.check_expr(Literal(raw="6.02e23"))
+        self.assertEqual(typ, "float")
+
+    def test_check_expr_literal_bool_true(self):
+        typ = self.tc.check_expr(Literal(raw="True"))
+        self.assertEqual(typ, "bool")
+
+    def test_check_expr_literal_bool_false(self):
+        typ = self.tc.check_expr(Literal(raw="False"))
+        self.assertEqual(typ, "bool")
+
+    def test_check_expr_literal_none(self):
+        typ = self.tc.check_expr(Literal(raw="None"))
+        self.assertEqual(typ, "None")
+
+    def test_check_expr_identifier_found(self):
+        self.tc.env["y"] = "int"
+        typ = self.tc.check_expr(Identifier(name="y"))
+        self.assertEqual(typ, "int")
+
+    def test_check_expr_identifier_undefined(self):
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(Identifier(name="z"))
+
+    def test_binop_add_ints(self):
+        expr = BinOp(Literal("1"), "+", Literal("2"))
+        self.assertEqual(self.tc.check_expr(expr), "int")
+
+    def test_binop_add_floats(self):
+        expr = BinOp(Literal("1.0"), "+", Literal("2.0"))
+        self.assertEqual(self.tc.check_expr(expr), "float")
+
+    def test_binop_add_mismatch(self):
+        expr = BinOp(Literal("1"), "+", Literal("2.0"))
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_binop_eq(self):
+        expr = BinOp(Literal("42"), "==", Literal("42"))
+        self.assertEqual(self.tc.check_expr(expr), "bool")
+
+    def test_binop_lt(self):
+        expr = BinOp(Literal("1"), "<", Literal("2"))
+        self.assertEqual(self.tc.check_expr(expr), "bool")
+
+    def test_binop_is(self):
+        expr = BinOp(Literal("None"), "is", Literal("None"))
+        self.assertEqual(self.tc.check_expr(expr), "bool")
+
+    def test_binop_and_bool(self):
+        expr = BinOp(Literal("True"), "and", Literal("False"))
+        self.assertEqual(self.tc.check_expr(expr), "bool")
+
+    def test_binop_and_nonbool(self):
+        expr = BinOp(Literal("1"), "and", Literal("2"))
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_unary_minus_int(self):
+        expr = UnaryOp("-", Literal("42"))
+        self.assertEqual(self.tc.check_expr(expr), "int")
+
+    def test_unary_minus_float(self):
+        expr = UnaryOp("-", Literal("3.14"))
+        self.assertEqual(self.tc.check_expr(expr), "float")
+
+    def test_unary_minus_invalid(self):
+        expr = UnaryOp("-", Literal("True"))
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_unary_not_bool(self):
+        expr = UnaryOp("not", Literal("False"))
+        self.assertEqual(self.tc.check_expr(expr), "bool")
+
+    def test_unary_not_invalid(self):
+        expr = UnaryOp("not", Literal("1"))
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_call_expr_valid(self):
+        self.tc.functions["inc"] = (["int"], "int")
+        call = CallExpr(func=Identifier("inc"), args=[Literal("1")])
+        self.assertEqual(self.tc.check_expr(call), "int")
+
+    def test_call_expr_wrong_arg_count(self):
+        self.tc.functions["f"] = (["int", "int"], "int")
+        call = CallExpr(func=Identifier("f"), args=[Literal("1")])
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(call)
+
+    def test_call_expr_wrong_arg_type(self):
+        self.tc.functions["f"] = (["int"], "int")
+        call = CallExpr(func=Identifier("f"), args=[Literal("True")])
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(call)
+
+    def test_call_expr_unknown_function(self):
+        call = CallExpr(func=Identifier("ghost"), args=[])
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(call)
+
+    def test_return_stmt_matching_type(self):
+        self.tc.current_return_type = "int"
+        stmt = ReturnStmt(value=Literal("1"))
+        self.tc.check_return_stmt(stmt)  # should not raise
+
+    def test_return_stmt_mismatch(self):
+        self.tc.current_return_type = "int"
+        stmt = ReturnStmt(value=Literal("3.14"))
+        with self.assertRaises(TypeError):
+            self.tc.check_return_stmt(stmt)
+
+    def test_return_stmt_void_expected(self):
+        self.tc.current_return_type = "None"
+        stmt = ReturnStmt(value=None)
+        self.tc.check_return_stmt(stmt)  # OK
+
+    def test_return_stmt_nonvoid_in_void_function(self):
+        self.tc.current_return_type = "None"
+        stmt = ReturnStmt(value=Literal("1"))
+        with self.assertRaises(TypeError):
+            self.tc.check_return_stmt(stmt)
+
+    def test_return_stmt_outside_function(self):
+        self.tc.current_return_type = None
+        stmt = ReturnStmt(value=Literal("42"))
+        with self.assertRaises(TypeError):
+            self.tc.check_return_stmt(stmt)
+
+    def test_check_function_def_valid(self):
+        fn = FunctionDef(
+            name="square",
+            params=[Parameter("x", "int")],
+            return_type="int",
+            body=[ReturnStmt(BinOp(Identifier("x"), "*", Identifier("x")))]
+        )
+        self.tc.check_function_def(fn)
+        self.assertIn("square", self.tc.functions)
+
+    def test_check_function_def_duplicate_param(self):
+        fn = FunctionDef(
+            name="bad",
+            params=[Parameter("x", "int"), Parameter("x", "float")],
+            return_type="int",
+            body=[ReturnStmt(Identifier("x"))]
+        )
+        with self.assertRaises(TypeError):
+            self.tc.check_function_def(fn)
+
+    def test_check_function_def_missing_type(self):
+        fn = FunctionDef(
+            name="oops",
+            params=[Parameter("x", None)],
+            return_type="int",
+            body=[ReturnStmt(Identifier("x"))]
+        )
+        with self.assertRaises(TypeError):
+            self.tc.check_function_def(fn)
+
+    def test_assign_stmt_matching_type(self):
+        self.tc.env["x"] = "int"
+        stmt = AssignStmt(target=Identifier("x"), value=Literal("42"))
+        self.tc.check_assign_stmt(stmt)  # OK
+
+    def test_assign_stmt_mismatch(self):
+        self.tc.env["x"] = "int"
+        stmt = AssignStmt(target=Identifier("x"), value=Literal("3.14"))
+        with self.assertRaises(TypeError):
+            self.tc.check_assign_stmt(stmt)
+
+    def test_assign_stmt_undefined(self):
+        stmt = AssignStmt(target=Identifier("x"), value=Literal("42"))
+        with self.assertRaises(TypeError):
+            self.tc.check_assign_stmt(stmt)
+
+    def test_assign_stmt_non_identifier_target(self):
+        self.tc.env["x"] = "int"
+        # Simulate invalid target like x[0] = ...
+        stmt = AssignStmt(target=IndexExpr(Identifier("x"), Literal("0")), value=Literal("1"))
+        with self.assertRaises(TypeError):
+            self.tc.check_assign_stmt(stmt)
+
+    def test_aug_assign_valid(self):
+        self.tc.env["x"] = "int"
+        stmt = AugAssignStmt(Identifier("x"), "+=", Literal("1"))
+        self.tc.check_aug_assign_stmt(stmt)
+
+    def test_aug_assign_type_mismatch(self):
+        self.tc.env["x"] = "int"
+        stmt = AugAssignStmt(Identifier("x"), "+=", Literal("3.14"))
+        with self.assertRaises(TypeError):
+            self.tc.check_aug_assign_stmt(stmt)
+
+    def test_aug_assign_unsupported_operator(self):
+        self.tc.env["x"] = "int"
+        stmt = AugAssignStmt(Identifier("x"), "**=", Literal("2"))  # Invalid op
+        with self.assertRaises(TypeError):
+            self.tc.check_aug_assign_stmt(stmt)
+
+    def test_aug_assign_on_undefined_variable(self):
+        stmt = AugAssignStmt(Identifier("x"), "+=", Literal("1"))
+        with self.assertRaises(TypeError):
+            self.tc.check_aug_assign_stmt(stmt)
+
+    def test_if_stmt_with_bool_condition(self):
+        stmt = IfStmt(branches=[
+            IfBranch(condition=Literal("True"), body=[
+                VarDecl("x", "int", Literal("1")),
+                AssignStmt(Identifier("x"), Literal("2"))
+            ]),
+            IfBranch(condition=None, body=[
+                AssignStmt(Identifier("x"), Literal("3"))
+            ])
+        ])
+        self.tc.env["x"] = "int"
+        self.tc.check_if_stmt(stmt)
+
+    def test_if_stmt_with_invalid_condition(self):
+        stmt = IfStmt(branches=[
+            IfBranch(condition=Literal("42"), body=[])
+        ])
+        with self.assertRaises(TypeError):
+            self.tc.check_if_stmt(stmt)
+
+    def test_while_stmt_valid(self):
+        stmt = WhileStmt(
+            condition=Literal("True"),
+            body=[
+                VarDecl("x", "int", Literal("1")),
+                AssignStmt(Identifier("x"), Literal("2")),
+                BreakStmt(),
+                ContinueStmt()
+            ]
+        )
+        self.tc.env["x"] = "int"
+        self.tc.check_while_stmt(stmt)
+
+    def test_while_stmt_condition_not_bool(self):
+        stmt = WhileStmt(condition=Literal("42"), body=[])
+        with self.assertRaises(TypeError):
+            self.tc.check_while_stmt(stmt)
+
+    def test_break_outside_loop(self):
+        with self.assertRaises(TypeError):
+            self.tc.check_stmt(BreakStmt())
+
+    def test_continue_outside_loop(self):
+        with self.assertRaises(TypeError):
+            self.tc.check_stmt(ContinueStmt())
+
+    def test_for_loop_valid(self):
+        stmt = ForStmt(
+            var_name="item",
+            iterable=Literal("[]"),
+            body=[
+                PassStmt()
+            ]
+        )
+        self.tc.env["values"] = "list[int]"
+        stmt.iterable = Identifier("values")
+        self.tc.check_for_stmt(stmt)
+
+    def test_for_loop_iterable_not_list(self):
+        stmt = ForStmt(
+            var_name="x",
+            iterable=Literal("42"),
+            body=[]
+        )
+        with self.assertRaises(TypeError):
+            self.tc.check_for_stmt(stmt)
+
+    def test_class_def_simple(self):
+        cls = ClassDef(
+            name="Point",
+            base=None,
+            fields=[
+                VarDecl("x", "int", Literal("0")),
+                VarDecl("y", "int", Literal("0"))
+            ],
+            methods=[]
+        )
+        self.tc.check_class_def(cls)
+        self.assertIn("Point", self.tc.classes)
+        self.assertEqual(self.tc.classes["Point"]["x"], "int")
+
+    def test_class_def_with_base(self):
+        self.tc.classes["Base"] = {}
+        cls = ClassDef(
+            name="Child",
+            base="Base",
+            fields=[],
+            methods=[]
+        )
+        self.tc.check_class_def(cls)
+
+    def test_class_def_invalid_base(self):
+        cls = ClassDef(
+            name="Child",
+            base="Ghost",
+            fields=[],
+            methods=[]
+        )
+        with self.assertRaises(TypeError):
+            self.tc.check_class_def(cls)
+
+    def test_class_def_with_method(self):
+        cls = ClassDef(
+            name="Greeter",
+            base=None,
+            fields=[],
+            methods=[
+                FunctionDef(
+                    name="say_hi",
+                    params=[Parameter("self", "Greeter")],
+                    return_type="None",
+                    body=[ReturnStmt(None)]
+                )
+            ]
+        )
+        self.tc.check_class_def(cls)
+
+    def test_attribute_expr_valid(self):
+        self.tc.env["self"] = "Point"
+        self.tc.classes["Point"] = {"x": "int", "y": "int"}
+
+        expr = AttributeExpr(Identifier("self"), "x")
+        typ = self.tc.check_expr(expr)
+        self.assertEqual(typ, "int")
+
+    def test_attribute_expr_unknown_class(self):
+        self.tc.env["obj"] = "Ghost"
+        expr = AttributeExpr(Identifier("obj"), "foo")
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_attribute_expr_field_not_found(self):
+        self.tc.env["self"] = "Point"
+        self.tc.classes["Point"] = {"x": "int"}
+        expr = AttributeExpr(Identifier("self"), "y")
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_attribute_expr_obj_not_identifier(self):
+        expr = AttributeExpr(BinOp(Literal("1"), "+", Literal("2")), "x")
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_index_expr_list_int(self):
+        self.tc.env["nums"] = "list[int]"
+        expr = IndexExpr(Identifier("nums"), Literal("0"))
+        self.assertEqual(self.tc.check_expr(expr), "int")
+
+    def test_index_expr_list_wrong_index(self):
+        self.tc.env["nums"] = "list[int]"
+        expr = IndexExpr(Identifier("nums"), Literal('"zero"'))
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_index_expr_dict_str(self):
+        self.tc.env["scores"] = "dict[str, int]"
+        expr = IndexExpr(Identifier("scores"), Literal('"math"'))
+        self.assertEqual(self.tc.check_expr(expr), "int")
+
+    def test_index_expr_dict_wrong_key(self):
+        self.tc.env["scores"] = "dict[str, int]"
+        expr = IndexExpr(Identifier("scores"), Literal("0"))
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_index_expr_invalid_base(self):
+        self.tc.env["x"] = "int"
+        expr = IndexExpr(Identifier("x"), Literal("0"))
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_list_expr_valid(self):
+        expr = ListExpr(elements=[
+            Literal("1"), Literal("2"), Literal("3")
+        ])
+        self.assertEqual(self.tc.check_expr(expr), "list[int]")
+
+    def test_list_expr_mixed_types(self):
+        expr = ListExpr(elements=[
+            Literal("1"), Literal("2.0")
+        ])
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_list_expr_empty(self):
+        expr = ListExpr(elements=[])
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_dict_expr_valid(self):
+        expr = DictExpr(
+            keys=[Literal('"a"'), Literal('"b"')],
+            values=[Literal("1"), Literal("2")]
+        )
+        self.assertEqual(self.tc.check_expr(expr), "dict[str, int]")
+
+    def test_dict_expr_non_str_keys(self):
+        expr = DictExpr(
+            keys=[Literal("1")],
+            values=[Literal("2")]
+        )
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_dict_expr_mixed_value_types(self):
+        expr = DictExpr(
+            keys=[Literal('"a"'), Literal('"b"')],
+            values=[Literal("1"), Literal("3.14")]
+        )
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_dict_expr_empty(self):
+        expr = DictExpr(keys=[], values=[])
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_assert_stmt_valid(self):
+        stmt = AssertStmt(condition=Literal("True"))
+        self.tc.check_assert_stmt(stmt)  # should pass
+
+    def test_assert_stmt_invalid_type(self):
+        stmt = AssertStmt(condition=Literal("42"))
+        with self.assertRaises(TypeError):
+            self.tc.check_assert_stmt(stmt)
+
+    def test_raise_stmt_valid(self):
+        stmt = RaiseStmt(exception=Literal('"Error!"'))
+        self.tc.check_raise_stmt(stmt)
+
+    def test_raise_stmt_none(self):
+        stmt = RaiseStmt(exception=Literal("None"))
+        with self.assertRaises(TypeError):
+            self.tc.check_raise_stmt(stmt)
+
+    def test_global_stmt_in_function(self):
+        self.tc.current_return_type = "int"
+        stmt = GlobalStmt(names=["x", "y"])
+        self.tc.check_global_stmt(stmt)
+
+    def test_global_stmt_outside_function(self):
+        self.tc.current_return_type = None
+        stmt = GlobalStmt(names=["x"])
+        with self.assertRaises(TypeError):
+            self.tc.check_global_stmt(stmt)
+
+    def test_try_except_valid(self):
+        self.tc.classes["Error"] = {}
+        stmt = TryExceptStmt(
+            try_body=[
+                AssertStmt(condition=Literal("True"))
+            ],
+            except_blocks=[
+                ExceptBlock(
+                    exc_type="Error",
+                    alias="e",
+                    body=[PassStmt()]
+                )
+            ]
+        )
+        self.tc.current_return_type = "None"
+        self.tc.check_try_except_stmt(stmt)
+
+    def test_try_except_unknown_exc_type(self):
+        stmt = TryExceptStmt(
+            try_body=[PassStmt()],
+            except_blocks=[
+                ExceptBlock(exc_type="Ghost", alias=None, body=[PassStmt()])
+            ]
+        )
+        with self.assertRaises(TypeError):
+            self.tc.check_try_except_stmt(stmt)
+
+
+# ────────────────────────────────────────────────────────────────
+# Top-down tests (integration-level)
+# ────────────────────────────────────────────────────────────────
+class TestTypeCheckerProgramLevel(unittest.TestCase):
+    def test_correct_program(self):
+        """
+        Program being tested:
+            x: int = 42
+
+        Expected:
+            - Variable 'x' is declared as int and initialized with int literal
+            - Should pass type checking
+        """
+        prog = Program(body=[
+            VarDecl(name="x", declared_type="int", value=Literal(raw="42"))
+        ])
+        TypeChecker().check(prog)
+
+    def test_type_mismatch_in_program(self):
+        """
+        Program being tested:
+            x: str = 42
+
+        Error:
+            - Literal '42' is an int
+            - Declared type is str → mismatch
+
+        Expected:
+            - Should raise TypeError
+        """
+        prog = Program(body=[
+            VarDecl(name="x", declared_type="str", value=Literal(raw="42"))
+        ])
+        with self.assertRaises(TypeError):
+            TypeChecker().check(prog)
+
+    def test_call_expr_in_program_valid(self):
+        """
+        Program being tested:
+            x: int = 1
+            y: int = inc(x)
+
+        Assumptions:
+            - x is declared as int
+            - inc is a function: (int) -> int
+
+        Expected:
+            - Should type check successfully.
+        """
+        prog = Program(body=[
+            VarDecl(name="x", declared_type="int", value=Literal("1")),
+            VarDecl(name="y", declared_type="int", value=CallExpr(
+                func=Identifier("inc"),
+                args=[Identifier("x")]
+            ))
+        ])
         checker = TypeChecker()
-        checker.check(node)  # Should not raise
+        checker.env["x"] = "int"
+        checker.functions["inc"] = (["int"], "int")
+        checker.check(prog)
 
-    def check_type_error(self, node):
+    def test_call_expr_in_program_type_mismatch(self):
+        """
+        Program being tested:
+            s: str = inc(3.14)
+
+        Assumptions:
+            - inc is a function: (int) -> int
+
+        Error:
+            - Argument 3.14 is float, but inc expects int
+            - Assigned to a variable of type str, which is also incorrect
+
+        Expected:
+            - Should raise TypeError
+        """
+        prog = Program(body=[
+            VarDecl(name="s", declared_type="str", value=CallExpr(
+                func=Identifier("inc"),
+                args=[Literal("3.14")]
+            ))
+        ])
         checker = TypeChecker()
-        with self.assertRaises(LangTypeError):
-            checker.check(node)
+        checker.functions["inc"] = (["int"], "int")
+        with self.assertRaises(TypeError):
+            checker.check(prog)
 
-    def test_valid_function(self):
-        prog = Program([
-            FunctionDef(
-                name="add",
-                params=[("x", "int"), ("y", "int")],
-                body=[ReturnStmt(BinOp(Identifier("x"), "+", Identifier("y")))],
-                return_type="int"
-            )
-        ])
-        self.check_ok(prog)
+    def test_function_def_and_call(self):
+        """
+        Program being tested:
+            def double(n: int) -> int:
+                return n + n
 
-    def test_invalid_return_type(self):
-        prog = Program([
-            FunctionDef(
-                name="wrong",
-                params=[],
-                body=[ReturnStmt(Literal("hello"))],
-                return_type="int"
-            )
-        ])
-        self.check_type_error(prog)
+            result: int = double(5)
 
-    def test_undeclared_variable(self):
-        prog = Program([
+        Expected:
+            - Function 'double' registered and type-checked
+            - Function call type-checked
+        """
+        prog = Program(body=[
             FunctionDef(
-                name="f",
-                params=[],
-                body=[ReturnStmt(Identifier("x"))],
-                return_type="int"
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_type_mismatch_binop(self):
-        prog = Program([
-            FunctionDef(
-                name="f",
-                params=[],
+                name="double",
+                params=[Parameter("n", "int")],
+                return_type="int",
                 body=[
-                    AssignStmt("a", Literal(1)),
-                    AssignStmt("b", Literal("str")),
-                    ReturnStmt(BinOp(Identifier("a"), "+", Identifier("b")))
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_logical_expression(self):
-        prog = Program([
-            FunctionDef(
-                name="logic",
-                params=[("x", "bool"), ("y", "bool")],
-                body=[ReturnStmt(BinOp(Identifier("x"), "and", Identifier("y")))],
-                return_type="bool"
-            )
-        ])
-        self.check_ok(prog)
-
-    def test_call_argument_mismatch(self):
-        prog = Program([
-            FunctionDef(
-                name="f",
-                params=[("x", "int")],
-                body=[ReturnStmt(Identifier("x"))],
-                return_type="int"
+                    ReturnStmt(BinOp(Identifier("n"), "+", Identifier("n")))
+                ]
             ),
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[ReturnStmt(CallExpr(Identifier("f"), [Literal("oops")]))],
-                return_type="int"
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_indexing_type_errors(self):
-        prog = Program([
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    AssignStmt("d", Literal(42)),
-                    AssignStmt("x", IndexExpr(Identifier("d"), Literal(0))),
-                    ReturnStmt(Identifier("x"))
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_vardecl_type_check(self):
-        prog = Program([
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    VarDecl("x", "int", Literal(10)),
-                    ReturnStmt(Identifier("x")),
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_ok(prog)
-
-    def test_vardecl_type_mismatch(self):
-        prog = Program([
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    VarDecl("x", "int", Literal("oops")),
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_missing_type_in_global_should_fail(self):
-        # This mimics: counter = 100  (without type)
-        prog = Program([
-            AssignStmt("counter", Literal(100)),  # 🚫 invalid: no type
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    ReturnStmt(Literal(0))
-                ],
-                return_type="int"
-            )
-        ])
-        with self.assertRaises(ParserError) as ctx:
-            # Simulate parsing the invalid top-level assignment
-            lexer = Lexer("counter = 100")
-            tokens = lexer.tokenize()
-            parser = Parser(tokens)
-            parser.parse()
-        self.assertIn("Only function definitions and typed variable declarations are allowed", str(ctx.exception))
-
-    def test_global_vardecl_is_valid(self):
-        prog = Program([
-            VarDecl("counter", "int", Literal(100)),  # ✅ valid
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    ReturnStmt(Identifier("counter"))
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_ok(prog)
-
-    def test_list_mixed_type_type_error(self):
-        prog = Program([
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    AssignStmt("bad_list", ListExpr([Literal(1), Literal(2.0), Literal(3)])),
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_index_expr_infers_float_type(self):
-        prog = Program([
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    VarDecl("floats", "list[float]", ListExpr([Literal(1.0), Literal(2.0)])),
-                    VarDecl("x", "float", IndexExpr(Identifier("floats"), Literal(0))),
-                    ReturnStmt(Identifier("x"))
-                ],
-                return_type="float"
-            )
-        ])
-        self.check_ok(prog)
-
-    def test_augassign_float_type_check(self):
-        prog = Program([
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    VarDecl("value", "float", Literal(1.5)),
-                    AugAssignStmt(Identifier("value"), "+", Literal(2.5)),
-                    ReturnStmt(Literal(0))
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_ok(prog)
-
-    def test_augassign_local_ok(self):
-        prog = Program([
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    VarDecl("x", "int", Literal(10)),
-                    AugAssignStmt(Identifier("x"), "+", Literal(5)),
-                    ReturnStmt(Identifier("x"))
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_ok(prog)
-
-    def test_augassign_global_ok(self):
-        prog = Program([
-            VarDecl("counter", "int", Literal(0)),
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    GlobalStmt(["counter"]),
-                    AugAssignStmt(Identifier("counter"), "+", Literal(1)),
-                    ReturnStmt(Identifier("counter"))
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_ok(prog)
-
-    def test_augassign_undeclared_should_fail(self):
-        prog = Program([
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    AugAssignStmt(Identifier("x"), "+", Literal(5)),
-                    ReturnStmt(Literal(0))
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_augassign_global_without_global_shadow_should_fail(self):
-        prog = Program([
-            VarDecl("counter", "int", Literal(0)),
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    VarDecl("counter", "int", Literal(5)),  # local shadow
-                    AugAssignStmt(Identifier("counter"), "+", Literal(1)),
-                    ReturnStmt(Identifier("counter"))
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_ok(prog)
-
-    def test_augassign_global_without_global_should_fail(self):
-        prog = Program([
-            VarDecl("counter", "int", Literal(0)),
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    AugAssignStmt(Identifier("counter"), "+", Literal(1)),
-                    ReturnStmt(Identifier("counter"))
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_augassign_type_mismatch_should_fail(self):
-        prog = Program([
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    VarDecl("value", "int", Literal(10)),
-                    AugAssignStmt(Identifier("value"), "+", Literal(2.5)),  # int += float (mismatch)
-                    ReturnStmt(Identifier("value"))
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_augassign_global_correct_type_ok(self):
-        prog = Program([
-            VarDecl("total", "float", Literal(0.0)),
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    GlobalStmt(["total"]),
-                    AugAssignStmt(Identifier("total"), "+", Literal(2.5)),
-                    ReturnStmt(Literal(0))
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_ok(prog)
-
-    def test_logical_type_mismatch_should_fail(self):
-        prog = Program([
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    ReturnStmt(
-                        BinOp(Literal(1), "and", Literal(2))  # ints, invalid for logical ops
-                    )
-                ],
-                return_type="bool"
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_print_list_should_fail(self):
-        prog = Program([
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    CallExpr(Identifier("print"), [ListExpr([Literal(1), Literal(2)])]),
-                    ReturnStmt(Literal(0))
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_empty_list_literal_should_fail(self):
-        prog = Program([
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    AssignStmt("x", ListExpr([])),
-                    ReturnStmt(Literal(0))
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_void_function_no_return(self):
-        prog = Program([
-            FunctionDef(
-                name="debug",
-                params=[],
-                body=[
-                    CallExpr(Identifier("print"), [Literal("Debugging...")])
-                ],
-                return_type=None
+            VarDecl(
+                name="result",
+                declared_type="int",
+                value=CallExpr(Identifier("double"), [Literal("5")])
             )
         ])
         TypeChecker().check(prog)
 
-    def test_void_function_return_none(self):
-        prog = Program([
+    def test_assignment_in_function(self):
+        """
+        Program:
+            def main() -> int:
+                x: int = 10
+                x = 20
+                return x
+
+        Expected:
+            - VarDecl introduces 'x' as int
+            - Assignment must match that type
+        """
+        prog = Program(body=[
             FunctionDef(
-                name="debug",
+                name="main",
                 params=[],
+                return_type="int",
                 body=[
-                    ReturnStmt(Literal(None))
-                ],
-                return_type=None
+                    VarDecl("x", "int", Literal("10")),
+                    AssignStmt(Identifier("x"), Literal("20")),
+                    ReturnStmt(Identifier("x"))
+                ]
             )
         ])
         TypeChecker().check(prog)
 
-    def test_return_value_in_void_function_should_fail(self):
-        prog = Program([
-            FunctionDef(
-                name="debug",
-                params=[],
-                body=[
-                    ReturnStmt(Literal(123))
-                ],
-                return_type=None
-            )
-        ])
-        with self.assertRaises(LangTypeError) as ctx:
-            TypeChecker().check(prog)
-        self.assertIn("Cannot return a value from a function declared as void", str(ctx.exception))
+    def test_augmented_assignment_in_function(self):
+        """
+        Program:
+            def bump() -> int:
+                x: int = 0
+                x += 1
+                return x
 
-    def test_return_string_in_void_function_should_fail(self):
-        prog = Program([
+        Expected:
+            - Variable 'x' is declared as int
+            - Augmented assignment matches type
+        """
+        prog = Program(body=[
             FunctionDef(
-                name="debug",
+                name="bump",
                 params=[],
+                return_type="int",
                 body=[
-                    ReturnStmt(Literal("oops"))
-                ],
-                return_type=None
-            )
-        ])
-        with self.assertRaises(LangTypeError) as ctx:
-            TypeChecker().check(prog)
-        self.assertIn("Cannot return a value from a function declared as void", str(ctx.exception))
-
-    def test_int_return_function_ok(self):
-        prog = Program([
-            FunctionDef(
-                name="get_number",
-                params=[],
-                body=[
-                    ReturnStmt(Literal(42))
-                ],
-                return_type="int"
+                    VarDecl("x", "int", Literal("0")),
+                    AugAssignStmt(Identifier("x"), "+=", Literal("1")),
+                    ReturnStmt(Identifier("x"))
+                ]
             )
         ])
         TypeChecker().check(prog)
 
-    def test_int_return_function_wrong_type_should_fail(self):
-        prog = Program([
+    def test_if_stmt_in_function(self):
+        """
+        Program:
+            def check(val: int) -> int:
+                if val > 0:
+                    return 1
+                else:
+                    return 0
+
+        Expected:
+            - Condition is a bool-returning expression
+            - Both branches return int
+        """
+        prog = Program(body=[
             FunctionDef(
-                name="get_number",
-                params=[],
+                name="check",
+                params=[Parameter("val", "int")],
+                return_type="int",
                 body=[
-                    ReturnStmt(Literal("not a number"))
-                ],
-                return_type="int"
+                    IfStmt(branches=[
+                        IfBranch(
+                            condition=BinOp(Identifier("val"), ">", Literal("0")),
+                            body=[ReturnStmt(Literal("1"))]
+                        ),
+                        IfBranch(
+                            condition=None,
+                            body=[ReturnStmt(Literal("0"))]
+                        )
+                    ])
+                ]
             )
         ])
-        with self.assertRaises(LangTypeError) as ctx:
-            TypeChecker().check(prog)
-        self.assertIn("Function declared to return 'int' but got 'str'", str(ctx.exception))
+        TypeChecker().check(prog)
 
-    def test_recursive_function_call(self):
-        prog = Program([
+    def test_while_loop_in_function(self):
+        """
+        Program:
+            def loop() -> int:
+                x: int = 0
+                while x < 5:
+                    x += 1
+                return x
+
+        Expected:
+            - 'x < 5' → bool
+            - body executes in loop context
+        """
+        prog = Program(body=[
             FunctionDef(
-                name="factorial",
-                params=[("n", "int")],
+                name="loop",
+                params=[],
+                return_type="int",
                 body=[
-                    IfStmt(
-                        condition=BinOp(Identifier("n"), "==", Literal(0)),
-                        then_body=[ReturnStmt(Literal(1))],
-                        else_body=[
-                            ReturnStmt(
-                                BinOp(
-                                    Identifier("n"),
-                                    "*",
-                                    CallExpr(Identifier("factorial"), [BinOp(Identifier("n"), "-", Literal(1))])
-                                )
+                    VarDecl("x", "int", Literal("0")),
+                    WhileStmt(
+                        condition=BinOp(Identifier("x"), "<", Literal("5")),
+                        body=[
+                            AugAssignStmt(Identifier("x"), "+=", Literal("1"))
+                        ]
+                    ),
+                    ReturnStmt(Identifier("x"))
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
+    def test_for_loop_in_function(self):
+        """
+        Program:
+            def sum(values: list[int]) -> int:
+                total: int = 0
+                for x in values:
+                    total += x
+                return total
+
+        Expected:
+            - values is list[int]
+            - x is int
+            - AugAssignStmt is valid
+        """
+        prog = Program(body=[
+            FunctionDef(
+                name="sum",
+                params=[Parameter("values", "list[int]")],
+                return_type="int",
+                body=[
+                    VarDecl("total", "int", Literal("0")),
+                    ForStmt(
+                        var_name="x",
+                        iterable=Identifier("values"),
+                        body=[
+                            AugAssignStmt(Identifier("total"), "+=", Identifier("x"))
+                        ]
+                    ),
+                    ReturnStmt(Identifier("total"))
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
+    def test_class_def_and_usage(self):
+        """
+        Program:
+            class Counter:
+                count: int = 0
+
+                def tick(self) -> None:
+                    self.count += 1
+
+        Expected:
+            - Class with int field
+            - Method updates that field via 'self.count'
+        """
+        prog = Program(body=[
+            ClassDef(
+                name="Counter",
+                base=None,
+                fields=[VarDecl("count", "int", Literal("0"))],
+                methods=[
+                    FunctionDef(
+                        name="tick",
+                        params=[Parameter("self", "Counter")],
+                        return_type="None",
+                        body=[
+                            AugAssignStmt(
+                                target=AttributeExpr(Identifier("self"), "count"),
+                                op="+=",
+                                value=Literal("1")
                             )
                         ]
                     )
-                ],
-                return_type="int"
+                ]
             )
         ])
-        self.check_ok(prog)
+        TypeChecker().check(prog)
 
-    def test_function_calls_another_function(self):
-        prog = Program([
+    def test_list_expr_in_function(self):
+        """
+        Program:
+            def make_list() -> list[int]:
+                nums: list[int] = [1, 2, 3]
+                return nums
+
+        Expected:
+            - All list elements are int
+            - Variable declared as list[int]
+            - Return matches function return type
+        """
+        prog = Program(body=[
             FunctionDef(
-                name="g",
+                name="make_list",
                 params=[],
-                body=[ReturnStmt(Literal(123))],
-                return_type="int"
+                return_type="list[int]",
+                body=[
+                    VarDecl(
+                        name="nums",
+                        declared_type="list[int]",
+                        value=ListExpr(elements=[
+                            Literal("1"), Literal("2"), Literal("3")
+                        ])
+                    ),
+                    ReturnStmt(Identifier("nums"))
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
+    def test_dict_expr_in_function(self):
+        """
+        Program:
+            def make_dict() -> dict[str, int]:
+                scores: dict[str, int] = {"math": 90, "english": 95}
+                return scores
+
+        Expected:
+            - All keys are str, values are int
+            - Variable declared as dict[str, int]
+            - Return matches function return type
+        """
+        prog = Program(body=[
+            FunctionDef(
+                name="make_dict",
+                params=[],
+                return_type="dict[str, int]",
+                body=[
+                    VarDecl(
+                        name="scores",
+                        declared_type="dict[str, int]",
+                        value=DictExpr(
+                            keys=[Literal('"math"'), Literal('"english"')],
+                            values=[Literal("90"), Literal("95")]
+                        )
+                    ),
+                    ReturnStmt(Identifier("scores"))
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
+    def test_assert_stmt_in_function(self):
+        """
+        Program:
+            def check_positive(x: int) -> int:
+                assert x > 0
+                return x
+
+        Expected:
+            - Assert condition is bool
+        """
+        prog = Program(body=[
+            FunctionDef(
+                name="check_positive",
+                params=[Parameter("x", "int")],
+                return_type="int",
+                body=[
+                    AssertStmt(condition=BinOp(Identifier("x"), ">", Literal("0"))),
+                    ReturnStmt(Identifier("x"))
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
+    def test_raise_stmt_in_function(self):
+        """
+        Program:
+            def crash() -> None:
+                raise "Something went wrong"
+
+        Expected:
+            - Raises a string (acceptable for now)
+            - Should type-check
+        """
+        prog = Program(body=[
+            FunctionDef(
+                name="crash",
+                params=[],
+                return_type="None",
+                body=[
+                    RaiseStmt(exception=Literal('"Something went wrong"'))
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
+    def test_global_stmt_in_function_body(self):
+        """
+        Program:
+            def set_globals() -> None:
+                global x, y
+                x: int = 1
+                y: int = 2
+
+        Expected:
+            - 'global x, y' is allowed
+            - VarDecls are local declarations here
+        """
+        prog = Program(body=[
+            FunctionDef(
+                name="set_globals",
+                params=[],
+                return_type="None",
+                body=[
+                    GlobalStmt(names=["x", "y"]),
+                    VarDecl("x", "int", Literal("1")),
+                    VarDecl("y", "int", Literal("2"))
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
+    def test_try_except_in_function(self):
+        """
+        Program:
+            class CustomError:
+                pass
+
+            def risky() -> None:
+                try:
+                    assert True
+                except CustomError as e:
+                    pass
+
+        Expected:
+            - Class CustomError is known
+            - Except block binds alias and body type-checks
+        """
+        prog = Program(body=[
+            ClassDef(
+                name="CustomError",
+                base=None,
+                fields=[],
+                methods=[]
             ),
             FunctionDef(
-                name="f",
+                name="risky",
                 params=[],
-                body=[ReturnStmt(CallExpr(Identifier("g"), []))],
-                return_type="int"
-            )
-        ])
-        self.check_ok(prog)
-
-    def test_nested_binop_expression(self):
-        prog = Program([
-            FunctionDef(
-                name="main",
-                params=[],
+                return_type="None",
                 body=[
-                    ReturnStmt(
-                        BinOp(
-                            BinOp(Literal(1), "+", Literal(2)),
-                            "*",
-                            Literal(3)
-                        )
-                    )
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_ok(prog)
-
-    def test_logical_nested_expressions(self):
-        prog = Program([
-            FunctionDef(
-                name="main",
-                params=[("x", "int"), ("y", "int")],
-                body=[
-                    ReturnStmt(
-                        BinOp(
-                            BinOp(Identifier("x"), ">", Literal(0)),
-                            "and",
-                            BinOp(Identifier("y"), "<", Literal(10))
-                        )
-                    )
-                ],
-                return_type="bool"
-            )
-        ])
-        self.check_ok(prog)
-
-    def test_empty_function_body_with_return_type_int_allowed(self):
-        prog = Program([
-            FunctionDef(
-                name="noop",
-                params=[],
-                body=[
-                    PassStmt()
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_ok(prog)
-
-    def test_global_without_declaring_global_should_fail(self):
-        prog = Program([
-            VarDecl("counter", "int", Literal(0)),
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    AssignStmt("counter", BinOp(Identifier("counter"), "+", Literal(1))),
-                    ReturnStmt(Identifier("counter"))
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_augassign_undefined_variable_should_fail(self):
-        prog = Program([
-            FunctionDef(
-                name="main",
-                params=[],
-                body=[
-                    AugAssignStmt("x", "+", Literal(1)),
-                    ReturnStmt(Literal(0))
-                ],
-                return_type="int"
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_class_with_field_and_valid_method(self):
-        """
-        Check that the class is correctly type-checked.
-
-        class Player:
-            hp: int = 100
-
-            def heal(self, amount: int):
-                self.hp += amount
-        """
-        prog = Program([
-            ClassDef(
-                name="Player",
-                base=None,
-                fields=[
-                    VarDecl("hp", "int", Literal(100))
-                ],
-                methods=[
-                    FunctionDef(
-                        name="heal",
-                        params=[("self", "Player"), ("amount", "int")],
-                        body=[
-                            AugAssignStmt(
-                                AttributeExpr(Identifier("self"), "hp"),
-                                "+",
-                                Identifier("amount")
+                    TryExceptStmt(
+                        try_body=[AssertStmt(condition=Literal("True"))],
+                        except_blocks=[
+                            ExceptBlock(
+                                exc_type="CustomError",
+                                alias="e",
+                                body=[PassStmt()]
                             )
-                        ],
-                        return_type=None
+                        ]
                     )
                 ]
             )
         ])
-        self.check_ok(prog)
-
-    def test_class_field_type_mismatch_should_fail(self):
-        """
-        Detects a mismatch between declared type and value.
-
-        class Player:
-            hp: int = "oops"
-        """
-        prog = Program([
-            ClassDef(
-                name="Player",
-                base=None,
-                fields=[
-                    VarDecl("hp", "int", Literal("oops"))
-                ],
-                methods=[]
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_class_accessing_nonexistent_field_should_fail(self):
-        """
-        Ensure accessing a non-existent field raises an error.
-
-        class Player:
-            hp: int = 100
-
-            def debug(self):
-                print(self.mana)
-        """
-        prog = Program([
-            ClassDef(
-                name="Player",
-                base=None,
-                fields=[
-                    VarDecl("hp", "int", Literal(100))
-                ],
-                methods=[
-                    FunctionDef(
-                        name="debug",
-                        params=[("self", "Player")],
-                        body=[
-                            CallExpr(
-                                Identifier("print"),
-                                [AttributeExpr(Identifier("self"), "mana")]
-                            )
-                        ],
-                        return_type=None
-                    )
-                ]
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_class_method_param_type_mismatch_should_fail(self):
-        """
-        amount is a str but used in self.hp += amount (should fail).
-
-        class Player:
-            hp: int = 100
-
-            def heal(self, amount: str):
-                self.hp += amount
-        """
-        prog = Program([
-            ClassDef(
-                name="Player",
-                base=None,
-                fields=[
-                    VarDecl("hp", "int", Literal(100))
-                ],
-                methods=[
-                    FunctionDef(
-                        name="heal",
-                        params=[("self", "Player"), ("amount", "str")],
-                        body=[
-                            AugAssignStmt(
-                                AttributeExpr(Identifier("self"), "hp"),
-                                "+",
-                                Identifier("amount")
-                            )
-                        ],
-                        return_type=None
-                    )
-                ]
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_class_method_returning_field_valid(self):
-        """
-        Check that returning a field works and type matches.
-
-        class Player:
-            hp: int = 100
-
-            def get_hp(self) -> int:
-                return self.hp
-        """
-        prog = Program([
-            ClassDef(
-                name="Player",
-                base=None,
-                fields=[
-                    VarDecl("hp", "int", Literal(100))
-                ],
-                methods=[
-                    FunctionDef(
-                        name="get_hp",
-                        params=[("self", "Player")],
-                        body=[
-                            ReturnStmt(AttributeExpr(Identifier("self"), "hp"))
-                        ],
-                        return_type="int"
-                    )
-                ]
-            )
-        ])
-        self.check_ok(prog)
-
-    def test_class_method_return_type_mismatch_should_fail(self):
-        """
-        Declared return type is str but returns self.hp (which is int).
-
-        class Player:
-            hp: int = 100
-
-            def get_hp(self) -> str:
-                return self.hp
-        """
-        prog = Program([
-            ClassDef(
-                name="Player",
-                base=None,
-                fields=[
-                    VarDecl("hp", "int", Literal(100))
-                ],
-                methods=[
-                    FunctionDef(
-                        name="get_hp",
-                        params=[("self", "Player")],
-                        body=[
-                            ReturnStmt(AttributeExpr(Identifier("self"), "hp"))
-                        ],
-                        return_type="str"
-                    )
-                ]
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_class_method_missing_self_should_fail(self):
-        """
-        First parameter must be self; should fail if missing.
-
-        class Player:
-            hp: int = 100
-
-            def get_hp() -> int:
-                return self.hp
-        """
-        prog = Program([
-            ClassDef(
-                name="Player",
-                base=None,
-                fields=[
-                    VarDecl("hp", "int", Literal(100))
-                ],
-                methods=[
-                    FunctionDef(
-                        name="get_hp",
-                        params=[],  # missing self
-                        body=[
-                            ReturnStmt(AttributeExpr(Identifier("self"), "hp"))
-                        ],
-                        return_type="int"
-                    )
-                ]
-            )
-        ])
-        self.check_type_error(prog)
-
-    def test_class_multiple_fields_and_methods_valid(self):
-        """
-        Confirm a class with multiple fields and methods type checks.
-
-        class Player:
-            hp: int = 100
-            name: str = "Hero"
-
-            def get_name(self) -> str:
-                return self.name
-
-            def damage(self, amount: int):
-                self.hp -= amount
-        """
-        prog = Program([
-            ClassDef(
-                name="Player",
-                base=None,
-                fields=[
-                    VarDecl("hp", "int", Literal(100)),
-                    VarDecl("name", "str", Literal("Hero")),
-                ],
-                methods=[
-                    FunctionDef(
-                        name="get_name",
-                        params=[("self", "Player")],
-                        body=[
-                            ReturnStmt(AttributeExpr(Identifier("self"), "name"))
-                        ],
-                        return_type="str"
-                    ),
-                    FunctionDef(
-                        name="damage",
-                        params=[("self", "Player"), ("amount", "int")],
-                        body=[
-                            AugAssignStmt(
-                                AttributeExpr(Identifier("self"), "hp"),
-                                "-",
-                                Identifier("amount")
-                            )
-                        ],
-                        return_type=None
-                    )
-                ]
-            )
-        ])
-        self.check_ok(prog)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        TypeChecker().check(prog)
