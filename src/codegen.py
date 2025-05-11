@@ -1,320 +1,262 @@
 from lang_ast import *
 
-class CCodeGenerator:
-    def __init__(self, functions=None, global_vars=None):
+class CodeGen:
+    """
+    Generates C99-compatible code from a PB Program AST.
+
+    This class walks the AST and emits C code using a simple indentation-based emitter.
+    The output is designed to be readable, idiomatic C, using PB-specific type mappings
+    (e.g., `int` → `int64_t`, `str` → `pb_string`). The output is buffered in `self.output`.
+    """
+
+    def __init__(self):
+        self.output = []  # lines of C code
         self.indent_level = 0
-        self.output = []
-        self.defined_vars = dict()  # dict: name -> type
-        self.in_function = False
-        self.functions = functions or {}
-        self.global_vars = global_vars or {}
-        self.current_function_globals = set()
 
-    def indent(self):
-        return '    ' * self.indent_level
+    # ───────────────────────── helpers ─────────────────────────
+    def map_type(self, pb_type: str) -> str:
+        """
+        Map a PB type name to a C type name.
 
-    def emit(self, line):
-        self.output.append(self.indent() + line)
+        Example:
+            "int" → "int64_t", "str" → "pb_string"
 
-    def generate(self, program: Program) -> str:
-        self.emit("#include <stdio.h>")
-        self.emit("#include <stdbool.h>")
-        self.emit("")
-        self.in_function = False
-        for stmt in program.body:
-            self.gen_stmt(stmt)
-        return '\n'.join(self.output)
+        Falls back to pointer to struct for user-defined classes.
 
-    def gen_stmt(self, stmt: Stmt):
-        if isinstance(stmt, FunctionDef):
-            self.in_function = True
-            self.current_function_globals = stmt.globals_declared or set()
-            ret_type = self.map_type(stmt.return_type or "void")
-            args = ", ".join(
-                f"int {p}" if isinstance(p, str) else f"{self.map_type(p[1])} {p[0]}"
-                for p in stmt.params
-            )
-            # Register function signature for later type inference
-            self.functions[stmt.name] = (stmt.params, stmt.return_type)
-            self.emit(f"{ret_type} {stmt.name}({args}) {{")
-            self.indent_level += 1
-            self.defined_vars = dict()  # reset per function
-            for s in stmt.body:
-                self.gen_stmt(s)
-            self.indent_level -= 1
-            self.emit("}")
-            self.emit("")
-            self.in_function = False
+        Parameters:
+            pb_type (str): A PB type name.
 
-        elif isinstance(stmt, ReturnStmt):
-            expr = self.gen_expr(stmt.value)
-            self.emit(f"return {expr};")
-
-        elif isinstance(stmt, VarDecl):
-            expr = self.gen_expr(stmt.value)
-            c_type = self.map_type(stmt.declared_type)
-            if self.in_function:
-                if stmt.name in self.current_function_globals:
-                    # Globals: no redeclare
-                    self.emit(f"{stmt.name} = {expr};  // global update")
-                else:
-                    self.emit(f"{c_type} {stmt.name} = {expr};")
-                    self.defined_vars[stmt.name] = stmt.declared_type
-            else:
-                # Top-level (global)
-                self.emit(f"{c_type} {stmt.name} = {expr};")
-                self.defined_vars[stmt.name] = stmt.declared_type
-
-        elif isinstance(stmt, AssignStmt):
-            expr = self.gen_expr(stmt.value)
-            expr_type = self.infer_type(stmt.value)
-
-            if self.in_function:
-                # Check if it's a List (array) assignment
-                if isinstance(stmt.value, ListExpr):
-                    # Sometimes .elem_type is not set
-                    # This ensures if AST doesn't annotate the list type, it will infer it from the elements
-                    if stmt.value.elem_type:
-                        elem_type = stmt.value.elem_type
-                    else:
-                        elem_types = [self.infer_type(e) for e in stmt.value.elements]
-                        elem_type = elem_types[0] if elem_types else "int"
-                    elem_c_type = self.map_type(elem_type)
-
-                    if stmt.target in self.current_function_globals:
-                        # Globals: no redeclaration, only assignment
-                        self.emit(f"// Global array update not supported directly in C, ensure it's handled properly")
-                        self.emit(f"// {stmt.target} = ...;  // (manual update needed if required)")
-                    elif stmt.target in self.defined_vars:
-                        self.emit(f"// Warning: cannot reassign array {stmt.target} in C")
-                    else:
-                        self.emit(f"{elem_c_type} {stmt.target}[] = {expr};")
-                        self.defined_vars[stmt.target] = expr_type
-                else:
-                    if stmt.target in self.current_function_globals:
-                        # It's a global var: just assign (no type, no redeclare)
-                        self.emit(f"{stmt.target} = {expr};  // global update")
-                    elif stmt.target in self.defined_vars:
-                        # Already declared local: assign
-                        self.emit(f"{stmt.target} = {expr};")
-                    else:
-                        # New local var: declare with type
-                        c_type = self.map_type(expr_type)
-                        self.emit(f"{c_type} {stmt.target} = {expr};")
-                        self.defined_vars[stmt.target] = expr_type
-            else:
-                # Top-level: always declare (globals are defined here)
-                # Check if it's a List (array) assignment
-                if isinstance(stmt.value, ListExpr):
-                    elem_c_type = self.map_type(stmt.value.elem_type or "int")
-                    self.emit(f"{elem_c_type} {stmt.target}[] = {expr};")
-                    self.defined_vars[stmt.target] = expr_type
-                else:
-                    c_type = self.map_type(expr_type)
-                    self.emit(f"{c_type} {stmt.target} = {expr};")
-                    self.defined_vars[stmt.target] = expr_type
-            self.current_function_globals = set()
-
-        elif isinstance(stmt, AugAssignStmt):
-            expr = self.gen_expr(stmt.value)
-            self.emit(f"{stmt.target} {stmt.op}= {expr};")
-
-        elif isinstance(stmt, IfStmt):
-            cond = self.gen_expr(stmt.condition)
-            self.emit(f"if ({cond}) {{")
-            self.indent_level += 1
-            for s in stmt.then_body:
-                self.gen_stmt(s)
-            self.indent_level -= 1
-            self.emit("}")
-            if stmt.else_body:
-                self.emit("else {")
-                self.indent_level += 1
-                for s in stmt.else_body:
-                    self.gen_stmt(s)
-                self.indent_level -= 1
-                self.emit("}")
-
-        elif isinstance(stmt, WhileStmt):
-            cond = self.gen_expr(stmt.condition)
-            self.emit(f"while ({cond}) {{")
-            self.indent_level += 1
-            for s in stmt.body:
-                self.gen_stmt(s)
-            self.indent_level -= 1
-            self.emit("}")
-
-        elif isinstance(stmt, ForStmt):
-            if isinstance(stmt.iterable, CallExpr) and isinstance(stmt.iterable.func, Identifier) and stmt.iterable.func.name == "range":
-                args = stmt.iterable.args
-                if len(args) == 1:
-                    start = "0"
-                    end = self.gen_expr(args[0])
-                elif len(args) == 2:
-                    start = self.gen_expr(args[0])
-                    end = self.gen_expr(args[1])
-                else:
-                    raise NotImplementedError("range() with 1 or 2 args only")
-                self.emit(f"for (int {stmt.var_name} = {start}; {stmt.var_name} < {end}; {stmt.var_name}++) {{")
-                self.indent_level += 1
-                for s in stmt.body:
-                    self.gen_stmt(s)
-                self.indent_level -= 1
-                self.emit("}")
-            else:
-                self.emit(f"// unsupported for-loop iterable: {stmt.iterable}")
-
-        elif isinstance(stmt, BreakStmt):
-            self.emit("break;")
-
-        elif isinstance(stmt, ContinueStmt):
-            self.emit("continue;")
-
-        elif isinstance(stmt, PassStmt):
-            self.emit("// pass")
-
-        elif isinstance(stmt, CallExpr):
-            self.gen_expr(stmt)  # side effect like print()
+        Returns:
+            str: Corresponding C type.
+        """
+        return {
+            "int": "int64_t",
+            "float": "double",
+            "bool": "bool",
+            "str": "pb_string",
+            "None": "void",
+        }.get(pb_type, f"struct {pb_type}*")  # fallback for class types
 
     def gen_expr(self, expr: Expr) -> str:
-        if isinstance(expr, BinOp):
-            left = self.gen_expr(expr.left)
-            right = self.gen_expr(expr.right)
+        """
+        Generate C code for an expression.
 
-            # Map Python-style logical ops to C-style
-            op = expr.op
-            if op == "and":
-                op = "&&"
-            elif op == "or":
-                op = "||"
-            elif op == "is":
-                op = "=="
-            elif op == "is not":
-                op = "!="
+        Currently supports:
+            - Literal values (int, float, str, etc.)
 
-            return f"({left} {op} {right})"
+        Parameters:
+            expr (Expr): The PB expression AST node.
 
-        elif isinstance(expr, UnaryOp):
-            operand = self.gen_expr(expr.operand)
-            op = "!" if expr.op == "not" else expr.op
-            return f"({op}{operand})"
-
-        elif isinstance(expr, Literal):
-            if isinstance(expr.value, bool):
-                return "true" if expr.value else "false"
-            elif isinstance(expr.value, float):
-                return f"{expr.value:.1f}"
-            elif isinstance(expr.value, str):
-                return f'"{expr.value}"'  # warning: string support in C is basic
-            return str(expr.value)
-
+        Returns:
+            str: C expression as string.
+        """
+        if isinstance(expr, Literal):
+            return expr.raw
         elif isinstance(expr, Identifier):
-            if expr.name == "True":
-                return "true"
-            elif expr.name == "False":
-                return "false"
-            elif expr.name == "None":
-                return "0"  # or 'NULL' if you want to add pointer/null support
             return expr.name
-
         elif isinstance(expr, CallExpr):
-            if isinstance(expr.func, Identifier) and expr.func.name == "print":
-                for arg in expr.args:
-                    arg_str = self.gen_expr(arg)
-                    arg_type = self.infer_type(arg)
-                    if arg_type.startswith("list"):
-                        raise NotImplementedError("Cannot print lists")    
-                    print(f"[DEBUG] arg: {arg_str}, inferred type: {arg_type}")
-                    if arg_type == "str":
-                        self.emit(f'printf("%s\\n", {arg_str});')
-                    elif arg_type == "int":
-                        self.emit(f'printf("%d\\n", {arg_str});')
-                    elif arg_type in ("float", "double"):
-                        self.emit(f'printf("%f\\n", {arg_str});')
-                    elif arg_type == "bool":
-                        self.emit(f'printf("%s\\n", {arg_str} ? "true" : "false");')
-                    else:
-                        self.emit(f'printf("UNSUPPORTED PRINT TYPE\\n");')
-                return "0"
-            else:
-                args = ", ".join(self.gen_expr(a) for a in expr.args)
-                return f"{expr.func.name}({args})"
-
-        elif isinstance(expr, ListExpr):
-            elements = ", ".join(self.gen_expr(e) for e in expr.elements)
-            return f"{{ {elements} }}"  # user must define array outside
-
+            func_code = self.gen_expr(expr.func)
+            arg_codes = ", ".join(self.gen_expr(arg) for arg in expr.args)
+            return f"{func_code}({arg_codes})"
+        elif isinstance(expr, AttributeExpr):
+            obj_code = self.gen_expr(expr.obj)
+            return f"{obj_code}->{expr.attr}"
         elif isinstance(expr, IndexExpr):
             base = self.gen_expr(expr.base)
             index = self.gen_expr(expr.index)
             return f"{base}[{index}]"
 
-        elif isinstance(expr, DictExpr):
-            return "/* dicts not directly supported in C */"
+
+
+        raise NotImplementedError(f"Code generation not implemented for {type(expr).__name__}")
+
+    # ───────────────────────── entry‑point ─────────────────────────
+
+    def emit(self, line: str = ""):
+        """Emit a single line of code with the current indentation level."""
+        self.output.append("    " * self.indent_level + line)
+
+    def generate(self, program: Program) -> str:
+        """
+        Entry point: generate C code from a complete PB program.
+
+        Parameters:
+            program (Program): The root AST node of a parsed and type-checked PB program.
+
+        Returns:
+            str: Full C source code as a single string.
+        """
+        self.output = []
+        self.emit("// generated C code from PB")
+        for stmt in program.body:
+            self.gen_stmt(stmt)
+        return "\n".join(self.output)
+
+    # ───────────────────────── expressions ─────────────────────────
+
+
+    # ───────────────────────── statements ─────────────────────────
+
+    def gen_stmt(self, stmt: Stmt):
+        """
+        Dispatch method for top-level statements.
+        
+        Each statement type is handled by a dedicated generator function.
+        """
+        if isinstance(stmt, VarDecl):
+            self.gen_var_decl(stmt)
+        elif isinstance(stmt, AssignStmt):
+            self.gen_assign_stmt(stmt)
+        elif isinstance(stmt, AugAssignStmt):
+            self.gen_aug_assign_stmt(stmt)
+        elif isinstance(stmt, ReturnStmt):
+            self.gen_return_stmt(stmt)
+        elif isinstance(stmt, ExprStmt):
+            self.gen_expr_stmt(stmt)
+        elif isinstance(stmt, PassStmt):
+            self.emit(";  // pass")
+        elif isinstance(stmt, BreakStmt):
+            self.emit("break;")
+        elif isinstance(stmt, ContinueStmt):
+            self.emit("continue;")
+        elif isinstance(stmt, IfStmt):
+            self.gen_if_stmt(stmt)
+        elif isinstance(stmt, WhileStmt):
+            self.gen_while_stmt(stmt)
+        elif isinstance(stmt, ForStmt):
+            self.gen_for_stmt(stmt)
+        elif isinstance(stmt, FunctionDef):
+            self.gen_function_def(stmt)
+
 
         else:
-            raise NotImplementedError(f"Unknown expression type: {type(expr)}")
+            raise NotImplementedError(f"Code generation not implemented for {type(stmt).__name__}")
 
-    def map_type(self, t):
-        if isinstance(t, tuple):
-            t = t[1]  # Defensive: grab the return type if it's a (params, return_type)
-        if not t:
-            return "int"
-        if t == "void":
-            return "void"
-        if t.startswith("list["):
-            elem_type = t[5:-1]
-            return self.map_type(elem_type)
-        if t == "int":
-            return "int"
-        elif t == "bool":
-            return "bool"
-        elif t == "float":
-            return "double"
-        elif t == "str":
-            return "const char*"
-        return "int"
+    def gen_var_decl(self, decl: VarDecl):
+        """
+        Generate a C variable declaration from a PB VarDecl node.
 
-    def infer_type(self, expr: Expr) -> str:
-        if isinstance(expr, Literal):
-            if isinstance(expr.value, bool):
-                return "bool"
-            elif isinstance(expr.value, float):
-                return "float"
-            elif isinstance(expr.value, str):
-                return "str"
+        Supports literals for now. Declared PB types are mapped to C types using `map_type`.
+
+        Example:
+            PB:    x: int = 42
+            C:     int64_t x = 42;
+
+        Parameters:
+            decl (VarDecl): A variable declaration AST node.
+        """
+        c_type = self.map_type(decl.declared_type)
+        expr_code = self.gen_expr(decl.value)
+        self.emit(f"{c_type} {decl.name} = {expr_code};")
+
+    def gen_assign_stmt(self, stmt: AssignStmt):
+        """
+        Generate C code for a PB assignment statement.
+
+        Example:
+            PB:    x = 10
+            C:     x = 10;
+
+        Parameters:
+            stmt (AssignStmt): The assignment AST node.
+        """
+        target = self.gen_expr(stmt.target)
+        value = self.gen_expr(stmt.value)
+        self.emit(f"{target} = {value};")
+
+    def gen_aug_assign_stmt(self, stmt: AugAssignStmt):
+        """
+        Generate C code for an augmented assignment statement.
+
+        Example:
+            PB:    x += 1
+            C:     x += 1;
+
+        Parameters:
+            stmt (AugAssignStmt): AST node representing augmented assignment.
+        """
+        target_code = self.gen_expr(stmt.target)
+        value_code = self.gen_expr(stmt.value)
+        self.emit(f"{target_code} {stmt.op} {value_code};")
+
+    def gen_return_stmt(self, stmt: ReturnStmt):
+        """
+        Generate C return statement.
+
+        Handles both `return x` and `return` (as `return;` for void).
+        """
+        if stmt.value is None:
+            self.emit("return;")
+        else:
+            value_code = self.gen_expr(stmt.value)
+            self.emit(f"return {value_code};")
+
+    def gen_expr_stmt(self, stmt: ExprStmt):
+        """
+        Generate expression statement (e.g., function call).
+
+        Emits the expression with a semicolon.
+        """
+        expr_code = self.gen_expr(stmt.expr)
+        self.emit(f"{expr_code};")
+
+    def gen_if_stmt(self, stmt: IfStmt):
+        """
+        Generate an if-elif-else statement.
+
+        Each branch is emitted as either `if (...)`, `else if (...)`, or `else`.
+        """
+        for i, branch in enumerate(stmt.branches):
+            if branch.condition:
+                cond = self.gen_expr(branch.condition)
+                self.emit(f"{'if' if i == 0 else 'else if'} ({cond}) " + "{")
             else:
-                return "int"
+                self.emit("else {")
+            self.indent_level += 1
+            for s in branch.body:
+                self.gen_stmt(s)
+            self.indent_level -= 1
+            self.emit("}")
 
-        elif isinstance(expr, Identifier):
-            if expr.name in self.defined_vars:
-                return self.defined_vars[expr.name]
-            if expr.name in self.global_vars:
-                return self.global_vars[expr.name]
-            if expr.name == "True" or expr.name == "False":
-                return "bool"
-            elif expr.name == "None":
-                return "int"
-            return "int"
+    def gen_while_stmt(self, stmt: WhileStmt):
+        """
+        Generate a while loop.
+        """
+        cond = self.gen_expr(stmt.condition)
+        self.emit(f"while ({cond}) {{")
+        self.indent_level += 1
+        for s in stmt.body:
+            self.gen_stmt(s)
+        self.indent_level -= 1
+        self.emit("}")
 
-        elif isinstance(expr, IndexExpr):
-            return expr.elem_type or "int"
+    def gen_for_stmt(self, stmt: ForStmt):
+        """
+        Generate a for loop over a list. Assumes list iteration with index.
 
-        elif isinstance(expr, BinOp):
-            left_type = self.infer_type(expr.left)
-            right_type = self.infer_type(expr.right)
-            if left_type == right_type:
-                return left_type
-            return "int"  # fallback for mixed types
+        PB:     for x in items:
+        C:      for (int i = 0; i < items.len; i++) {
+                    T x = items.data[i];
+        """
+        iter_code = self.gen_expr(stmt.iterable)
+        iter_var = f"__i_{stmt.var_name}"
+        self.emit(f"for (int {iter_var} = 0; {iter_var} < {iter_code}.len; {iter_var}++) {{")
+        self.indent_level += 1
+        self.emit(f"{self.map_type('int')} {stmt.var_name} = {iter_code}.data[{iter_var}];")
+        for s in stmt.body:
+            self.gen_stmt(s)
+        self.indent_level -= 1
+        self.emit("}")
 
-        elif isinstance(expr, CallExpr):
-            if isinstance(expr.func, Identifier):
-                func_name = expr.func.name
-                if func_name in self.functions:
-                    ret_type = self.functions[func_name]
-                    # If it's a tuple, extract the return_type part
-                    if isinstance(ret_type, tuple):
-                        ret_type = ret_type[1]  # second element is return_type
-                    return ret_type
-            return "int"
-
+    def gen_function_def(self, fn: FunctionDef):
+        """
+        Generate a full C function from a PB FunctionDef.
+        """
+        c_ret = self.map_type(fn.return_type)
+        args = ", ".join(f"{self.map_type(p.type)} {p.name}" for p in fn.params)
+        self.emit(f"{c_ret} {fn.name}({args}) {{")
+        self.indent_level += 1
+        for stmt in fn.body:
+            self.gen_stmt(stmt)
+        self.indent_level -= 1
+        self.emit("}")

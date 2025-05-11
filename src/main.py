@@ -1,22 +1,30 @@
 import os
 import subprocess
 import argparse
-from lexer import Lexer
-from parser import Parser
+from lexer import Lexer, LexerError
+from parser import Parser, ParserError
 from codegen import CCodeGenerator
 from type_checker import TypeChecker, LangTypeError
 from pprint import pprint
 
 def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = False, debug: bool = False):
     lexer = Lexer(source_code)
-    tokens = lexer.tokenize()
+    try:
+        tokens = lexer.tokenize()
+    except LexerError as e:
+        print(f"Lexer error: {e}")
+        return False
 
     parser = Parser(tokens)
     if debug: pprint(tokens)
-    ast = parser.parse()
-    if debug: pprint(ast)
+    try:
+        ast = parser.parse()
+        if debug: pprint(ast)
+    except ParserError as e:
+        print(f"Parser error: {e}")
+        return False
 
-    # ✅ Run type checker
+    # Run type checker
     try:
         checker = TypeChecker()
         checker.check(ast)
@@ -40,27 +48,27 @@ def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = F
     output_path = get_build_output_path(output_file)
     with open(output_path, "w") as f:
         f.write(c_code)
-    print(f"✅ C code written to {output_path}")
+    print(f"C code written to {output_path}")
     return True
 
 
 def build(source_code: str, output_file: str, verbose: bool = False, debug: bool = False) -> bool:
     success = compile_to_c(source_code, f"{output_file}.c", verbose=verbose, debug=debug)
     if not success:
-        print("⚠️ Skipping GCC build because type checking failed.")
+        print("Skipping GCC build because type checking failed.")
         return False
 
     c_path = get_build_output_path(f"{output_file}.c")
     exe_file = get_build_output_path(output_file) + (".exe" if os.name == "nt" else "")
-    compile_cmd = ["gcc", c_path, "-o", exe_file]
+    compile_cmd = ["gcc", "-std=c99", "-W", c_path, "-o", exe_file]
 
     result = subprocess.run(compile_cmd, capture_output=True, text=True)
     if result.returncode == 0:
-        print(f"✅ Built: {exe_file}")
+        print(f"Built: {exe_file}")
         return True
     else:
         print(f"❌ GCC build failed (exit code {result.returncode})")
-        print(result.stderr)
+        print(f"Error output: {result.stderr}")
         return False
 
 
@@ -68,7 +76,7 @@ def build(source_code: str, output_file: str, verbose: bool = False, debug: bool
 def run(source_code: str, output_file: str, verbose: bool = False, debug: bool = False):
     success = build(source_code, output_file, verbose=verbose, debug=debug)
     if not success:
-        print("⚠️ Skipping run because compilation failed.")
+        print("Skipping run because compilation failed.")
         return
     # exe_file = output_file + (".exe" if os.name == "nt" else "")
     exe_file = get_build_output_path(output_file) + (".exe" if os.name == "nt" else "")

@@ -573,16 +573,7 @@ class Parser:
         """
         name = self.expect(TokenType.IDENTIFIER).value
         self.expect(TokenType.COLON)
-        type_tok = self.current()
-
-        if type_tok.type not in (
-            TokenType.IDENTIFIER, TokenType.INT, TokenType.FLOAT,
-            TokenType.BOOL, TokenType.STR
-        ):
-            raise ParserError(f"Expected type name, got {type_tok.type.name} at {type_tok.line},{type_tok.column}")
-
-        declared_type = type_tok.value
-        self.advance()
+        declared_type = self.parse_type()
         self.expect(TokenType.ASSIGN)
         value = self.parse_expr()
         self.expect(TokenType.NEWLINE)
@@ -806,11 +797,41 @@ class Parser:
         return Parameter(name, type_name, default)
 
     def expect_type_name(self) -> str:
+        return self.parse_type()
+
+    def parse_type(self) -> str:
+        """Parse a (possibly generic) type annotation.
+
+        Handles:
+            int
+            list[int]
+            dict[str, int]
+            list[dict[str, float]]
+        Returns the fully spelled-out type as a plain string.
+        """
         tok = self.current()
-        if tok.type not in (TokenType.IDENTIFIER, TokenType.INT, TokenType.FLOAT, TokenType.STR, TokenType.BOOL, TokenType.NONE):
-            raise ParserError(f"Expected type name, got {tok.type.name} at {tok.line},{tok.column}")
+        if tok.type not in (
+            TokenType.IDENTIFIER, TokenType.INT, TokenType.FLOAT,
+            TokenType.BOOL, TokenType.STR, TokenType.NONE
+        ):
+            raise ParserError(
+                f"Expected type name, got {tok.type.name} "
+                f"at {tok.line},{tok.column}"
+            )
+
+        # consume the base identifier / builtin name
+        type_str = tok.value
         self.advance()
-        return tok.value
+
+        # Optional generic arguments, e.g. "[" Type {"," Type} "]"
+        if self.match(TokenType.LBRACKET):
+            args = [self.parse_type()]           # first arg
+            while self.match(TokenType.COMMA):
+                args.append(self.parse_type())   # additional args
+            self.expect(TokenType.RBRACKET)
+            type_str += "[" + ", ".join(args) + "]"
+
+        return type_str
 
     def parse_class_def(self) -> ClassDef:
         """Parse a class definition with optional single inheritance

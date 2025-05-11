@@ -541,6 +541,26 @@ class TestTypeCheckerInternals(unittest.TestCase):
         with self.assertRaises(TypeError):
             self.tc.check_try_except_stmt(stmt)
 
+    def test_function_with_pass_and_return(self):
+        fn = FunctionDef(
+            name="bad_func",
+            params=[],
+            return_type="int",
+            body=[PassStmt(), ReturnStmt(Literal("0"))]
+        )
+        with self.assertRaises(TypeError):
+            self.tc.check_function_def(fn)
+
+    def test_multiple_main_functions(self):
+        prog = Program(body=[
+            FunctionDef(name="main", params=[], return_type="int", body=[ReturnStmt(Literal("0"))]),
+            FunctionDef(name="main", params=[], return_type="int", body=[ReturnStmt(Literal("0"))])
+        ])
+        with self.assertRaises(TypeError):
+            TypeChecker().check(prog)
+
+
+
 
 # ────────────────────────────────────────────────────────────────
 # Top-down tests (integration-level)

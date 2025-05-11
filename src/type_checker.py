@@ -59,7 +59,6 @@ Testing:
 
 """
 
-
 from typing import Dict, Tuple, Optional, List
 
 from lang_ast import (
@@ -94,6 +93,7 @@ from lang_ast import (
     GlobalStmt,
     TryExceptStmt,
     ExceptBlock,
+    ExprStmt,
 )
 
 
@@ -116,6 +116,10 @@ class TypeChecker:
         # func_name → ([param_types], return_type)
         self.functions: Dict[str, Tuple[List[str], str]] = {}
 
+        self.functions["print"] = (["int"], "None")
+        self.functions["print_str"] = (["str"], "None")
+        # You can extend this later with polymorphic handling
+
         # to track the expected return type while checking a function body
         self.current_return_type: Optional[str] = None
 
@@ -124,11 +128,14 @@ class TypeChecker:
 
         self.classes: Dict[str, Dict[str, str]] = {}  # class name → field name → type
 
-
-
     def check(self, program: Program):
         """Type-check the entire program."""
+        seen_main = False
         for stmt in program.body:
+            if isinstance(stmt, FunctionDef) and stmt.name == "main":
+                if seen_main:
+                    raise TypeError("Multiple 'main' functions are not allowed")
+                seen_main = True
             self.check_stmt(stmt)
 
     def check_stmt(self, stmt: Stmt):
@@ -168,6 +175,9 @@ class TypeChecker:
         elif isinstance(stmt, ContinueStmt):
             if self.in_loop == 0:
                 raise TypeError("'continue' outside of loop")
+
+        elif isinstance(stmt, ExprStmt):
+            self.check_expr(stmt.expr)  # validate call, access, etc.
 
         else:
             raise NotImplementedError(f"Type checking not yet implemented for {type(stmt).__name__}")
@@ -362,10 +372,6 @@ class TypeChecker:
             val_type = val_types.pop()
             return f"dict[str, {val_type}]"
 
-
-
-
-        
         raise NotImplementedError(f"Type inference not implemented for {type(expr).__name__}")
 
     def check_return_stmt(self, stmt: ReturnStmt):
@@ -406,13 +412,26 @@ class TypeChecker:
 
         # New environment for function scope
         old_env = self.env.copy()
-        self.env = {p.name: p.type for p in fn.params}
+        self.env = old_env.copy()
+        # Then add (or shadow) with this function’s parameters
+        for p in fn.params:
+            self.env[p.name] = p.type
         old_ret = self.current_return_type
         self.current_return_type = ret_type
+
+        has_pass = False
+        has_return = False
 
         # Check body
         for stmt in fn.body:
             self.check_stmt(stmt)
+            if isinstance(stmt, PassStmt):
+                has_pass = True
+            elif isinstance(stmt, ReturnStmt):
+                has_return = True
+
+        if has_pass and has_return:
+            raise TypeError(f"Function '{fn.name}' cannot contain both 'pass' and 'return'")
 
         # Restore previous state
         self.env = old_env

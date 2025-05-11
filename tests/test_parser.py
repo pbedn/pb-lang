@@ -978,6 +978,68 @@ class TestParserEdgeCases(unittest.TestCase):
             self.parse_program("a < b < c\n")
 
 
+class TestGenericTypes(unittest.TestCase):
+
+    def parse_tokens(self, code: str):
+        lexer = Lexer(code)
+        tokens = lexer.tokenize()
+        # DEBUG
+        for t in tokens: print(t)
+        return Parser(tokens)
+
+    def test_parse_var_decl_with_generic_list(self):
+        code = (
+            "arr: list[int] = [1, 2, 3]\n"
+        )
+
+        parser = self.parse_tokens(code)
+        prog = parser.parse()
+
+        self.assertIsInstance(prog, Program)
+        self.assertEqual(len(prog.body), 1)
+
+        decl = prog.body[0]
+        self.assertIsInstance(decl, VarDecl)
+        self.assertEqual(decl.name, "arr")
+        self.assertEqual(decl.declared_type, "list[int]")
+
+    def test_parse_function_with_generic_annotations(self):
+        code = (
+            "def foo(xs: list[int]) -> dict[str, int]:\n"
+            "    return {}\n"
+        )
+
+        parser = self.parse_tokens(code)
+        prog = parser.parse()
+
+        self.assertIsInstance(prog, Program)
+        self.assertEqual(len(prog.body), 1)
+
+        fn = prog.body[0]
+        self.assertIsInstance(fn, FunctionDef)
+        self.assertEqual(fn.name, "foo")
+        # parameters
+        self.assertEqual(len(fn.params), 1)
+        param = fn.params[0]
+        self.assertEqual(param.type, "list[int]")
+        # return type
+        self.assertEqual(fn.return_type, "dict[str, int]")
+
+    def test_parse_nested_generic_type(self):
+        code = (
+            "data: list[dict[str, float]] = []\n"
+        )
+
+        parser = self.parse_tokens(code)
+        prog = parser.parse()
+
+        self.assertIsInstance(prog, Program)
+        self.assertEqual(len(prog.body), 1)
+
+        decl = prog.body[0]
+        self.assertIsInstance(decl, VarDecl)
+        self.assertEqual(decl.name, "data")
+        self.assertEqual(decl.declared_type, "list[dict[str, float]]")
 
 
 if __name__ == "__main__":
