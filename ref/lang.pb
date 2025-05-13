@@ -206,11 +206,11 @@ def main() -> int:
 
     # 'is' and 'is not' operators
     print("=== Is / Is Not Operators ===")
-    a: int = 10
-    b: int = 10
-    if a is b:
+    aa: int = 10
+    bb: int = 10
+    if aa is bb:
         print("a is b")
-    if a is not 20:
+    if aa is not 20:
         print("a is not 20")
 
     # Augmented assignment demonstration

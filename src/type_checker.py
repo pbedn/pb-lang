@@ -349,7 +349,6 @@ class TypeChecker:
 
                 # Class instantiation: Player(...)
                 if fname in self.methods and "__init__" in self.methods[fname]:
-                    print(f"[DEBUG] Class instantiation: {fname}")
                     init_sig = self.methods[fname]["__init__"]
                     param_types, return_type, num_required = init_sig
 
@@ -371,10 +370,6 @@ class TypeChecker:
 
                     return fname  # 🧠 The constructed class becomes the expression's type
 
-                elif fname in self.functions:
-                    print(f"[DEBUG] Function call: {fname}")
-
-                print(f"[DEBUG] Undefined function/class called: {fname}")
 
                 if fname == "print":
                     for arg in expr.args:
