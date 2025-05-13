@@ -1002,5 +1002,5 @@ if __name__ == "__main__":
     pprint.pprint(tokens)
     parser = Parser(tokens)
 
-    node = parser.parse_expr()
+    node = parser.parse()
     print(node)

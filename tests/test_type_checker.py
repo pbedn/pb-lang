@@ -6,6 +6,8 @@ from lang_ast import (
     Program,
     VarDecl,
     Literal,
+    StringLiteral,
+    FStringLiteral,
     Identifier,
     BinOp,
     UnaryOp,
@@ -33,6 +35,7 @@ from lang_ast import (
     GlobalStmt,
     TryExceptStmt,
     ExceptBlock,
+    ExprStmt,
 )
 
 
@@ -144,18 +147,18 @@ class TestTypeCheckerInternals(unittest.TestCase):
             self.tc.check_expr(expr)
 
     def test_call_expr_valid(self):
-        self.tc.functions["inc"] = (["int"], "int")
+        self.tc.functions["inc"] = (["int"], "int", 1)
         call = CallExpr(func=Identifier("inc"), args=[Literal("1")])
         self.assertEqual(self.tc.check_expr(call), "int")
 
     def test_call_expr_wrong_arg_count(self):
-        self.tc.functions["f"] = (["int", "int"], "int")
+        self.tc.functions["f"] = (["int", "int"], "int", 2)
         call = CallExpr(func=Identifier("f"), args=[Literal("1")])
         with self.assertRaises(TypeError):
             self.tc.check_expr(call)
 
     def test_call_expr_wrong_arg_type(self):
-        self.tc.functions["f"] = (["int"], "int")
+        self.tc.functions["f"] = (["int"], "int", 1)
         call = CallExpr(func=Identifier("f"), args=[Literal("True")])
         with self.assertRaises(TypeError):
             self.tc.check_expr(call)
@@ -336,21 +339,33 @@ class TestTypeCheckerInternals(unittest.TestCase):
             self.tc.check_for_stmt(stmt)
 
     def test_class_def_simple(self):
+        """
+        class C:
+            def __init__(self) -> None:
+                self.x = 42
+        """
         cls = ClassDef(
-            name="Point",
+            name="C",
             base=None,
-            fields=[
-                VarDecl("x", "int", Literal("0")),
-                VarDecl("y", "int", Literal("0"))
-            ],
-            methods=[]
+            fields=[],  # no class attributes
+            methods=[
+                FunctionDef(
+                    name="__init__",
+                    params=[Parameter("self", None)],
+                    return_type="None",
+                    body=[
+                        AssignStmt(AttributeExpr(Identifier("self"), "x"), Literal("42"))
+                    ]
+                )
+            ]
         )
         self.tc.check_class_def(cls)
-        self.assertIn("Point", self.tc.classes)
-        self.assertEqual(self.tc.classes["Point"]["x"], "int")
+        self.assertEqual(self.tc.instance_fields["C"]["x"], "int")
 
     def test_class_def_with_base(self):
-        self.tc.classes["Base"] = {}
+        self.tc.known_classes.add("Base")
+        self.tc.instance_fields["Base"] = {}
+        self.tc.class_attrs["Base"] = {}
         cls = ClassDef(
             name="Child",
             base="Base",
@@ -387,7 +402,8 @@ class TestTypeCheckerInternals(unittest.TestCase):
 
     def test_attribute_expr_valid(self):
         self.tc.env["self"] = "Point"
-        self.tc.classes["Point"] = {"x": "int", "y": "int"}
+        self.tc.known_classes.add("Point")
+        self.tc.instance_fields["Point"] = {"x": "int", "y": "int"}
 
         expr = AttributeExpr(Identifier("self"), "x")
         typ = self.tc.check_expr(expr)
@@ -401,7 +417,7 @@ class TestTypeCheckerInternals(unittest.TestCase):
 
     def test_attribute_expr_field_not_found(self):
         self.tc.env["self"] = "Point"
-        self.tc.classes["Point"] = {"x": "int"}
+        self.tc.instance_fields["Point"] = {"x": "int"}
         expr = AttributeExpr(Identifier("self"), "y")
         with self.assertRaises(TypeError):
             self.tc.check_expr(expr)
@@ -505,6 +521,8 @@ class TestTypeCheckerInternals(unittest.TestCase):
 
     def test_global_stmt_in_function(self):
         self.tc.current_return_type = "int"
+        self.tc.global_env["x"] = "int"
+        self.tc.global_env["y"] = "int"
         stmt = GlobalStmt(names=["x", "y"])
         self.tc.check_global_stmt(stmt)
 
@@ -515,7 +533,9 @@ class TestTypeCheckerInternals(unittest.TestCase):
             self.tc.check_global_stmt(stmt)
 
     def test_try_except_valid(self):
-        self.tc.classes["Error"] = {}
+        self.tc.known_classes.add("Error")
+        self.tc.instance_fields["Error"] = {}
+        self.tc.class_attrs["Error"] = {}
         stmt = TryExceptStmt(
             try_body=[
                 AssertStmt(condition=Literal("True"))
@@ -559,7 +579,248 @@ class TestTypeCheckerInternals(unittest.TestCase):
         with self.assertRaises(TypeError):
             TypeChecker().check(prog)
 
+    def test_call_expr_with_default_arg(self):
+        self.tc.functions["increment"] = (["int", "int"], "int", 1)
+        call1 = CallExpr(Identifier("increment"), [Literal("5")])
+        call2 = CallExpr(Identifier("increment"), [Literal("5"), Literal("2")])
+        self.assertEqual(self.tc.check_expr(call1), "int")
+        self.assertEqual(self.tc.check_expr(call2), "int")
 
+    def test_call_expr_missing_required_arg(self):
+        self.tc.functions["increment"] = (["int", "int"], "int", 1)
+        call = CallExpr(Identifier("increment"), [])
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(call)
+
+    def test_call_expr_too_many_args(self):
+        self.tc.functions["increment"] = (["int", "int"], "int", 1)
+        call = CallExpr(Identifier("increment"), [Literal("1"), Literal("2"), Literal("3")])
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(call)
+
+    def test_call_range_1_arg(self):
+        self.tc.functions["range"] = (["int", "int"], "list[int]", 1)
+        call = CallExpr(Identifier("range"), [Literal("5")])
+        self.assertEqual(self.tc.check_expr(call), "list[int]")
+
+    def test_call_range_2_args(self):
+        self.tc.functions["range"] = (["int", "int"], "list[int]", 1)
+        call = CallExpr(Identifier("range"), [Literal("1"), Literal("5")])
+        self.assertEqual(self.tc.check_expr(call), "list[int]")
+
+    def test_call_range_too_few_args(self):
+        self.tc.functions["range"] = (["int", "int"], "list[int]", 1)
+        call = CallExpr(Identifier("range"), [])
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(call)
+
+    def test_call_range_too_many_args(self):
+        self.tc.functions["range"] = (["int", "int"], "list[int]", 1)
+        call = CallExpr(Identifier("range"), [Literal("1"), Literal("2"), Literal("3")])
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(call)
+
+    def test_attribute_expr_class_attr_static_access(self):
+        # class Player:
+        #     species: str = "Human"
+        #
+        # Player.species  # static access
+
+        self.tc.class_attrs["Player"] = {"species": "str"}
+        expr = AttributeExpr(Identifier("Player"), "species")
+        typ = self.tc.check_expr(expr)
+        self.assertEqual(typ, "str")
+
+    def test_attribute_expr_class_attr_not_found(self):
+        # class Player:
+        #     species: str = "Human"
+        #
+        # Player.hp  # invalid: hp not defined as class attribute
+
+        self.tc.class_attrs["Player"] = {"species": "str"}
+        expr = AttributeExpr(Identifier("Player"), "hp")
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_attribute_expr_class_not_found(self):
+        # UnknownClass.foo  # invalid: UnknownClass is not defined
+
+        expr = AttributeExpr(Identifier("UnknownClass"), "foo")
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_is_subclass(self):
+        self.tc.known_classes.update({"Player", "Mage", "Wizard", "object"})
+        self.tc.class_bases["Mage"] = "Player"
+        self.tc.class_bases["Wizard"] = "Mage"
+
+        # Exact matches
+        self.assertTrue(self.tc.is_subclass("Player", "Player"))
+        self.assertTrue(self.tc.is_subclass("Mage", "Mage"))
+
+        # Direct inheritance
+        self.assertTrue(self.tc.is_subclass("Mage", "Player"))
+
+        # Transitive inheritance
+        self.assertTrue(self.tc.is_subclass("Wizard", "Player"))
+        self.assertTrue(self.tc.is_subclass("Wizard", "Mage"))
+
+        # Negative cases
+        self.assertFalse(self.tc.is_subclass("Player", "Mage"))
+        self.assertFalse(self.tc.is_subclass("object", "Player"))
+        self.assertFalse(self.tc.is_subclass("Mage", "Wizard"))
+
+    def test_check_expr_fstring_literal(self):
+        lit = FStringLiteral(raw="Value is {42}")
+        typ = self.tc.check_expr(lit)
+        self.assertEqual(typ, "str")
+
+    def test_print_int(self):
+        call = CallExpr(func=Identifier("print"), args=[Literal("42")])
+        self.assertEqual(self.tc.check_expr(call), "None")
+
+    def test_print_list_error(self):
+        call = CallExpr(
+            func=Identifier("print"),
+            args=[ListExpr(elements=[Literal("1"), Literal("2")])]
+        )
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(call)
+
+    def test_binop_or_bool(self):
+        expr = BinOp(Literal("True"), "or", Literal("False"))
+        self.assertEqual(self.tc.check_expr(expr), "bool")
+
+    def test_binop_or_nonbool(self):
+        expr = BinOp(Literal("1"), "or", Literal("0"))
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_binop_unknown_op(self):
+        expr = BinOp(Literal("1"), "^", Literal("2"))
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_unary_unknown_op(self):
+        expr = UnaryOp("~", Literal("1"))
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_call_expr_subclass_arg(self):
+        # f(Player) registered, but we pass a Mage
+        self.tc.known_classes.update({"Player", "Mage"})
+        self.tc.class_bases["Mage"] = "Player"
+
+        self.tc.env["m"] = "Mage"
+        self.tc.functions["f"] = (["Player"], "None", 1)
+        call = CallExpr(func=Identifier("f"), args=[Identifier("m")])
+        self.assertEqual(self.tc.check_expr(call), "None")
+
+    def test_call_static_method(self):
+        # class A { def m(self) -> int: ... }
+        self.tc.class_attrs["A"] = {}
+        self.tc.methods["A"] = {"m": (["A"], "int", 1)}
+        self.tc.env["self"] = "A"
+        call = CallExpr(func=AttributeExpr(Identifier("A"), "m"), args=[Identifier("self")])
+        self.assertEqual(self.tc.check_expr(call), "int")
+
+    def test_check_function_def_default_param_order(self):
+        fn = FunctionDef(
+            name="bad",
+            params=[
+              Parameter("x", "int", default=Literal("1")),
+              Parameter("y", "int")
+            ],
+            return_type="None",
+            body=[]
+        )
+        with self.assertRaises(TypeError):
+            self.tc.check_function_def(fn)
+
+    def test_global_stmt_allows_assignment(self):
+        self.tc.global_env["x"] = "int"
+        self.tc.current_return_type = "None"
+        self.tc.check_global_stmt(GlobalStmt(names=["x"]))
+        stmt = AssignStmt(Identifier("x"), Literal("5"))
+        self.tc.check_assign_stmt(stmt)
+
+    def test_function_no_return(self):
+        fn = FunctionDef(name="f", params=[], return_type="int", body=[])
+        with self.assertRaises(TypeError):
+            self.tc.check_function_def(fn)
+
+    def test_class_instantiation_no_args(self):
+        # class C: def __init__(self) -> None: ...
+        self.tc.known_classes.add("C")
+        self.tc.methods["C"] = {
+            "__init__": (["C"], "None", 1)
+        }
+        expr = CallExpr(Identifier("C"), [])
+        self.assertEqual(self.tc.check_expr(expr), "C")
+
+    def test_class_instantiation_missing_required(self):
+        # class D: def __init__(self, x: int) -> None: ...
+        self.tc.known_classes.add("D")
+        self.tc.methods["D"] = {
+            "__init__": (["D", "int"], "None", 2)
+        }
+        expr = CallExpr(Identifier("D"), [])
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_class_instantiation_too_many_args(self):
+        # class E: def __init__(self, x: int) -> None: ...
+        self.tc.known_classes.add("E")
+        self.tc.methods["E"] = {
+            "__init__": (["E", "int"], "None", 2)
+        }
+        expr = CallExpr(Identifier("E"), [Literal("1"), Literal("2")])
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_class_instantiation_wrong_arg_type(self):
+        # class F: def __init__(self, x: int) -> None: ...
+        self.tc.known_classes.add("F")
+        self.tc.methods["F"] = {
+            "__init__": (["F", "int"], "None", 2)
+        }
+        expr = CallExpr(Identifier("F"), [Literal("'hello'")])
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_class_instantiation_subclass_arg(self):
+        # class G: def __init__(self, p: Parent) -> None: ...
+        self.tc.known_classes.update({"Parent", "Child"})
+        self.tc.class_bases["Child"] = "Parent"
+        self.tc.methods["G"] = {
+            "__init__": (["G", "Parent"], "None", 2)
+        }
+        # simulate variable c: Child
+        self.tc.env["c"] = "Child"
+        expr = CallExpr(Identifier("G"), [Identifier("c")])
+        self.assertEqual(self.tc.check_expr(expr), "G")
+
+    def test_top_level_var_decl_goes_to_global_env(self):
+        # Simulate top-level declaration
+        self.tc.current_return_type = None
+        decl = VarDecl(name="g", declared_type="int", value=Literal("42"))
+        self.tc.check_var_decl(decl)
+        self.assertIn("g", self.tc.global_env)
+        self.assertEqual(self.tc.global_env["g"], "int")
+
+    def test_global_stmt_imports_variable_to_local_env(self):
+        self.tc.global_env["counter"] = "int"
+        self.tc.current_return_type = "int"
+        stmt = GlobalStmt(names=["counter"])
+        self.tc.check_global_stmt(stmt)
+        self.assertIn("counter", self.tc.env)
+        self.assertEqual(self.tc.env["counter"], "int")
+
+    def test_global_stmt_rejects_undeclared_variable(self):
+        self.tc.current_return_type = "int"
+        stmt = GlobalStmt(names=["missing"])
+        with self.assertRaises(TypeError):
+            self.tc.check_global_stmt(stmt)
 
 
 # ────────────────────────────────────────────────────────────────
@@ -620,7 +881,7 @@ class TestTypeCheckerProgramLevel(unittest.TestCase):
         ])
         checker = TypeChecker()
         checker.env["x"] = "int"
-        checker.functions["inc"] = (["int"], "int")
+        checker.functions["inc"] = (["int"], "int", 1)
         checker.check(prog)
 
     def test_call_expr_in_program_type_mismatch(self):
@@ -645,7 +906,7 @@ class TestTypeCheckerProgramLevel(unittest.TestCase):
             ))
         ])
         checker = TypeChecker()
-        checker.functions["inc"] = (["int"], "int")
+        checker.functions["inc"] = (["int"], "int", 1)
         with self.assertRaises(TypeError):
             checker.check(prog)
 
@@ -832,33 +1093,33 @@ class TestTypeCheckerProgramLevel(unittest.TestCase):
 
     def test_class_def_and_usage(self):
         """
-        Program:
-            class Counter:
-                count: int = 0
+        class Counter:
+            def __init__(self) -> None:
+                self.count = 0
 
-                def tick(self) -> None:
-                    self.count += 1
-
-        Expected:
-            - Class with int field
-            - Method updates that field via 'self.count'
+            def inc(self) -> None:
+                self.count += 1
         """
         prog = Program(body=[
             ClassDef(
                 name="Counter",
                 base=None,
-                fields=[VarDecl("count", "int", Literal("0"))],
+                fields=[],  # no class attributes
                 methods=[
                     FunctionDef(
-                        name="tick",
-                        params=[Parameter("self", "Counter")],
+                        name="__init__",
+                        params=[Parameter("self", None)],
                         return_type="None",
                         body=[
-                            AugAssignStmt(
-                                target=AttributeExpr(Identifier("self"), "count"),
-                                op="+=",
-                                value=Literal("1")
-                            )
+                            AssignStmt(AttributeExpr(Identifier("self"), "count"), Literal("0"))
+                        ]
+                    ),
+                    FunctionDef(
+                        name="inc",
+                        params=[Parameter("self", None)],
+                        return_type="None",
+                        body=[
+                            AugAssignStmt(AttributeExpr(Identifier("self"), "count"), "+=", Literal("1"))
                         ]
                     )
                 ]
@@ -987,6 +1248,8 @@ class TestTypeCheckerProgramLevel(unittest.TestCase):
             - VarDecls are local declarations here
         """
         prog = Program(body=[
+            VarDecl("x", "int", Literal("0")),  # added global var x
+            VarDecl("y", "int", Literal("0")),  # added global var y
             FunctionDef(
                 name="set_globals",
                 params=[],
@@ -995,6 +1258,33 @@ class TestTypeCheckerProgramLevel(unittest.TestCase):
                     GlobalStmt(names=["x", "y"]),
                     VarDecl("x", "int", Literal("1")),
                     VarDecl("y", "int", Literal("2"))
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
+    def test_function_assigns_to_global_variable(self):
+        """
+        Program being tested:
+            counter: int = 100
+
+            def update() -> None:
+                global counter
+                counter = 200
+
+        Expected:
+            - Global variable 'counter' recognized
+            - Assignment inside function allowed after 'global' declaration
+        """
+        prog = Program(body=[
+            VarDecl(name="counter", declared_type="int", value=Literal("100")),
+            FunctionDef(
+                name="update",
+                params=[],
+                return_type="None",
+                body=[
+                    GlobalStmt(names=["counter"]),
+                    AssignStmt(Identifier("counter"), Literal("200"))
                 ]
             )
         ])
@@ -1042,3 +1332,813 @@ class TestTypeCheckerProgramLevel(unittest.TestCase):
             )
         ])
         TypeChecker().check(prog)
+
+    def test_function_with_default_argument(self):
+        """
+        def increment(x: int, step: int = 1) -> int:
+            return x + step
+
+        a: int = increment(5)
+        b: int = increment(5, 3)
+        """
+        prog = Program(body=[
+            FunctionDef(
+                name="increment",
+                params=[Parameter("x", "int"), Parameter("step", "int", default=Literal("1"))],
+                return_type="int",
+                body=[
+                    ReturnStmt(BinOp(Identifier("x"), "+", Identifier("step")))
+                ]
+            ),
+            VarDecl("a", "int", CallExpr(Identifier("increment"), [Literal("5")])),
+            VarDecl("b", "int", CallExpr(Identifier("increment"), [Literal("5"), Literal("3")])),
+        ])
+        TypeChecker().check(prog)
+
+    def test_for_loop_with_range(self):
+        """
+        Program:
+            def count_up() -> int:
+                total: int = 0
+                for i in range(5):
+                    total += i
+                return total
+
+        Assumptions:
+            - range(n) returns list[int]
+            - 'i' is int
+            - 'total += i' is valid
+        """
+        prog = Program(body=[
+            FunctionDef(
+                name="count_up",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("total", "int", Literal("0")),
+                    ForStmt(
+                        var_name="i",
+                        iterable=CallExpr(Identifier("range"), [Literal("5")]),
+                        body=[
+                            AugAssignStmt(Identifier("total"), "+=", Identifier("i"))
+                        ]
+                    ),
+                    ReturnStmt(Identifier("total"))
+                ]
+            )
+        ])
+        checker = TypeChecker()
+        checker.functions["range"] = (["int", "int"], "list[int]", 1)
+        checker.check(prog)
+
+    def test_for_loop_with_range_two_args(self):
+        """
+        Program:
+            def count_range() -> int:
+                sum: int = 0
+                for i in range(1, 4):
+                    sum += i
+                return sum
+
+        Assumptions:
+            - range(start, stop) is supported
+        """
+        prog = Program(body=[
+            FunctionDef(
+                name="count_range",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("sum", "int", Literal("0")),
+                    ForStmt(
+                        var_name="i",
+                        iterable=CallExpr(Identifier("range"), [Literal("1"), Literal("4")]),
+                        body=[
+                            AugAssignStmt(Identifier("sum"), "+=", Identifier("i"))
+                        ]
+                    ),
+                    ReturnStmt(Identifier("sum"))
+                ]
+            )
+        ])
+        checker = TypeChecker()
+        checker.functions["range"] = (["int", "int"], "list[int]", 1)
+        checker.check(prog)
+
+    def test_raise_runtime_error(self):
+        """
+        Program:
+            def crash() -> None:
+                raise RuntimeError("division by zero")
+
+        Assumptions:
+            - RuntimeError is a built-in class with a constructor: (str) -> RuntimeError
+        """
+        prog = Program(body=[
+            FunctionDef(
+                name="crash",
+                params=[],
+                return_type="None",
+                body=[
+                    RaiseStmt(CallExpr(Identifier("RuntimeError"), [Literal('"division by zero"')]))
+                ]
+            )
+        ])
+        checker = TypeChecker()
+        checker.known_classes.add("RuntimeError")
+        checker.instance_fields["RuntimeError"] = {}
+        checker.class_attrs["RuntimeError"] = {}
+        checker.functions["RuntimeError"] = (["str"], "RuntimeError", 1)
+        checker.check(prog)
+
+    def test_class_method_self_inferred(self):
+        """
+        class Counter:
+            def __init__(self) -> None:
+                self.count = 0
+
+            def tick(self) -> None:
+                self.count += 1
+        """
+        prog = Program(body=[
+            ClassDef(
+                name="Counter",
+                base=None,
+                fields=[],  # all instance fields are set in __init__
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[Parameter("self", None)],
+                        return_type="None",
+                        body=[
+                            AssignStmt(AttributeExpr(Identifier("self"), "count"), Literal("0"))
+                        ]
+                    ),
+                    FunctionDef(
+                        name="tick",
+                        params=[Parameter("self", None)],
+                        return_type="None",
+                        body=[
+                            AugAssignStmt(AttributeExpr(Identifier("self"), "count"), "+=", Literal("1"))
+                        ]
+                    )
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
+    def test_instance_attrs_in_init(self):
+        """
+        class Player:
+            hp: int = 100
+
+            def __init__(self, mp: int) -> None:
+                self.hp = 100
+                self.mp = mp
+                self.name = "Hero"
+        """
+        prog = Program(body=[
+            ClassDef(
+                name="Player",
+                base=None,
+                fields=[VarDecl("hp", "int", Literal("100"))],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[Parameter("self", None), Parameter("mp", "int")],
+                        return_type="None",
+                        body=[
+                            AssignStmt(AttributeExpr(Identifier("self"), "hp"), Literal("100")),
+                            AssignStmt(AttributeExpr(Identifier("self"), "mp"), Identifier("mp")),
+                            AssignStmt(AttributeExpr(Identifier("self"), "name"), StringLiteral("Hero"))
+                        ]
+                    )
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
+    def test_redefine_instance_attr_in_method(self):
+        """
+        class Player:
+            hp: int = 100
+
+            def __init__(self) -> None:
+                self.hp = 100
+
+            def reset(self) -> None:
+                self.hp = 0
+        """
+        prog = Program(body=[
+            ClassDef(
+                name="Player",
+                base=None,
+                fields=[VarDecl("hp", "int", Literal("100"))],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[Parameter("self", None)],
+                        return_type="None",
+                        body=[
+                            AssignStmt(AttributeExpr(Identifier("self"), "hp"), Literal("100")),
+                        ]
+                    ),
+                    FunctionDef(
+                        name="reset",
+                        params=[Parameter("self", None)],
+                        return_type="None",
+                        body=[
+                            AssignStmt(AttributeExpr(Identifier("self"), "hp"), Literal("0")),
+                        ]
+                    )
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
+    def test_assign_new_attr_outside_init_should_error(self):
+        """
+        class Player:
+            def __init__(self) -> None:
+                self.hp = 100
+
+            def add_score(self) -> None:
+                self.score = 10  # Error: not allowed outside __init__
+        """
+        prog = Program(body=[
+            ClassDef(
+                name="Player",
+                base=None,
+                fields=[],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[Parameter("self", None)],
+                        return_type="None",
+                        body=[
+                            AssignStmt(AttributeExpr(Identifier("self"), "hp"), Literal("100")),
+                        ]
+                    ),
+                    FunctionDef(
+                        name="add_score",
+                        params=[Parameter("self", None)],
+                        return_type="None",
+                        body=[
+                            AssignStmt(AttributeExpr(Identifier("self"), "score"), Literal("10")),
+                        ]
+                    )
+                ]
+            )
+        ])
+        with self.assertRaises(TypeError):
+            TypeChecker().check(prog)
+
+    def test_mismatched_attr_type_should_error(self):
+        """
+        class Player:
+            def __init__(self) -> None:
+                self.hp = 100
+
+            def corrupt(self) -> None:
+                self.hp = "full"  # Error: expected int
+        """
+        prog = Program(body=[
+            ClassDef(
+                name="Player",
+                base=None,
+                fields=[],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[Parameter("self", None)],
+                        return_type="None",
+                        body=[
+                            AssignStmt(AttributeExpr(Identifier("self"), "hp"), Literal("100")),
+                        ]
+                    ),
+                    FunctionDef(
+                        name="corrupt",
+                        params=[Parameter("self", None)],
+                        return_type="None",
+                        body=[
+                            AssignStmt(AttributeExpr(Identifier("self"), "hp"), StringLiteral("full")),
+                        ]
+                    )
+                ]
+            )
+        ])
+        with self.assertRaises(TypeError):
+            TypeChecker().check(prog)
+
+    def test_class_attrs_and_instance_attrs(self):
+        """
+        class Player:
+            species: str = "Human"
+
+            def __init__(self) -> None:
+                self.name = "Hero"
+                self.hp = 100
+        """
+        prog = Program(body=[
+            ClassDef(
+                name="Player",
+                base=None,
+                fields=[VarDecl("species", "str", StringLiteral("Human"))],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[Parameter("self", None)],
+                        return_type="None",
+                        body=[
+                            AssignStmt(AttributeExpr(Identifier("self"), "name"), StringLiteral("Hero")),
+                            AssignStmt(AttributeExpr(Identifier("self"), "hp"), Literal("100")),
+                        ]
+                    )
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
+    def test_class_method_static_access(self):
+        """
+        class Player:
+            species: str = "Human"
+
+            def get_species_one(self) -> str:
+                return Player.species
+        """
+        prog = Program(body=[
+            ClassDef(
+                name="Player",
+                base=None,
+                fields=[
+                    VarDecl("species", "str", StringLiteral("Human"))
+                ],
+                methods=[
+                    FunctionDef(
+                        name="get_species_one",
+                        params=[Parameter("self", None)],
+                        return_type="str",
+                        body=[
+                            ReturnStmt(
+                                AttributeExpr(Identifier("Player"), "species")
+                            )
+                        ]
+                    )
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
+    def test_class_inheritance_explicit_init_call(self):
+        """
+        class Player:
+            def __init__(self, hp: int, mp: int = 150) -> None:
+                self.hp = hp
+                self.mp = mp
+
+        class Mage(Player):
+            power: str = "fire"
+
+            def __init__(self, hp: int) -> None:
+                Player.__init__(self, hp)
+                self.mp = 200
+        """
+        prog = Program(body=[
+            ClassDef(
+                name="Player",
+                base=None,
+                fields=[],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[
+                            Parameter("self", "Player"),
+                            Parameter("hp", "int"),
+                            Parameter("mp", "int", default=Literal("150"))
+                        ],
+                        return_type="None",
+                        body=[
+                            AssignStmt(AttributeExpr(Identifier("self"), "hp"), Identifier("hp")),
+                            AssignStmt(AttributeExpr(Identifier("self"), "mp"), Identifier("mp")),
+                        ]
+                    )
+                ]
+            ),
+            ClassDef(
+                name="Mage",
+                base="Player",
+                fields=[
+                    VarDecl("power", "str", StringLiteral("fire"))
+                ],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[
+                            Parameter("self", "Mage"),
+                            Parameter("hp", "int")
+                        ],
+                        return_type="None",
+                        body=[
+                            ExprStmt(CallExpr(
+                                func=AttributeExpr(Identifier("Mage"), "__init__"),
+                                args=[Identifier("self"), Identifier("hp")]
+                            )),
+                            AssignStmt(
+                                AttributeExpr(Identifier("self"), "mp"),
+                                Literal("200")
+                            )
+                        ]
+                    )
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
+    def test_inherited_class_explicit_init_missing_args(self):
+        """
+        class Player:
+            def __init__(self, hp: int, mp: int = 150) -> None:
+                self.hp = hp
+                self.mp = mp
+
+        class Mage(Player):
+            def __init__(self, hp: int) -> None:
+                Player.__init__(self, hp)  # OK: mp is defaulted
+                Player.__init__(self)      # Error: missing required arg 'hp'
+        """
+        player = ClassDef(
+            name="Player",
+            base=None,
+            fields=[],
+            methods=[
+                FunctionDef(
+                    name="__init__",
+                    params=[
+                        Parameter("self", "Player"),
+                        Parameter("hp", "int"),
+                        Parameter("mp", "int", default=Literal("150"))
+                    ],
+                    return_type="None",
+                    body=[]
+                )
+            ]
+        )
+
+        mage = ClassDef(
+            name="Mage",
+            base="Player",
+            fields=[],
+            methods=[
+                FunctionDef(
+                    name="__init__",
+                    params=[
+                        Parameter("self", "Mage"),
+                        Parameter("hp", "int")
+                    ],
+                    return_type="None",
+                    body=[
+                        # Valid call
+                        ExprStmt(CallExpr(
+                            func=AttributeExpr(Identifier("Player"), "__init__"),
+                            args=[Identifier("self"), Identifier("hp")]
+                        )),
+                        # Invalid call — missing required 'hp'
+                        ExprStmt(CallExpr(
+                            func=AttributeExpr(Identifier("Player"), "__init__"),
+                            args=[Identifier("self")]
+                        ))
+                    ]
+                )
+            ]
+        )
+
+        with self.assertRaises(TypeError):
+            TypeChecker().check(Program(body=[player, mage]))
+
+    def test_class_method_call_via_explicit_base(self):
+        """
+        class Player:
+            def __init__(self, hp: int, mp: int = 150) -> None:
+                self.hp = hp
+                self.mp = mp
+
+        class Mage(Player):
+            def __init__(self, hp: int) -> None:
+                Mage.__init__(self, hp)
+                self.mp = 200
+        """
+        prog = Program(body=[
+            ClassDef(
+                name="Player",
+                base=None,
+                fields=[],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[
+                            Parameter("self", "Player"),
+                            Parameter("hp", "int"),
+                            Parameter("mp", "int", default=Literal("150"))
+                        ],
+                        return_type="None",
+                        body=[
+                            AssignStmt(AttributeExpr(Identifier("self"), "hp"), Identifier("hp")),
+                            AssignStmt(AttributeExpr(Identifier("self"), "mp"), Identifier("mp")),
+                        ]
+                    )
+                ]
+            ),
+            ClassDef(
+                name="Mage",
+                base="Player",
+                fields=[],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[
+                            Parameter("self", "Mage"),
+                            Parameter("hp", "int")
+                        ],
+                        return_type="None",
+                        body=[
+                            ExprStmt(CallExpr(
+                                func=AttributeExpr(Identifier("Player"), "__init__"),
+                                args=[Identifier("self"), Identifier("hp")]
+                            )),
+                            AssignStmt(AttributeExpr(Identifier("self"), "mp"), Literal("200"))
+                        ]
+                    )
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
+    def test_invalid_method_call_on_class(self):
+        """
+        class Player:
+            def start(self) -> None:
+                pass
+
+        class Mage:
+            def cast(self) -> None:
+                Player.nonexistent(self)  # Error: no such method
+        """
+        prog = Program(body=[
+            ClassDef(
+                name="Player",
+                base=None,
+                fields=[],
+                methods=[
+                    FunctionDef(
+                        name="start",
+                        params=[Parameter("self", "Player")],
+                        return_type="None",
+                        body=[]
+                    )
+                ]
+            ),
+            ClassDef(
+                name="Mage",
+                base=None,
+                fields=[],
+                methods=[
+                    FunctionDef(
+                        name="cast",
+                        params=[Parameter("self", "Mage")],
+                        return_type="None",
+                        body=[
+                            ExprStmt(CallExpr(
+                                func=AttributeExpr(Identifier("Player"), "nonexistent"),
+                                args=[Identifier("self")]
+                            ))
+                        ]
+                    )
+                ]
+            )
+        ])
+        with self.assertRaises(TypeError) as ctx:
+            TypeChecker().check(prog)
+        self.assertIn("Class 'Player' has no method 'nonexistent'", str(ctx.exception))
+
+    def test_method_shadowing_in_subclass(self):
+        """
+        class Base:
+            def speak(self, msg: str) -> None:
+                pass
+
+        class Child(Base):
+            def speak(self, times: int) -> None:
+                pass
+        """
+        prog = Program(body=[
+            ClassDef(
+                name="Base",
+                base=None,
+                fields=[],
+                methods=[
+                    FunctionDef(
+                        name="speak",
+                        params=[
+                            Parameter("self", "Base"),
+                            Parameter("msg", "str")
+                        ],
+                        return_type="None",
+                        body=[]
+                    )
+                ]
+            ),
+            ClassDef(
+                name="Child",
+                base="Base",
+                fields=[],
+                methods=[
+                    FunctionDef(
+                        name="speak",
+                        params=[
+                            Parameter("self", "Child"),
+                            Parameter("times", "int")
+                        ],
+                        return_type="None",
+                        body=[]
+                    )
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
+    def test_method_call_with_wrong_argument_count(self):
+        """
+        class A:
+            def greet(self, name: str, punctuation: str = "!") -> None:
+                pass
+
+        A.greet("only_one")  # Error: missing 'self'
+        """
+        prog = Program(body=[
+            ClassDef(
+                name="A",
+                base=None,
+                fields=[],
+                methods=[
+                    FunctionDef(
+                        name="greet",
+                        params=[
+                            Parameter("self", "A"),
+                            Parameter("name", "str"),
+                            Parameter("punctuation", "str", default=StringLiteral("!"))
+                        ],
+                        return_type="None",
+                        body=[]
+                    )
+                ]
+            ),
+            # Invalid call: missing 'self'
+            ExprStmt(CallExpr(
+                func=AttributeExpr(Identifier("A"), "greet"),
+                args=[StringLiteral("only_one")]
+            ))
+        ])
+        with self.assertRaises(TypeError) as ctx:
+            TypeChecker().check(prog)
+        self.assertIn("expects between 2 and 3 arguments", str(ctx.exception))
+
+    def test_call_on_undeclared_class(self):
+        """
+        Bork.__init__(self)  # Error: class 'Bork' not declared
+        """
+        prog = Program(body=[
+            ExprStmt(CallExpr(
+                func=AttributeExpr(Identifier("Bork"), "__init__"),
+                args=[Identifier("self")]
+            ))
+        ])
+        with self.assertRaises(TypeError) as ctx:
+            TypeChecker().check(prog)
+        self.assertIn("Class 'Bork' is not defined", str(ctx.exception))
+
+    def test_inherited_field_access_in_subclass_method(self):
+        """
+        class Base:
+            def __init__(self, x: int) -> None:
+                self.x = x
+
+        class Sub(Base):
+            def double(self) -> int:
+                return self.x * 2
+        """
+        prog = Program(body=[
+            ClassDef(
+                name="Base",
+                base=None,
+                fields=[],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[
+                            Parameter("self", "Base"),
+                            Parameter("x", "int")
+                        ],
+                        return_type="None",
+                        body=[
+                            AssignStmt(AttributeExpr(Identifier("self"), "x"), Identifier("x"))
+                        ]
+                    )
+                ]
+            ),
+            ClassDef(
+                name="Sub",
+                base="Base",
+                fields=[],
+                methods=[
+                    FunctionDef(
+                        name="double",
+                        params=[Parameter("self", "Sub")],
+                        return_type="int",
+                        body=[
+                            ReturnStmt(BinOp(
+                                left=AttributeExpr(Identifier("self"), "x"),
+                                op="*",
+                                right=Literal("2")
+                            ))
+                        ]
+                    )
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
+    def test_field_access_without_inheritance(self):
+        """
+        class A:
+            def method(self) -> int:
+                return self.y  # Error: 'y' not defined
+        """
+        prog = Program(body=[
+            ClassDef(
+                name="A",
+                base=None,
+                fields=[],
+                methods=[
+                    FunctionDef(
+                        name="method",
+                        params=[Parameter("self", "A")],
+                        return_type="int",
+                        body=[
+                            ReturnStmt(AttributeExpr(Identifier("self"), "y"))
+                        ]
+                    )
+                ]
+            )
+        ])
+        with self.assertRaises(TypeError) as ctx:
+            TypeChecker().check(prog)
+        self.assertIn("Class 'A' has no instance attribute 'y'", str(ctx.exception))
+
+    def test_aug_assign_on_instance_field_outside_method(self):
+        """
+        Program:
+            def main() -> int:
+                mage: Mage = Mage(100)
+                mage.hp -= 10
+                return 0
+
+        Expected:
+            - Valid: mage.hp -= 10 is allowed outside of a method
+        """
+
+        prog = Program(body=[
+            ClassDef(
+                name="Mage",
+                base=None,
+                fields=[],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[Parameter("self", "Mage"), Parameter("hp", "int")],
+                        return_type="None",
+                        body=[
+                            AssignStmt(AttributeExpr(Identifier("self"), "hp"), Identifier("hp"))
+                        ]
+                    )
+                ]
+            ),
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("mage", "Mage", CallExpr(Identifier("Mage"), [Literal("100")])),
+                    AugAssignStmt(AttributeExpr(Identifier("mage"), "hp"), "-=", Literal("10")),
+                    ReturnStmt(Literal("0"))
+                ]
+            )
+        ])
+
+        checker = TypeChecker()
+        checker.check(prog)
+
+        # Now these are valid assertions
+        assert "Mage" in checker.known_classes
+        assert "Mage" in checker.methods
+        assert "hp" in checker.instance_fields["Mage"]

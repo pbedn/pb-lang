@@ -235,7 +235,7 @@ class Lexer:
 
         # blank / comment-only lines → NEWLINE
         if not line.strip():
-            self.tokens.append(Token(TokenType.NEWLINE, "", self.line_num, 1))
+            # self.tokens.append(Token(TokenType.NEWLINE, "", self.line_num, 1))
             return
 
         # indentation

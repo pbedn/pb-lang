@@ -2,7 +2,8 @@
 # This file demonstrates all currently implemented features of the language.
 # Each section includes comments describing what is tested.
 
-import utils
+# NOT SUPPORTED YET
+# import utils
 
 # === Global variable declaration ===
 counter: int = 100
@@ -27,9 +28,6 @@ class Player:
     def get_species_one(self) -> str:
         return Player.species
 
-    def get_species_two(self) -> str:
-        return self.__class__.species
-
     def add_to_counter(self) -> None:
         global counter
         counter += self.hp
@@ -39,7 +37,7 @@ class Mage(Player):
     power: str = "fire"
 
     def __init__(self, hp: int) -> None:
-        super().__init__(hp)
+        Player.__init__(self, hp)
         self.mp = 200
 
     def cast_spell(self, spell_cost: int) -> None:
@@ -82,8 +80,9 @@ def is_even(n: int) -> bool:
 
 # === Main function showcasing all features ===
 def main() -> int:
-    print("=== Import and Call ===")
-    utils.helper()
+    # NOT SUPPORTED YET
+    # print("=== Import and Call ===")
+    # utils.helper()
 
     print("=== F-String Interpolation ===")
     value: int = 42
@@ -232,14 +231,15 @@ def main() -> int:
     mm /= 2
     print(mm)
 
-    print("=== Explicit Type Conversion ===")
-    i: int = 10
-    f: float = float(i)
-    print(f)
+    # NOT SUPPORTED YET
+    # print("=== Explicit Type Conversion ===")
+    # i: int = 10
+    # f: float = float(i)
+    # print(f)
 
-    f2: float = 3.5
-    i2: int = int(f2)
-    print(i2)
+    # f2: float = 3.5
+    # i2: int = int(f2)
+    # print(i2)
 
     # === Class instantiation and method calls ===
     print("=== Class Instantiation and Methods ===")
@@ -269,12 +269,6 @@ def main() -> int:
 
     print("Species from player1 (via class attribute):")
     print(player1.get_species_one())
-
-    print("Species from player2 (via __class__):")
-    print(player2.get_species_two())
-
-    print("Species from player2 (via __class__) directly:")
-    print(player2.__class__.species)
 
     # Shadow class variable via instance
     player1.hp = 777
