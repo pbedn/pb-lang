@@ -3,23 +3,23 @@ import subprocess
 import argparse
 from lexer import Lexer, LexerError
 from parser import Parser, ParserError
-from codegen import CCodeGenerator
-from type_checker import TypeChecker, LangTypeError
+from codegen import CodeGen
+from type_checker import TypeChecker, TypeError
 from pprint import pprint
 
 def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = False, debug: bool = False):
     lexer = Lexer(source_code)
     try:
         tokens = lexer.tokenize()
+        if debug: print("TOKENS:\n"); pprint(tokens); print(f"{'-'*80}\n")
     except LexerError as e:
         print(f"Lexer error: {e}")
         return False
 
     parser = Parser(tokens)
-    if debug: pprint(tokens)
     try:
         ast = parser.parse()
-        if debug: pprint(ast)
+        if debug: print("AST:\n"); pprint(ast); print(f"{'-'*80}\n")
     except ParserError as e:
         print(f"Parser error: {e}")
         return False
@@ -28,31 +28,33 @@ def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = F
     try:
         checker = TypeChecker()
         checker.check(ast)
-        if verbose:
-            print(f"-- Registered globals:")
-            for k,v in checker.global_env.items():
-                print(f"{k} -> {v}")
-            print("-- Registered functions:")
-            for k, v in checker.functions.items():
-                print(f"{k}: {v}")
-            print("\n")
-        functions = checker.functions
-    except LangTypeError as e:
-        print(f"❌ Type Error: {e}")
+    except TypeError as e:
+        print(f"Type Error: {e}")
         return False
 
-    global_vars = checker.global_env  # Dict: name -> type
-    codegen = CCodeGenerator(functions=functions, global_vars=global_vars)
+    codegen = CodeGen()
     c_code = codegen.generate(ast)
+    if debug: print("C CODE:\n"); print(c_code); print(f"{'-'*80}\n")
 
     output_path = get_build_output_path(output_file)
     with open(output_path, "w") as f:
         f.write(c_code)
-    print(f"C code written to {output_path}")
+    if verbose: print(f"C code written to {output_path}")
     return True
 
 
 def build(source_code: str, output_file: str, verbose: bool = False, debug: bool = False) -> bool:
+    try:
+        subprocess.run(['gcc', '--version'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if verbose: print("GCC is available")
+    except FileNotFoundError:
+        print("GCC is not installed or not in the system PATH.")
+        print("If not installed then run `sudo apt install gcc`")
+        return False
+    except subprocess.CalledProcessError:
+        if verbose: print("GCC is available, but an error occurred while running it.")
+        return False
+
     success = compile_to_c(source_code, f"{output_file}.c", verbose=verbose, debug=debug)
     if not success:
         print("Skipping GCC build because type checking failed.")
@@ -64,10 +66,10 @@ def build(source_code: str, output_file: str, verbose: bool = False, debug: bool
 
     result = subprocess.run(compile_cmd, capture_output=True, text=True)
     if result.returncode == 0:
-        print(f"Built: {exe_file}")
+        if verbose: print(f"Built: {exe_file}")
         return True
     else:
-        print(f"❌ GCC build failed (exit code {result.returncode})")
+        print(f"GCC build failed (exit code {result.returncode})")
         print(f"Error output: {result.stderr}")
         return False
 
@@ -80,10 +82,10 @@ def run(source_code: str, output_file: str, verbose: bool = False, debug: bool =
         return
     # exe_file = output_file + (".exe" if os.name == "nt" else "")
     exe_file = get_build_output_path(output_file) + (".exe" if os.name == "nt" else "")
-    print("Running:", exe_file)
-    print("\n")
+    if verbose: print("Running:", exe_file)
+    if verbose: print("\n")
     subprocess.run([exe_file])
-    print("\n")
+    if verbose: print("\n")
 
 
 def get_build_output_path(output_file: str) -> str:
@@ -93,11 +95,11 @@ def get_build_output_path(output_file: str) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Fast Python Language Toolchain")
+    parser = argparse.ArgumentParser(description="PB Language Toolchain")
     parser.add_argument("command", choices=["toc", "build", "run"], help="Action to perform")
     parser.add_argument("file", help="Path to .pb source file")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
-    parser.add_argument("--debug", action="store_true", help="Enable debug output")
+    parser.add_argument("-d", "--debug", action="store_true", help="Enable debug output")
     args = parser.parse_args()
 
     if not args.file.endswith(".pb"):
