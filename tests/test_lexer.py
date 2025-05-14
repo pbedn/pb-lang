@@ -299,13 +299,13 @@ class TestLexer(unittest.TestCase):
         self.assertEqual(len(lits), 1)
         self.assertEqual(lits[0].value, "#notcomment")
 
-    # Currently inserting new line is removed from lexer
-    # def test_blank_line_generates_NEWLINE(self):
-    #     code = "a=1\n\nb=2\n"
-    #     tokens = Lexer(code).tokenize()
-    #     newlines = [t for t in tokens if t.type.name == "NEWLINE"]
-    #     # a=1, blank line, b=2 all generate NEWLINE, so at least 3
-    #     self.assertGreaterEqual(len(newlines), 3)
+    @unittest.skip("Currently inserting new line is removed from lexer")
+    def test_blank_line_generates_NEWLINE(self):
+        code = "a=1\n\nb=2\n"
+        tokens = Lexer(code).tokenize()
+        newlines = [t for t in tokens if t.type.name == "NEWLINE"]
+        # a=1, blank line, b=2 all generate NEWLINE, so at least 3
+        self.assertGreaterEqual(len(newlines), 3)
 
     def test_indent_dedent_column(self):
         code = "if True:\n    x=1\n"

@@ -139,8 +139,6 @@ class TestParseExpressions(unittest.TestCase):
         parser = self.parse_tokens("f'hello {x}'")
         lit = parser.parse_literal()
 
-        print(lit)
-
         # Expected: FStringLiteral(raw='hello {x}', vars=['x'])
         self.assertIsInstance(lit, FStringLiteral)
         self.assertEqual(lit.raw, "hello {x}")
@@ -391,7 +389,7 @@ class TestParseStatements(unittest.TestCase):
         lexer = Lexer(code)
         tokens = lexer.tokenize()
         # DEBUG
-        for t in tokens: print(t)
+        # for t in tokens: print(t)
         return Parser(tokens)
 
     def test_parse_expr_stmt(self):
@@ -759,7 +757,7 @@ class TestParseComplexStmtAndExpr(unittest.TestCase):
         lexer = Lexer(code)
         tokens = lexer.tokenize()
         # DEBUG
-        for t in tokens: print(t)
+        # for t in tokens: print(t)
         return Parser(tokens)
 
     def test_parse_full_program(self):
@@ -984,7 +982,7 @@ class TestGenericTypes(unittest.TestCase):
         lexer = Lexer(code)
         tokens = lexer.tokenize()
         # DEBUG
-        for t in tokens: print(t)
+        # for t in tokens: print(t)
         return Parser(tokens)
 
     def test_parse_var_decl_with_generic_list(self):

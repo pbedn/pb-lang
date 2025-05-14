@@ -4,28 +4,23 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdarg.h>
-
 static void pb_fail(const char *msg) {
     fprintf(stderr, "%s\n", msg);
     exit(EXIT_FAILURE);
 }
-
 // Runtime types for list[int] and dict[str,int]
 typedef struct {
     int64_t len;
     int64_t *data;
 } List_int;
-
 typedef struct {
     const char *key;
     int64_t value;
 } Pair_str_int;
-
 typedef struct {
     int64_t len;
     Pair_str_int *data;
 } Dict_str_int;
-
 static void pb_print_int(int64_t x)   { printf("%lld\n", x); }
 static void pb_print_double(double x) { printf("%f\n", x); }
 static void pb_print_str(const char *s){ printf("%s\n", s); }
@@ -37,7 +32,6 @@ static int64_t pb_dict_get(Dict_str_int d, const char * key) {
     pb_fail("Key not found in dict");
     return 0;
 }
-
 typedef struct Player {
     int64_t hp;
     const char * species;
@@ -45,19 +39,15 @@ typedef struct Player {
     const char * name;
     int64_t score;
 } Player;
-
 typedef struct Mage {
     Player base;
     const char * power;
-    int64_t hp;
     int64_t mp;
 } Mage;
-
 int64_t Player_hp = 100;
 const char * Player_species = "Human";
 const char * Mage_power = "fire";
 int64_t counter = 100;
-
 int64_t add(int64_t x, int64_t y);
 int64_t divide(int64_t x, int64_t y);
 int64_t increment(int64_t x, int64_t step);
@@ -70,7 +60,6 @@ void Player__add_to_counter(struct Player * self);
 void Mage____init__(struct Mage * self, int64_t hp);
 void Mage__cast_spell(struct Mage * self, int64_t spell_cost);
 void Mage__heal(struct Mage * self, int64_t amount);
-
 void Player____init__(struct Player * self, int64_t hp, int64_t mp)
 {
     (void)self;
@@ -83,7 +72,6 @@ void Player____init__(struct Player * self, int64_t hp, int64_t mp)
     self->score = 0;
     self->name = "Hero";
 }
-
 void Player__heal(struct Player * self, int64_t amount)
 {
     (void)self;
@@ -92,7 +80,6 @@ void Player__heal(struct Player * self, int64_t amount)
     (void)__fbuf;
     self->hp += amount;
 }
-
 const char * Player__get_name(struct Player * self)
 {
     (void)self;
@@ -100,7 +87,6 @@ const char * Player__get_name(struct Player * self)
     (void)__fbuf;
     return self->name;
 }
-
 const char * Player__get_species_one(struct Player * self)
 {
     (void)self;
@@ -108,7 +94,6 @@ const char * Player__get_species_one(struct Player * self)
     (void)__fbuf;
     return Player_species;
 }
-
 void Player__add_to_counter(struct Player * self)
 {
     (void)self;
@@ -117,7 +102,6 @@ void Player__add_to_counter(struct Player * self)
     /* global counter */
     counter += self->hp;
 }
-
 void Mage____init__(struct Mage * self, int64_t hp)
 {
     (void)self;
@@ -127,7 +111,6 @@ void Mage____init__(struct Mage * self, int64_t hp)
     Player____init__((struct Player *)self, hp, 150);
     self->mp = 200;
 }
-
 void Mage__cast_spell(struct Mage * self, int64_t spell_cost)
 {
     (void)self;
@@ -135,39 +118,34 @@ void Mage__cast_spell(struct Mage * self, int64_t spell_cost)
     char __fbuf[256];
     (void)__fbuf;
     if ((self->mp >= spell_cost)) {
-    pb_print_str("Spell cast!");
-    self->mp -= spell_cost;
+        pb_print_str("Spell cast!");
+        self->mp -= spell_cost;
+    }
+    else  {
+        pb_print_str("Not enough mana");
+    }
 }
-else  {
-    pb_print_str("Not enough mana");
-}
-}
-
 void Mage__heal(struct Mage * self, int64_t amount)
 {
     (void)self;
     (void)amount;
     char __fbuf[256];
     (void)__fbuf;
-    self->hp += amount;
+    self->base.hp += amount;
     self->mp += (amount / 2);
 }
-
-static inline const char * Mage__get_species_one(
-    struct Mage * self) {
-    return Player__get_species_one((struct Player *)self);
-}
-
 static inline void Mage__add_to_counter(
     struct Mage * self) {
     Player__add_to_counter((struct Player *)self);
 }
-
 static inline const char * Mage__get_name(
     struct Mage * self) {
     return Player__get_name((struct Player *)self);
 }
-
+static inline const char * Mage__get_species_one(
+    struct Mage * self) {
+    return Player__get_species_one((struct Player *)self);
+}
 int64_t add(int64_t x, int64_t y)
 {
     (void)x;
@@ -179,7 +157,6 @@ int64_t add(int64_t x, int64_t y)
     pb_print_int(result);
     return result;
 }
-
 int64_t divide(int64_t x, int64_t y)
 {
     (void)x;
@@ -187,11 +164,10 @@ int64_t divide(int64_t x, int64_t y)
     char __fbuf[256];
     (void)__fbuf;
     if ((y == 0)) {
-    pb_fail("Exception raised");
-}
+        pb_fail("Exception raised");
+    }
     return (x / y);
 }
-
 int64_t increment(int64_t x, int64_t step)
 {
     (void)x;
@@ -200,20 +176,18 @@ int64_t increment(int64_t x, int64_t step)
     (void)__fbuf;
     return (x + step);
 }
-
 bool is_even(int64_t n)
 {
     (void)n;
     char __fbuf[256];
     (void)__fbuf;
     if (((n % 2) == 0)) {
-    return true;
+        return true;
+    }
+    else  {
+        return false;
+    }
 }
-else  {
-    return false;
-}
-}
-
 int main(void)
 {
     char __fbuf[256];
@@ -246,35 +220,35 @@ int main(void)
     pb_print_double(threshold);
     pb_print_str("=== If/Else ===");
     if (is_even(total)) {
-    pb_print_str("Total is even");
-}
-else  {
-    pb_print_str("Total is odd");
-}
+        pb_print_str("Total is even");
+    }
+    else  {
+        pb_print_str("Total is odd");
+    }
     pb_print_str("=== While Loop ===");
     int64_t loop_counter = 0;
     while ((loop_counter < 3)) {
-    pb_print_int(loop_counter);
-    loop_counter = (loop_counter + 1);
-}
+        pb_print_int(loop_counter);
+        loop_counter = (loop_counter + 1);
+    }
     pb_print_str("=== For Loop with range(0, 3) ===");
     for (int64_t i = 0; i < 3; ++i) {
-    pb_print_int(i);
-}
+        pb_print_int(i);
+    }
     pb_print_str("=== For Loop with range(2) ===");
     for (int64_t j = 0; j < 2; ++j) {
-    pb_print_int(j);
-}
+        pb_print_int(j);
+    }
     pb_print_str("=== Break and Continue ===");
     for (int64_t k = 0; k < 5; ++k) {
-    if ((k == 2)) {
-    continue;
-}
-    if ((k == 4)) {
-    break;
-}
-    pb_print_int(k);
-}
+        if ((k == 2)) {
+        continue;
+    }
+        if ((k == 4)) {
+        break;
+    }
+        pb_print_int(k);
+    }
     pb_print_str("=== List and Indexing ===");
     int64_t __tmp_list_1[] = {100, 200, 300};
     List_int numbers = (List_int){ .len=3, .data=__tmp_list_1 };
@@ -293,8 +267,8 @@ else  {
     bool x = true;
     bool y = false;
     if ((x && !(y))) {
-    pb_print_str("x is True and y is False");
-}
+        pb_print_str("x is True and y is False");
+    }
     pb_print_str("=== Boolean List and Indexing ===");
     int64_t __tmp_list_3[] = {true, false, true};
     List_int flags = (List_int){ .len=3, .data=__tmp_list_3 };
@@ -305,28 +279,28 @@ else  {
     pb_print_str("=== If/Elif/Else ===");
     int64_t n = 5;
     if ((n == 0)) {
-    pb_print_str("zero");
-}
-else if ((n == 5)) {
-    pb_print_str("five");
-}
-else  {
-    pb_print_str("other");
-}
+        pb_print_str("zero");
+    }
+    else if ((n == 5)) {
+        pb_print_str("five");
+    }
+    else  {
+        pb_print_str("other");
+    }
     pb_print_str("=== Pass Statement ===");
     if (true) {
-    /* pass */
-}
+        ;  // pass
+    }
     pb_print_str("Pass block completed");
     pb_print_str("=== Is / Is Not Operators ===");
     int64_t aa = 10;
     int64_t bb = 10;
     if ((aa == bb)) {
-    pb_print_str("a is b");
-}
+        pb_print_str("a is b");
+    }
     if ((aa != 20)) {
-    pb_print_str("a is not 20");
-}
+        pb_print_str("a is not 20");
+    }
     pb_print_str("=== Augmented Assignment ===");
     int64_t m = 5;
     pb_print_int(m);
@@ -388,25 +362,24 @@ else  {
     pb_print_str("Mage name:");
     pb_print_str(Mage__get_name(mage));
     pb_print_str("Mage HP:");
-pb_print_int(mage->hp);
+    pb_print_int(mage->base.hp);
     pb_print_str("Mage MP:");
-pb_print_int(mage->mp);
+    pb_print_int(mage->mp);
     pb_print_str("Mage casts a spell costing 20 mana...");
     Mage__cast_spell(mage, 20);
     pb_print_str("Remaining MP:");
-pb_print_int(mage->mp);
+    pb_print_int(mage->mp);
     pb_print_str("Mage takes damage and heals...");
-    mage->hp -= 30;
+    mage->base.hp -= 30;
     mage->mp -= 10;
     pb_print_str("HP after damage:");
-pb_print_int(mage->hp);
+    pb_print_int(mage->base.hp);
     pb_print_str("MP after damage:");
-pb_print_int(mage->mp);
+    pb_print_int(mage->mp);
     Mage__heal(mage, 40);
     pb_print_str("HP after healing:");
-pb_print_int(mage->hp);
+    pb_print_int(mage->base.hp);
     pb_print_str("MP after healing:");
-pb_print_int(mage->mp);
+    pb_print_int(mage->mp);
     return 0;
 }
-
