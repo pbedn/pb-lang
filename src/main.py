@@ -1,11 +1,16 @@
 import os
 import subprocess
 import argparse
+import shutil
+from pprint import pprint
+
 from lexer import Lexer, LexerError
 from parser import Parser, ParserError
 from codegen import CodeGen
 from type_checker import TypeChecker, TypeError
-from pprint import pprint
+
+from utils import elapsed
+
 
 def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = False, debug: bool = False):
     lexer = Lexer(source_code)
@@ -39,6 +44,8 @@ def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = F
     output_path = get_build_output_path(output_file)
     with open(output_path, "w") as f:
         f.write(c_code)
+
+    copy_runtime_header(output_path, verbose)
     if verbose: print(f"C code written to {output_path}")
     return True
 
@@ -74,7 +81,6 @@ def build(source_code: str, output_file: str, verbose: bool = False, debug: bool
         return False
 
 
-
 def run(source_code: str, output_file: str, verbose: bool = False, debug: bool = False):
     success = build(source_code, output_file, verbose=verbose, debug=debug)
     if not success:
@@ -92,6 +98,32 @@ def get_build_output_path(output_file: str) -> str:
     build_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "build"))
     os.makedirs(build_dir, exist_ok=True)
     return os.path.join(build_dir, output_file)
+
+@elapsed
+def copy_runtime_header(c_output_path: str, verbose: bool = False):
+    """
+    Copies 'runtime.h' from the same directory as this script
+    to the directory containing the C file (overwriting if exists).
+    """
+    dest_dir = os.path.dirname(c_output_path)
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+    runtime_src = os.path.join(this_dir, "runtime.h")
+
+    if not os.path.isfile(runtime_src):
+        raise FileNotFoundError(f"runtime.h not found at: {runtime_src}")
+
+    dest_path = os.path.join(dest_dir, "runtime.h")
+
+    # Only copy if destination does not exist or is older than source
+    need_copy = (
+        not os.path.exists(dest_path)
+        or os.path.getmtime(runtime_src) > os.path.getmtime(dest_path)
+    )
+    if need_copy:
+        shutil.copy2(runtime_src, dest_path)
+        if verbose: print(f"[info] Copied runtime.h to {dest_path}")
+    else:
+        if verbose: print(f"[info] runtime.h in {dest_dir} is up to date")
 
 
 def main():

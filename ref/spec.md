@@ -7,7 +7,7 @@
 * **Safety first** – many errors rejected at lex, parse or type‑check time.  
 * **Simplicity** – a deliberately small subset of Python; no GC, no runtime dynamic typing.
 
-PB is a **statically and strongly typed programming language** that features Python-like syntax and compiles to C (targeting C99). It is designed to be minimal, fast, and safe, intentionally avoiding dynamic typing and garbage collection. PB prioritizes readability and simplicity, enabling developers to write high-performance code with clear C semantics under the hood.
+PB is a **statically and strongly typed programming language** that features Python-like syntax and compiles to C (targeting C99). It is designed to be minimal, fast, and safe, intentionally avoiding dynamic typing. PB prioritizes readability and simplicity, enabling developers to write high-performance code with clear C semantics under the hood.
 
 ---
 

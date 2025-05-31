@@ -7,6 +7,8 @@ from lexer import Lexer
 from parser import Parser
 from codegen import CodeGen
 from type_checker import TypeChecker
+from main import copy_runtime_header
+
 
 class TestPipelineRuntime(unittest.TestCase):
     def compile_and_run(self, code: str) -> str:
@@ -23,6 +25,8 @@ class TestPipelineRuntime(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix=".c", delete=False) as c_file:
             c_file.write(c_code.encode("utf-8"))
             c_file_path = c_file.name
+
+        copy_runtime_header(c_file_path)
 
         # Compile using GCC
         exe_path = c_file_path[:-2]

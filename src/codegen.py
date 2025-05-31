@@ -118,62 +118,7 @@ class CodeGen:
             return
         self._runtime_emitted = True
 
-        for h in ("stdio.h","stdlib.h","stdint.h","stdbool.h","string.h","stdarg.h"):
-            self._emit(f"#include <{h}>")
-        self._emit()
-
-        # Failure helper
-        self._emit("static void pb_fail(const char *msg) {")
-        self._indent += 1
-        self._emit('fprintf(stderr, "%s\\n", msg);')
-        self._emit("exit(EXIT_FAILURE);")
-        self._indent -= 1
-        self._emit("}")
-        self._emit()
-
-        self._emit("// Runtime types for list[int] and dict[str,int]")
-        self._emit("typedef struct {")
-        self._indent += 1
-        self._emit("int64_t len;")
-        self._emit("int64_t *data;")
-        self._indent -= 1
-        self._emit("} List_int;")
-        self._emit()
-
-        self._emit("typedef struct {")
-        self._indent += 1
-        self._emit("const char *key;")
-        self._emit("int64_t value;")
-        self._indent -= 1
-        self._emit("} Pair_str_int;")
-        self._emit()
-
-        self._emit("typedef struct {")
-        self._indent += 1
-        self._emit("int64_t len;")
-        self._emit("Pair_str_int *data;")
-        self._indent -= 1
-        self._emit("} Dict_str_int;")
-        self._emit()
-
-
-        # Print helpers
-        self._emit("static void pb_print_int(int64_t x)   { printf(\"%lld\\n\", x); }")
-        self._emit("static void pb_print_double(double x) { printf(\"%f\\n\", x); }")
-        self._emit("static void pb_print_str(const char *s){ printf(\"%s\\n\", s); }")
-        self._emit("static void pb_print_bool(bool b)     { printf(\"%s\\n\", b?\"True\":\"False\"); }")
-        
-        self._emit("static int64_t pb_dict_get(Dict_str_int d, const char * key) {")
-        self._indent += 1
-        self._emit("for (int64_t i = 0; i < d.len; ++i) {")
-        self._indent += 1
-        self._emit("if (strcmp(d.data[i].key, key) == 0) return d.data[i].value;")
-        self._indent -= 1
-        self._emit("}")
-        self._emit('pb_fail("Key not found in dict");')
-        self._emit("return 0;")
-        self._indent -= 1
-        self._emit("}")
+        self._emit('''#include "runtime.h"''')
         self._emit()
 
     @staticmethod
