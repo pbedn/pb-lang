@@ -744,11 +744,15 @@ class CodeGen:
                 return f"pb_dict_get({base}, {idx})"
             return f"{base}.data[{idx}]"  # or list_int_get
         if isinstance(e, ListExpr):
-            elems = ", ".join(self._expr(x) for x in e.elements)
             self._tmp_counter += 1
             buf_name = f"__tmp_list_{self._tmp_counter}"
-            self._emit(f"int64_t {buf_name}[] = {{{elems}}};")
-            return f"(List_int){{ .len={len(e.elements)}, .data={buf_name} }}"
+            if not e.elements:
+                self._emit(f"int64_t {buf_name}[1] = {{0}};")
+                return f"(List_int){{ .len=0, .data={buf_name} }}"
+            else:
+                elems = ", ".join(self._expr(x) for x in e.elements)
+                self._emit(f"int64_t {buf_name}[] = {{{elems}}};")
+                return f"(List_int){{ .len={len(e.elements)}, .data={buf_name} }}"
 
             # Not working with GCC C99
             # elems = ", ".join(self._expr(x) for x in e.elements)

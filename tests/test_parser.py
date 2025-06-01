@@ -42,16 +42,13 @@ from lang_ast import (
     DictExpr,
 )
 
-def parse_tokens(code: str):
-    lexer = Lexer(code)
-    tokens = lexer.tokenize()
-    return Parser(tokens)
-
-class TestParserHelpers(unittest.TestCase):
+class ParserTestCase(unittest.TestCase):
     def parse_tokens(self, code: str):
         lexer = Lexer(code)
         tokens = lexer.tokenize()
         return Parser(tokens)
+
+class TestParserHelpers(ParserTestCase):
 
     def test_current_and_peek(self):
         parser = self.parse_tokens("x + 1")
@@ -97,11 +94,7 @@ class TestParserHelpers(unittest.TestCase):
         parser.advance()  # EOF
         self.assertTrue(parser.at_end())
 
-class TestParseExpressions(unittest.TestCase):
-    def parse_tokens(self, code: str):
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        return Parser(tokens)
+class TestParseExpressions(ParserTestCase):
 
     def test_parse_identifier(self):
         parser = self.parse_tokens("foo")
@@ -406,14 +399,7 @@ class TestParseExpressions(unittest.TestCase):
         self.assertEqual(expr.values[1].op, "+")
 
 
-class TestParseStatements(unittest.TestCase):
-
-    def parse_tokens(self, code: str):
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        # DEBUG
-        # for t in tokens: print(t)
-        return Parser(tokens)
+class TestParseStatements(ParserTestCase):
 
     def test_parse_expr_stmt(self):
         parser = self.parse_tokens("foo + 1\n")
@@ -751,14 +737,8 @@ class TestParseStatements(unittest.TestCase):
         self.assertIsInstance(stmt, ImportStmt)
         self.assertEqual(stmt.module, ["math", "utils", "io"])
 
-class TestParseComplexStmtAndExpr(unittest.TestCase):
 
-    def parse_tokens(self, code: str):
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        # DEBUG
-        # for t in tokens: print(t)
-        return Parser(tokens)
+class TestParseComplexStmtAndExpr(ParserTestCase):
 
     def test_parse_full_program(self):
         code = (
@@ -856,6 +836,114 @@ class TestParseComplexStmtAndExpr(unittest.TestCase):
         exc = try_stmt.except_blocks[0]
         self.assertEqual(exc.exc_type, "ZeroDivisionError")
         self.assertEqual(exc.alias, "err")
+
+    def test_parse_program_with_list_methods(self):
+        code = (
+            "def list_met() -> None:\n"
+            "    arr: list[int] = [1, 2, 3]\n"
+            "    arr.append(4)\n"
+            "    arr.append(5)\n"
+            "    arr.remove(4)\n"
+            "    arr.pop(4)\n"
+        )
+
+        # Expected
+        # Program(body=[
+        #     FunctionDef(
+        #         name="list_met",
+        #         params=[],
+        #         return_type="None",
+        #         body=[
+        #             VarDecl(
+        #                 name="arr",
+        #                 declared_type="list[int]",
+        #                 value=ListExpr(elements=[
+        #                     Literal(raw="1"),
+        #                     Literal(raw="2"),
+        #                     Literal(raw="3")
+        #                 ])
+        #             ),
+        #             ExprStmt(
+        #                 expr=CallExpr(
+        #                     func=AttributeExpr(
+        #                         obj=Identifier(name="arr"),
+        #                         attr="append"
+        #                     ),
+        #                     args=[Literal(raw="4")]
+        #                 )
+        #             ),
+        #             ExprStmt(
+        #                 expr=CallExpr(
+        #                     func=AttributeExpr(
+        #                         obj=Identifier(name="arr"),
+        #                         attr="remove"
+        #                     ),
+        #                     args=[Literal(raw="2")]
+        #                 )
+        #             ),
+        #             ExprStmt(
+        #                 expr=CallExpr(
+        #                     func=AttributeExpr(
+        #                         obj=Identifier(name="arr"),
+        #                         attr="pop"
+        #                     ),
+        #                     args=[]
+        #                 )
+        #             ),
+        #         ]
+        #     )
+        # ])
+
+        parser = self.parse_tokens(code)
+        prog = parser.parse()
+
+        self.assertIsInstance(prog, Program)
+        self.assertEqual(len(prog.body), 1)
+        fn = prog.body[0]
+        self.assertIsInstance(fn, FunctionDef)
+        self.assertEqual(fn.name, "list_met")
+        self.assertEqual(fn.return_type, "None")
+        self.assertEqual(len(fn.body), 5)
+
+        # --- VarDecl for arr ---
+        decl = fn.body[0]
+        self.assertIsInstance(decl, VarDecl)
+        self.assertEqual(decl.name, "arr")
+        self.assertEqual(decl.declared_type, "list[int]")
+        self.assertIsInstance(decl.value, ListExpr)
+        self.assertEqual([e.raw for e in decl.value.elements], ["1", "2", "3"])
+
+        # --- Call to arr.append(4) ---
+        stmt1 = fn.body[1]
+        self.assertIsInstance(stmt1, ExprStmt)
+        call1 = stmt1.expr
+        self.assertIsInstance(call1, CallExpr)
+        self.assertIsInstance(call1.func, AttributeExpr)
+        self.assertEqual(call1.func.obj.name, "arr")
+        self.assertEqual(call1.func.attr, "append")
+        self.assertEqual(len(call1.args), 1)
+        self.assertEqual(call1.args[0].raw, "4")
+
+        # --- Call to arr.append(5) ---
+        stmt2 = fn.body[2]
+        call2 = stmt2.expr
+        self.assertIsInstance(call2, CallExpr)
+        self.assertEqual(call2.func.attr, "append")
+        self.assertEqual(call2.args[0].raw, "5")
+
+        # --- Call to arr.remove(4) ---
+        stmt3 = fn.body[3]
+        call3 = stmt3.expr
+        self.assertIsInstance(call3, CallExpr)
+        self.assertEqual(call3.func.attr, "remove")
+        self.assertEqual(call3.args[0].raw, "4")
+
+        # --- Call to arr.pop(4) ---
+        stmt4 = fn.body[4]
+        call4 = stmt4.expr
+        self.assertIsInstance(call4, CallExpr)
+        self.assertEqual(call4.func.attr, "pop")
+        self.assertEqual(call4.args[0].raw, "4")
 
 
 class TestParserEdgeCases(unittest.TestCase):
@@ -976,14 +1064,7 @@ class TestParserEdgeCases(unittest.TestCase):
             self.parse_program("a < b < c\n")
 
 
-class TestGenericTypes(unittest.TestCase):
-
-    def parse_tokens(self, code: str):
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        # DEBUG
-        # for t in tokens: print(t)
-        return Parser(tokens)
+class TestGenericTypes(ParserTestCase):
 
     def test_parse_var_decl_with_empty_list(self):
         code = (
@@ -992,7 +1073,6 @@ class TestGenericTypes(unittest.TestCase):
 
         parser = self.parse_tokens(code)
         prog = parser.parse()
-        print(prog)
 
         self.assertIsInstance(prog, Program)
         self.assertEqual(len(prog.body), 1)
@@ -1058,6 +1138,89 @@ class TestGenericTypes(unittest.TestCase):
         self.assertIsInstance(decl, VarDecl)
         self.assertEqual(decl.name, "data")
         self.assertEqual(decl.declared_type, "list[dict[str, float]]")
+
+
+class TestParseLists(ParserTestCase):
+
+    def parse_expr(self, code: str):
+        return self.parse_tokens(code).parse_expr()
+
+    def parse_expr_stmt(self, code: str):
+        return self.parse_tokens(code).parse_expr_stmt()
+
+    def test_list_with_ints(self):
+        expr = self.parse_expr("[1, 2, 3]\n")
+        self.assertIsInstance(expr, ListExpr)
+        self.assertEqual(len(expr.elements), 3)
+        for i, val in enumerate(["1", "2", "3"]):
+            self.assertIsInstance(expr.elements[i], Literal)
+            self.assertEqual(expr.elements[i].raw, val)
+
+    def test_list_with_floats(self):
+        expr = self.parse_expr("[1.0, 2.5, 3.14]\n")
+        self.assertIsInstance(expr, ListExpr)
+        self.assertEqual(len(expr.elements), 3)
+        self.assertEqual([e.raw for e in expr.elements], ["1.0", "2.5", "3.14"])
+
+    def test_list_with_bools(self):
+        expr = self.parse_expr("[True, False, True]\n")
+        self.assertIsInstance(expr, ListExpr)
+        self.assertEqual([e.raw for e in expr.elements], ["True", "False", "True"])
+
+    def test_list_with_strings(self):
+        expr = self.parse_expr("['a', 'b', 'c']\n")
+        self.assertIsInstance(expr, ListExpr)
+        self.assertEqual(len(expr.elements), 3)
+        for el in expr.elements:
+            self.assertIsInstance(el, StringLiteral)
+        self.assertEqual([el.value for el in expr.elements], ["a", "b", "c"])
+
+    def test_empty_list(self):
+        expr = self.parse_expr("[]\n")
+        self.assertIsInstance(expr, ListExpr)
+        self.assertEqual(expr.elements, [])
+
+    def test_list_append_method(self):
+        stmt = self.parse_expr_stmt("items.append(42)\n")
+        self.assertIsInstance(stmt, ExprStmt)
+
+        expr = stmt.expr
+        self.assertIsInstance(expr, CallExpr)
+
+        self.assertIsInstance(expr.func, AttributeExpr)
+        self.assertEqual(expr.func.attr, "append")
+        self.assertEqual(expr.func.obj.name, "items")
+
+        self.assertEqual(len(expr.args), 1)
+        self.assertIsInstance(expr.args[0], Literal)
+        self.assertEqual(expr.args[0].raw, "42")
+
+    def test_list_pop_method(self):
+        stmt = self.parse_expr_stmt("items.pop()\n")
+        self.assertIsInstance(stmt, ExprStmt)
+
+        expr = stmt.expr
+        self.assertIsInstance(expr, CallExpr)
+
+        self.assertIsInstance(expr.func, AttributeExpr)
+        self.assertEqual(expr.func.attr, "pop")
+        self.assertEqual(expr.func.obj.name, "items")
+        self.assertEqual(expr.args, [])
+
+    def test_list_remove_method(self):
+        stmt = self.parse_expr_stmt("items.remove('a')\n")
+        self.assertIsInstance(stmt, ExprStmt)
+
+        expr = stmt.expr
+        self.assertIsInstance(expr, CallExpr)
+
+        self.assertIsInstance(expr.func, AttributeExpr)
+        self.assertEqual(expr.func.attr, "remove")
+        self.assertEqual(expr.func.obj.name, "items")
+
+        self.assertEqual(len(expr.args), 1)
+        self.assertIsInstance(expr.args[0], StringLiteral)
+        self.assertEqual(expr.args[0].value, "a")
 
 
 if __name__ == "__main__":
