@@ -34,6 +34,7 @@ class Parameter:
     name: str
     type: Optional[str]               # None means not annotated
     default: Optional[Expr] = None    # None ⇒ no default
+    inferred_type: Optional[str] = None
 
 @dataclass
 class FunctionDef:
@@ -42,6 +43,7 @@ class FunctionDef:
     body: List[Stmt]
     return_type: Optional[str]                   # None => void
     globals_declared: Optional[Set[str]] = None  #  filled in by parser/type-checker
+    inferred_return_type: Optional[str] = None
 
 
 @dataclass
@@ -62,12 +64,14 @@ class VarDecl:
     name: str
     declared_type: str
     value: Expr
+    inferred_type: Optional[str] = None
 
 
 @dataclass
 class AssignStmt:
     target: Expr                  # Identifier | AttributeExpr | IndexExpr
     value: Expr
+    inferred_type: Optional[str] = None
 
 
 @dataclass
@@ -98,6 +102,7 @@ class ForStmt:
     var_name: str
     iterable: Expr             # e.g. range(...)
     body: List[Stmt]
+    elem_type: Optional[str] = None
 
 
 @dataclass
@@ -121,6 +126,7 @@ class RaiseStmt:
 @dataclass
 class ReturnStmt:
     value: Optional[Expr]        # None means no expression
+    inferred_type: Optional[str] = None
 
 
 @dataclass
@@ -161,23 +167,27 @@ class ImportStmt:
 @dataclass
 class Identifier:
     name: str
+    inferred_type: Optional[str] = None
 
 
 @dataclass
 class Literal:
     raw: str                     # raw lexeme (underscores stripped)
     # parsing into int/float happens later in a dedicated pass
+    inferred_type: Optional[str] = None
 
 
 @dataclass
 class StringLiteral:
     value: str
+    inferred_type: Optional[str] = None
 
 
 @dataclass
 class FStringLiteral:
     raw: str                     # text between the quotes (without the leading f)
     vars: List[str] = field(default_factory=list)       # names found between {…} - filled by lexer
+    inferred_type: Optional[str] = None
 
 
 @dataclass
@@ -185,24 +195,28 @@ class BinOp:
     left: Expr
     op: str                      # "+", "==", "is", "//", "and", etc.
     right: Expr
+    inferred_type: Optional[str] = None
 
 
 @dataclass
 class UnaryOp:
     op: str                      # "-" or "not"
     operand: Expr
+    inferred_type: Optional[str] = None
 
 
 @dataclass
 class CallExpr:
     func: Expr
     args: List[Expr]
+    inferred_type: Optional[str] = None
 
 
 @dataclass
 class AttributeExpr:
     obj: Expr
     attr: str
+    inferred_type: Optional[str] = None
 
 
 @dataclass
@@ -216,12 +230,14 @@ class IndexExpr:
 class ListExpr:
     elements: List[Expr]
     elem_type: Optional[str] = None  # filled in by type‑checker
+    inferred_type: Optional[str] = None
 
 
 @dataclass
 class DictExpr:
     keys: List[Expr]
     values: List[Expr]
+    inferred_type: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

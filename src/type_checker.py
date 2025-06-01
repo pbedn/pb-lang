@@ -232,6 +232,8 @@ class TypeChecker:
         if self.current_return_type is None:
             self.global_env[name] = declared
 
+        decl.inferred_type = actual
+
     def check_expr(self, expr: Expr, expected_type: Optional[str] = None) -> str:
         """
         Type-checks an expression node and returns its type as a string.
@@ -265,26 +267,34 @@ class TypeChecker:
         if isinstance(expr, Literal):
             raw = expr.raw
             if raw == "True" or raw == "False":
+                expr.inferred_type = "bool"
                 return "bool"
             elif raw == "None":
+                expr.inferred_type = "None"
                 return "None"
             elif raw.startswith('"') or raw.startswith("'"):
+                expr.inferred_type = "str"
                 return "str"
             elif "." in raw or "e" in raw or "E" in raw:
+                expr.inferred_type = "float"
                 return "float"
             else:
+                expr.inferred_type = "int"
                 return "int"
 
         elif isinstance(expr, StringLiteral):
+            expr.inferred_type = "str"
             return "str"
 
         elif isinstance(expr, FStringLiteral):
+            expr.inferred_type = "str"
             return "str"
 
         elif isinstance(expr, Identifier):
             name = expr.name
             if name not in self.env:
                 raise TypeError(f"Undefined variable '{name}'")
+            expr.inferred_type = self.env[name]
             return self.env[name]
 
         # Both sides must be of compatible types for the operator.
@@ -299,18 +309,21 @@ class TypeChecker:
                     raise TypeError(f"Type mismatch in {op}: {left_type} vs {right_type}")
                 if left_type not in {"int", "float"}:
                     raise TypeError(f"Operator {op} not supported for type '{left_type}'")
+                expr.inferred_type = left_type
                 return left_type  # same as operands
 
             # Comparison
             elif op in {"==", "!=", "<", "<=", ">", ">=", "is", "is not"}:
                 if left_type != right_type:
                     raise TypeError(f"Comparison '{op}' between incompatible types: {left_type} and {right_type}")
+                expr.inferred_type = "bool"
                 return "bool"
 
             # Logical
             elif op in {"and", "or"}:
                 if left_type != "bool" or right_type != "bool":
                     raise TypeError(f"Logical '{op}' requires bool operands")
+                expr.inferred_type = "bool"
                 return "bool"
 
             else:
@@ -326,11 +339,13 @@ class TypeChecker:
             if op == "-":
                 if operand_type not in {"int", "float"}:
                     raise TypeError(f"Unary '-' requires numeric operand, got {operand_type}")
+                expr.inferred_type = operand_type
                 return operand_type
 
             elif op == "not":
                 if operand_type != "bool":
                     raise TypeError(f"Unary 'not' requires bool operand, got {operand_type}")
+                expr.inferred_type = "bool"
                 return "bool"
 
             else:
@@ -368,6 +383,7 @@ class TypeChecker:
                             else:
                                 raise TypeError(f"Argument {i+1} to '{fname}' expected {expected}, got {actual}")
 
+                    expr.inferred_type = fname
                     return fname  # 🧠 The constructed class becomes the expression's type
 
 
@@ -376,6 +392,7 @@ class TypeChecker:
                         t = self.check_expr(arg)
                         if t.startswith("list["):
                             raise TypeError("Cannot print a list directly")
+                    expr.inferred_type = "None"
                     return "None"
                 if fname not in self.functions:
                     raise TypeError(f"Call to undefined function '{fname}'")
@@ -435,6 +452,7 @@ class TypeChecker:
                                 f"Argument {i+1} to '{method_name}' expected {expected}, got {actual}"
                             )
 
+                expr.inferred_type = return_type
                 return return_type
 
 
@@ -455,6 +473,7 @@ class TypeChecker:
                     else:
                         raise TypeError(f"Argument {i+1} expected {expected_type}, got {actual_type}")
 
+            expr.inferred_type = return_type
             return return_type
 
         
@@ -489,14 +508,16 @@ class TypeChecker:
                 fields = self.instance_fields[class_type]
                 if expr.attr not in fields:
                     raise TypeError(f"Class '{class_type}' has no instance attribute '{expr.attr}'")
-                return fields[expr.attr]
+                expr.inferred_type = fields[expr.attr]
+                return expr.inferred_type
 
             # --- static class-attribute (e.g. Player.species) ---
             if obj_name in self.class_attrs:
                 fields = self.class_attrs[obj_name]
                 if expr.attr not in fields:
                     raise TypeError(f"Class '{obj_name}' has no class attribute '{expr.attr}'")
-                return fields[expr.attr]
+                expr.inferred_type = fields[expr.attr]
+                return expr.inferred_type
 
             # neither a variable nor a class
             raise TypeError(f"Variable or class '{obj_name}' is not defined")
@@ -515,12 +536,16 @@ class TypeChecker:
             if base_type.startswith("list[") and base_type.endswith("]"):
                 if index_type != "int":
                     raise TypeError(f"List index must be int, got {index_type}")
-                return base_type[5:-1]  # extract T from list[T]
+                elem = base_type[5:-1]
+                expr.elem_type = elem
+                return elem
 
             elif base_type.startswith("dict[") and base_type.endswith("]"):
                 if index_type != "str":
                     raise TypeError(f"Dict key must be str, got {index_type}")
-                return base_type[len("dict[str, "):-1]  # extract T from dict[str, T]
+                elem = base_type[len("dict[str, "):-1]
+                expr.elem_type = elem
+                return elem
 
             else:
                 raise TypeError(f"Cannot index into value of type '{base_type}'")
@@ -534,6 +559,7 @@ class TypeChecker:
                 if expected_type and expected_type.startswith("list["):
                     elem_type = expected_type[5:-1]
                     expr.elem_type = elem_type
+                    expr.inferred_type = expected_type
                     return expected_type
                 else:
                     raise TypeError("Cannot infer element type from empty list literal, add a variable type annotation.")
@@ -544,7 +570,8 @@ class TypeChecker:
 
             elem_type = elem_types.pop()
             expr.elem_type = elem_type
-            return f"list[{elem_type}]"
+            expr.inferred_type = f"list[{elem_type}]"
+            return expr.inferred_type
 
         # PB supports:
         # DictExpr(entries=[(key, val)])  → dict[str, T]
@@ -565,7 +592,8 @@ class TypeChecker:
                 raise TypeError(f"Dict values must be the same type, got: {val_types}")
 
             val_type = val_types.pop()
-            return f"dict[str, {val_type}]"
+            expr.inferred_type = f"dict[str, {val_type}]"
+            return expr.inferred_type
 
         raise NotImplementedError(f"Type inference not implemented for {type(expr).__name__}")
 
@@ -579,11 +607,13 @@ class TypeChecker:
         if stmt.value is None:
             if self.current_return_type != "None":
                 raise TypeError(f"Expected return type '{self.current_return_type}', got None")
+            stmt.inferred_type = "None"
         # if a value is returned: it must match the function’s declared return type
         else:
             actual_type = self.check_expr(stmt.value)
             if actual_type != self.current_return_type:
                 raise TypeError(f"Return type mismatch: expected {self.current_return_type}, got {actual_type}")
+            stmt.inferred_type = actual_type
 
     def check_function_def(self, fn: FunctionDef):
         """
@@ -629,6 +659,7 @@ class TypeChecker:
                 raise TypeError(f"Missing type annotation for parameter '{param.name}' in function '{fname}'")
 
             param_types.append(param.type)
+            param.inferred_type = param.type
 
             if param.default is None:
                 if saw_default:
@@ -638,6 +669,7 @@ class TypeChecker:
                 saw_default = True
 
         ret_type = fn.return_type or "None"
+        fn.inferred_return_type = ret_type
         self.functions[fname] = (param_types, ret_type, num_required)
 
         old_env = self.env.copy()
@@ -701,6 +733,7 @@ class TypeChecker:
             actual_type = self.check_expr(stmt.value)
             if expected_type != actual_type:
                 raise TypeError(f"Type mismatch: cannot assign {actual_type} to {expected_type}")
+            stmt.inferred_type = actual_type
             return
 
         elif isinstance(stmt.target, AttributeExpr):
@@ -733,6 +766,7 @@ class TypeChecker:
                 if expected != value_type:
                     raise TypeError(f"Type mismatch for instance attribute '{field_name}': expected {expected}, got {value_type}")
 
+            stmt.inferred_type = value_type
             return
 
         else:
@@ -862,6 +896,7 @@ class TypeChecker:
             raise TypeError(f"For loop requires iterable of type list[T], got {iterable_type}")
 
         element_type = iterable_type[5:-1]  # extract T from 'list[T]'
+        stmt.elem_type = element_type
 
         # Extend environment with loop variable
         old_env = self.env.copy()
