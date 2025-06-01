@@ -368,7 +368,6 @@ class TestLexerEdgeCases(unittest.TestCase):
     def test_token_is_not(self):
         toks  = self.lex("a is not b\n")
         kinds = [t.type.name for t in toks if t.type.name not in ("NEWLINE", "EOF")]
-        print(kinds)
         self.assertEqual(
             kinds,
             ["IDENTIFIER", "IS", "NOT", "IDENTIFIER"],

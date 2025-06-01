@@ -473,6 +473,20 @@ class TestTypeCheckerInternals(unittest.TestCase):
         with self.assertRaises(TypeError):
             self.tc.check_expr(expr)
 
+    def test_list_expr_empty_with_type_hint(self):
+        expr = ListExpr(elements=[])
+        self.assertEqual(self.tc.check_expr(expr, expected_type="list[int]"), "list[int]")
+
+    def test_var_decl_empty_list_with_annotation(self):
+        decl = VarDecl(name="a", declared_type="list[int]", value=ListExpr(elements=[]))
+        self.tc.check_var_decl(decl)  # should not raise
+        self.assertEqual(self.tc.env["a"], "list[int]")
+
+    def test_var_decl_empty_list_without_annotation(self):
+        decl = VarDecl(name="a", declared_type=None, value=ListExpr(elements=[]))
+        with self.assertRaises(TypeError):
+            self.tc.check_var_decl(decl)
+
     def test_dict_expr_valid(self):
         expr = DictExpr(
             keys=[Literal('"a"'), Literal('"b"')],

@@ -382,6 +382,29 @@ class TestParseExpressions(unittest.TestCase):
         self.assertEqual(expr.left.name,  "a")
         self.assertEqual(expr.right.name, "b")
 
+    def test_parse_list_expr(self):
+        parser = self.parse_tokens("[1, 2, x + y]")
+        expr = parser.parse_expr()
+
+        self.assertIsInstance(expr, ListExpr)
+        self.assertEqual(len(expr.elements), 3)
+        self.assertIsInstance(expr.elements[0], Literal)
+        self.assertEqual(expr.elements[0].raw, "1")
+        self.assertIsInstance(expr.elements[2], BinOp)
+        self.assertEqual(expr.elements[2].op, "+")
+
+    def test_parse_dict_expr(self):
+        parser = self.parse_tokens("{'a': 1, 'b': x + 2}")
+        expr = parser.parse_expr()
+
+        self.assertIsInstance(expr, DictExpr)
+        self.assertEqual(len(expr.keys), 2)
+        self.assertEqual(len(expr.values), 2)
+        self.assertIsInstance(expr.keys[0], StringLiteral)
+        self.assertEqual(expr.keys[0].value, "a")
+        self.assertIsInstance(expr.values[1], BinOp)
+        self.assertEqual(expr.values[1].op, "+")
+
 
 class TestParseStatements(unittest.TestCase):
 
@@ -721,29 +744,6 @@ class TestParseStatements(unittest.TestCase):
         self.assertIsNone(block2.alias)
         self.assertIsInstance(block2.body[0], PassStmt)
 
-    def test_parse_list_expr(self):
-        parser = self.parse_tokens("[1, 2, x + y]")
-        expr = parser.parse_expr()
-
-        self.assertIsInstance(expr, ListExpr)
-        self.assertEqual(len(expr.elements), 3)
-        self.assertIsInstance(expr.elements[0], Literal)
-        self.assertEqual(expr.elements[0].raw, "1")
-        self.assertIsInstance(expr.elements[2], BinOp)
-        self.assertEqual(expr.elements[2].op, "+")
-
-    def test_parse_dict_expr(self):
-        parser = self.parse_tokens("{'a': 1, 'b': x + 2}")
-        expr = parser.parse_expr()
-
-        self.assertIsInstance(expr, DictExpr)
-        self.assertEqual(len(expr.keys), 2)
-        self.assertEqual(len(expr.values), 2)
-        self.assertIsInstance(expr.keys[0], StringLiteral)
-        self.assertEqual(expr.keys[0].value, "a")
-        self.assertIsInstance(expr.values[1], BinOp)
-        self.assertEqual(expr.values[1].op, "+")
-
     def test_parse_import_stmt(self):
         parser = self.parse_tokens("import math.utils.io\n")
         stmt = parser.parse_import_stmt()
@@ -985,6 +985,24 @@ class TestGenericTypes(unittest.TestCase):
         # for t in tokens: print(t)
         return Parser(tokens)
 
+    def test_parse_var_decl_with_empty_list(self):
+        code = (
+            "arr: list[int] = []\n"
+        )
+
+        parser = self.parse_tokens(code)
+        prog = parser.parse()
+        print(prog)
+
+        self.assertIsInstance(prog, Program)
+        self.assertEqual(len(prog.body), 1)
+
+        decl = prog.body[0]
+        self.assertIsInstance(decl, VarDecl)
+        self.assertEqual(decl.name, "arr")
+        self.assertEqual(decl.declared_type, "list[int]")
+        self.assertEqual(decl.value.elements, [])
+
     def test_parse_var_decl_with_generic_list(self):
         code = (
             "arr: list[int] = [1, 2, 3]\n"
@@ -1000,6 +1018,8 @@ class TestGenericTypes(unittest.TestCase):
         self.assertIsInstance(decl, VarDecl)
         self.assertEqual(decl.name, "arr")
         self.assertEqual(decl.declared_type, "list[int]")
+        self.assertEqual(decl.value.elements, [
+            Literal(raw='1'), Literal(raw='2'), Literal(raw='3')])
 
     def test_parse_function_with_generic_annotations(self):
         code = (

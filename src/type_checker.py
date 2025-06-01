@@ -223,7 +223,7 @@ class TypeChecker:
         """
         name = decl.name
         declared = decl.declared_type
-        actual = self.check_expr(decl.value)
+        actual = self.check_expr(decl.value, expected_type=declared)
 
         if declared != actual:
             raise TypeError(f"Type mismatch in variable '{name}': declared {declared}, got {actual}")
@@ -232,7 +232,7 @@ class TypeChecker:
         if self.current_return_type is None:
             self.global_env[name] = declared
 
-    def check_expr(self, expr: Expr) -> str:
+    def check_expr(self, expr: Expr, expected_type: Optional[str] = None) -> str:
         """
         Type-checks an expression node and returns its type as a string.
 
@@ -531,13 +531,19 @@ class TypeChecker:
         # A list must be homogeneous: all elements must have the same type
         elif isinstance(expr, ListExpr):
             if not expr.elements:
-                raise TypeError("Cannot infer element type from empty list literal")
+                if expected_type and expected_type.startswith("list["):
+                    elem_type = expected_type[5:-1]
+                    expr.elem_type = elem_type
+                    return expected_type
+                else:
+                    raise TypeError("Cannot infer element type from empty list literal, add a variable type annotation.")
 
             elem_types = {self.check_expr(e) for e in expr.elements}
             if len(elem_types) > 1:
                 raise TypeError(f"List elements must be the same type, got: {elem_types}")
 
             elem_type = elem_types.pop()
+            expr.elem_type = elem_type
             return f"list[{elem_type}]"
 
         # PB supports:
