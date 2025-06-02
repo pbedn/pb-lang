@@ -172,6 +172,9 @@ class TypeChecker:
                 seen_main = True
             self.check_stmt(stmt)
 
+        program.inferred_instance_fields = dict(self.instance_fields)
+        return program
+
     def check_stmt(self, stmt: Stmt):
         """Type-check a single statement."""
         if isinstance(stmt, VarDecl):
@@ -211,7 +214,7 @@ class TypeChecker:
                 raise TypeError("'continue' outside of loop")
 
         elif isinstance(stmt, ExprStmt):
-            self.check_expr(stmt.expr)  # validate call, access, etc.
+            stmt.inferred_type = self.check_expr(stmt.expr)  # validate call, access, etc.
 
         else:
             raise NotImplementedError(f"Type checking not yet implemented for {type(stmt).__name__}")
@@ -292,10 +295,14 @@ class TypeChecker:
 
         elif isinstance(expr, Identifier):
             name = expr.name
-            if name not in self.env:
-                raise TypeError(f"Undefined variable '{name}'")
-            expr.inferred_type = self.env[name]
-            return self.env[name]
+            if name in self.env:
+                expr.inferred_type = self.env[name]
+                return self.env[name]
+            elif name in self.functions:
+                expr.inferred_type = "function"
+                return "function"
+            else:
+                raise TypeError(f"Undefined variable or function '{name}'")
 
         # Both sides must be of compatible types for the operator.
         elif isinstance(expr, BinOp):
@@ -545,6 +552,7 @@ class TypeChecker:
                     raise TypeError(f"Dict key must be str, got {index_type}")
                 elem = base_type[len("dict[str, "):-1]
                 expr.elem_type = elem
+                # expr.inferred_type = f"dict[str, {elem}]"
                 return elem
 
             else:
@@ -580,18 +588,27 @@ class TypeChecker:
         # all values must have the same type
         elif isinstance(expr, DictExpr):
             if not expr.keys:
-                raise TypeError("Cannot infer value type from empty dict literal")
+                if expected_type and expected_type.startswith("dict[str,"):
+                    val_type = expected_type.split(",")[1][:-1].strip()
+                    expr.elem_type = val_type
+                    expr.inferred_type = expected_type
+                    return expected_type
+                else:
+                    raise TypeError("Cannot infer value type from empty dict literal")
 
             for key_expr in expr.keys:
                 key_type = self.check_expr(key_expr)
                 if key_type != "str":
                     raise TypeError(f"Dict keys must be str, got {key_type}")
+                if not isinstance(key_expr, (StringLiteral, Literal)):  # Only allow literals
+                    raise TypeError("Dict keys must be string literals, not expressions")
 
             val_types = {self.check_expr(v) for v in expr.values}
             if len(val_types) > 1:
                 raise TypeError(f"Dict values must be the same type, got: {val_types}")
 
             val_type = val_types.pop()
+            expr.elem_type = val_type
             expr.inferred_type = f"dict[str, {val_type}]"
             return expr.inferred_type
 
@@ -993,6 +1010,14 @@ class TypeChecker:
             # Copy base class fields into subclass
             for k, v in self.instance_fields[cls.base].items():
                 self.instance_fields[name][k] = v
+
+            for field in cls.fields:
+                if field.name in self.instance_fields[name]:  # Check for field redefinition
+                    if self.instance_fields[name][field.name] != field.declared_type:
+                        raise TypeError(
+                            f"Field '{field.name}' conflicts with base class: "
+                            f"redefined as {field.declared_type} (was {self.instance_fields[name][field.name]})"
+                        )
 
         # Validate methods (methods can use self.<field>)
         for method in cls.methods:

@@ -333,6 +333,7 @@ class TestCodeGen(unittest.TestCase):
             'pb_print_int(pb_dict_get(d, "a"));',
             "return 0;"
         ])
+        
 
     def test_try_except_raise(self):
         program = Program(body=[
@@ -547,7 +548,7 @@ class TestCodeGen(unittest.TestCase):
                 body=[
                     VarDecl("t", "Thing", CallExpr(Identifier("Thing"), [])),
                     ExprStmt(CallExpr(Identifier("print"), [
-                        CallExpr(func=AttributeExpr(Identifier("t"), "get_class_kind"), args=[])
+                        CallExpr(func=AttributeExpr(Identifier("t"), "get_class_kind"), args=[], inferred_type="str")
                     ])),
                     ReturnStmt(Literal("0"))
                 ],
@@ -606,6 +607,111 @@ class TestCodeGen(unittest.TestCase):
             "int main(void)",
             'pb_print_str("hello");',
             "return 0;"
+        ])
+
+    def test_print_identifier_with_inferred_type(self):
+        prog = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("name", "str", StringLiteral("Alice")),
+                    ExprStmt(CallExpr(Identifier("print"), [
+                        Identifier(name="name", inferred_type="str")
+                    ])),
+                    ReturnStmt(Literal("0", inferred_type="int"))
+                ],
+                globals_declared=None
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            'pb_print_str(name);',
+            'return 0;'
+        ])
+
+    def test_print_call_with_inferred_type(self):
+        # CallExpr with inferred_type
+        prog = Program(body=[
+            FunctionDef(
+                name="get_name",
+                params=[],
+                return_type="str",
+                body=[
+                    ReturnStmt(StringLiteral("Alice", inferred_type="str"))
+                ],
+                globals_declared=None
+            ),
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    ExprStmt(CallExpr(Identifier("print"), [
+                        CallExpr(Identifier("get_name"), [], inferred_type="str")
+                    ])),
+                    ReturnStmt(Literal("0", inferred_type="int"))
+                ],
+                globals_declared=None
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            'pb_print_str(get_name());',
+            'return 0;'
+        ])
+
+    def test_print_attribute_with_inferred_type(self):
+        # AttributeExpr with inferred_type
+        prog = Program(body=[
+            ClassDef(
+                name="Player",
+                base=None,
+                fields=[VarDecl("name", "str", StringLiteral("Alice"))],
+                methods=[]
+            ),
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("p", "Player", CallExpr(Identifier("Player"), [])),
+                    ExprStmt(CallExpr(Identifier("print"), [
+                        AttributeExpr(Identifier("p"), "name", inferred_type="str")
+                    ])),
+                    ReturnStmt(Literal("0", inferred_type="int"))
+                ],
+                globals_declared=None
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            'pb_print_str(p->name);',
+            'return 0;'
+        ])
+
+    def test_vardecl_with_inferred_types(self):
+        prog = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("flag", "bool", Literal("True", inferred_type="bool")),
+                    VarDecl("pi", "float", Literal("3.14", inferred_type="float")),
+                    VarDecl("msg", "str", StringLiteral("hello", inferred_type="str")),
+                    ReturnStmt(Literal("0", inferred_type="int")),
+                ],
+                globals_declared=None
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "bool flag = true;",
+            "double pi = 3.14;",
+            'const char * msg = "hello";',
+            "return 0;",
         ])
 
 

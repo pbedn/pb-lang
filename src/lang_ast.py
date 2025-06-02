@@ -25,6 +25,9 @@ from typing import List, Tuple, Union, Optional, Set
 class Program:
     body: List[Stmt]
 
+    #  class_name → field_name → pb_type
+    inferred_instance_fields: dict[str, dict[str, str]] = field(default_factory=dict)
+
 # ---------------------------------------------------------------------------
 # Statements
 # ---------------------------------------------------------------------------
@@ -79,6 +82,7 @@ class AugAssignStmt:
     target: Expr
     op: str                         # "+=", "-=", etc.
     value: Expr
+    inferred_type: Optional[str] = None
 
 
 @dataclass
@@ -223,13 +227,13 @@ class AttributeExpr:
 class IndexExpr:
     base: Expr
     index: Expr
-    elem_type: Optional[str] = None  # filled in by type‑checker
+    elem_type: Optional[str] = None     # For value type
 
 
 @dataclass
 class ListExpr:
     elements: List[Expr]
-    elem_type: Optional[str] = None  # filled in by type‑checker
+    elem_type: Optional[str] = None     # For value type
     inferred_type: Optional[str] = None
 
 
@@ -237,6 +241,7 @@ class ListExpr:
 class DictExpr:
     keys: List[Expr]
     values: List[Expr]
+    elem_type: Optional[str] = None     # For value type
     inferred_type: Optional[str] = None
 
 
