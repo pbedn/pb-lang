@@ -375,417 +375,398 @@ class CodeGen:
     @debug
     def _stmt(self, st: Any) -> str:
         """Translate one AST statement → C, returning a full C statement/block."""
-        # ── 1.  print(…)  ───────────────────────────────────────────────────
-        if isinstance(st, ExprStmt):
-            if isinstance(st.expr, CallExpr):
-                ce = st.expr
-                if isinstance(ce.func, Identifier) and ce.func.name == "print":
-                    lines: list[str] = []
+        # Dispatch to specific generator methods based on node type
+        if isinstance(st, ExprStmt): return self._generate_ExprStmt(st.expr)
+        if isinstance(st, AssignStmt): return self._generate_AssignStmt(st)
+        if isinstance(st, AugAssignStmt): return self._generate_AugAssignStmt(st)
+        if isinstance(st, ReturnStmt): return self._generate_ReturnStmt(st)
+        if isinstance(st, PassStmt): return self._generate_PassStmt(st)
+        if isinstance(st, IfStmt): return self._generate_IfStmt(st)
+        if isinstance(st, WhileStmt): return self._generate_WhileStmt(st)
+        if isinstance(st, ForStmt): return self._generate_ForStmt(st)
+        if isinstance(st, BreakStmt): return self._generate_BreakStmt(st)
+        if isinstance(st, ContinueStmt): return self._generate_ContinueStmt(st)
+        if isinstance(st, AssertStmt): return self._generate_AssertStmt(st)
+        if isinstance(st, RaiseStmt): return self._generate_RaiseStmt(st)
+        if isinstance(st, GlobalStmt): return self._generate_GlobalStmt(st)
+        if isinstance(st, TryExceptStmt): return self._generate_TryExceptStmt(st)
+        if isinstance(st, VarDecl): return self._generate_VarDecl(st)
+        # ImportStmt is usually handled at a higher level or ignored if not supported
+        if isinstance(st, ImportStmt): return "/* import (not directly translated to C stmt) */"
 
-                    for arg in ce.args:
-                        arg_expr = self._expr(arg)
+        logger.warning(f"Unhandled statement type: {type(st).__name__}")
+        return f"/* unhandled_stmt: {type(st).__name__} */;"
 
-                        # a) string literals & f-strings
-                        if isinstance(arg, (StringLiteral, FStringLiteral)):
-                            lines.append(f"pb_print_str({arg_expr});")
+    # --- Specific Statement Generators ---
+    @debug
+    def _generate_ExprStmt(self, expr: Expr) -> str:
+        if isinstance(expr, CallExpr) and \
+           isinstance(expr.func, Identifier) and expr.func.name == "print":
+            return self._generate_print_call(expr)
+        return self._expr(expr) + ";"
 
-                        # b) numeric / bool literals
-                        elif isinstance(arg, Literal):
-                            if arg.raw in ("True", "False"):
-                                lines.append(f"pb_print_bool({arg_expr});")
-                            elif "." in arg.raw:
-                                lines.append(f"pb_print_double({arg_expr});")
-                            else:
-                                lines.append(f"pb_print_int({arg_expr});")
+    def _get_expr_type(self, expr: Expr) -> Optional[str]:
+        return getattr(expr, "inferred_type", None)
 
-                        # c) identifiers (look up remembered type)
-                        elif isinstance(arg, Identifier):
-                            t = self._var_types.get(arg.name, "int")
-                            if t == "str":
-                                lines.append(f"pb_print_str({arg_expr});")
-                            elif t == "bool":
-                                lines.append(f"pb_print_bool({arg_expr});")
-                            elif t in ("float", "double"):
-                                lines.append(f"pb_print_double({arg_expr});")
-                            else:
-                                lines.append(f"pb_print_int({arg_expr});")
+    @debug
+    def _generate_print_call(self, ce: CallExpr) -> str:
+        lines: list[str] = []
 
-                        # ── NEW ──  value comes from a function / method call
-                        elif isinstance(arg, CallExpr):
-                           fn_name = None
-                           # direct function  add(…),  get_name(…)
-                           if isinstance(arg.func, Identifier):
-                               fn_name = arg.func.name
-                           # method call  obj.get_name(…)
-                           elif isinstance(arg.func, AttributeExpr):
-                               obj_var = getattr(arg.func.obj, "name", None)
-                               if obj_var:
-                                   cls = self._var_types.get(obj_var)
-                                   if cls:
-                                       fn_name = f"{cls}__{arg.func.attr}"
+        for arg in ce.args:
+            arg_expr = self._expr(arg)
 
-                           ret_pb = self._function_returns.get(fn_name, "int")
-                           if ret_pb == "str":
-                               lines.append(f"pb_print_str({arg_expr});")
-                           elif ret_pb == "bool":
-                               lines.append(f"pb_print_bool({arg_expr});")
-                           elif ret_pb == "float":
-                               lines.append(f"pb_print_double({arg_expr});")
-                           else:
-                               lines.append(f"pb_print_int({arg_expr});")
+            # Always prefer explicit string forms for string literals and f-strings
+            if isinstance(arg, (StringLiteral, FStringLiteral)):
+                lines.append(f"pb_print_str({arg_expr});")
+                continue
 
-                        # d) attribute access  obj.field  OR  Class.field
-                        elif isinstance(arg, AttributeExpr):
-                            # try Class_field first, then obj-var type
-                            typ = "int"
-                            if isinstance(arg.obj, Identifier):
-                                typ = self._var_types.get(
-                                    f"{arg.obj.name}_{arg.attr}",
-                                    self._var_types.get(arg.obj.name, "int")
-                                )
-                            if typ == "str":
-                                lines.append(f"pb_print_str({arg_expr});")
-                            else:
-                                lines.append(f"pb_print_int({arg_expr});")
+            # Determine type by inference or fallback
+            # - numeric / bool literals
+            # - Identifiers
+            # - AttributeExpr   self.hp, obj.name
+            # - IndexExpr       arr[0], d["x"]
+            # - CallExpr        get_name()
+            if isinstance(arg, Identifier):
+                t = self._get_expr_type(arg) or self._var_types.get(arg.name, "int")
+            else:
+                t = self._get_expr_type(arg)
 
-                        # e) a *function call expression*  >>> NEW <<<
-                        elif isinstance(arg, CallExpr):
-                            fname = None
-                            if isinstance(arg.func, Identifier):
-                                fname = arg.func.name
-                            elif isinstance(arg.func, AttributeExpr) and isinstance(arg.func.obj, Identifier):
-                                # method call → mangled name  Class__method
-                                fname = f"{arg.func.obj.name}__{arg.func.attr}"
+            if t == "str":
+                lines.append(f"pb_print_str({arg_expr});")
+            elif t == "bool":
+                lines.append(f"pb_print_bool({arg_expr});")
+            elif t == "float":
+                lines.append(f"pb_print_double({arg_expr});")
+            else:
+                lines.append(f"pb_print_int({arg_expr});")
 
-                            rtype = self._function_returns.get(fname, "int")
-                            if rtype == "str":
-                                lines.append(f"pb_print_str({arg_expr});")
-                            elif rtype == "bool":
-                                lines.append(f"pb_print_bool({arg_expr});")
-                            elif rtype in ("float", "double"):
-                                lines.append(f"pb_print_double({arg_expr});")
-                            else:
-                                lines.append(f"pb_print_int({arg_expr});")
+        return "\n".join(lines)
 
-                        # f) fallback: treat as int
-                        else:
-                            lines.append(f"pb_print_int({arg_expr});")
+    def _generate_AssignStmt(self, st: AssignStmt) -> str:
+        tgt = self._expr(st.target)
+        val = self._expr(st.value)
+        return f"{tgt} = {val};"
 
-                    return "\n".join(lines)
+    def _generate_AugAssignStmt(self, st: AugAssignStmt) -> str:
+        tgt = self._expr(st.target)
+        val = self._expr(st.value)
+        op = st.op
+        # drop extra '=' if present ('+==' → '+=')
+        if op.endswith("="): op = op[:-1]
+        # integer‐div replacement
+        if op == "//": op = "/"
+        return f"{tgt} {op}= {val};"
 
-            # not a print() call – just an expression statement
-            return self._expr(st.expr) + ";"
+    def _generate_ReturnStmt(self, st: ReturnStmt) -> str:
+        ret = "" if st.value is None else " " + self._expr(st.value)
+        return f"return{ret};"
 
-        # ── 2.  assignment, returns, loops, etc.  (unchanged) ──────────────
-        if isinstance(st, AssignStmt):
-            tgt = self._expr(st.target)
-            val = self._expr(st.value)
-            return f"{tgt} = {val};"
+    def _generate_PassStmt(self, st: PassStmt) -> str:
+        return ";  // pass"
 
-        if isinstance(st, AugAssignStmt):
-            tgt = self._expr(st.target)
-            val = self._expr(st.value)
-            op = st.op
-            # drop extra '=' if present ('+==' → '+=')
-            if op.endswith("="): op = op[:-1]
-            # integer‐div replacement
-            if op == "//": op = "/"
-            return f"{tgt} {op}= {val};"
+    def _generate_IfStmt(self, st: IfStmt) -> str:
+        parts = []
+        for idx, br in enumerate(st.branches):
+            kw = "if" if idx == 0 else ("else if" if br.condition else "else")
+            cond = "" if br.condition is None else f"({self._expr(br.condition)})"
+            parts.append(f"{kw} {cond} {{")
+            for s in br.body:
+                parts.append(self.INDENT + self._stmt(s))
+            parts.append("}")
+        return "\n".join(parts)
 
-        if isinstance(st, ReturnStmt):
-            ret = "" if st.value is None else " " + self._expr(st.value)
-            return f"return{ret};"
+    def _generate_WhileStmt(self, st: WhileStmt) -> str:
+        # 1) the loop header
+        cond  = self._expr(st.condition)
+        lines = [f"while ({cond}) {{"]
 
-        if isinstance(st, PassStmt):
-            return ";  // pass"
+        # 2) translate every statement inside the while-body
+        for sub in st.body:
+            # prepend exactly one extra indent level so nested code lines up
+            lines.append(self.INDENT + self._stmt(sub))
 
-        if isinstance(st, IfStmt):
-            parts = []
-            for idx, br in enumerate(st.branches):
-                kw = "if" if idx == 0 else ("else if" if br.condition else "else")
-                cond = "" if br.condition is None else f"({self._expr(br.condition)})"
-                parts.append(f"{kw} {cond} {{")
-                for s in br.body:
-                    parts.append(self.INDENT + self._stmt(s))
-                parts.append("}")
-            return "\n".join(parts)
+        # 3) close the block
+        lines.append("}")
+        return "\n".join(lines)
 
-        if isinstance(st, WhileStmt):
-            # 1) the loop header
-            cond  = self._expr(st.condition)
-            lines = [f"while ({cond}) {{"]
+    def _generate_ForStmt(self, st: ForStmt) -> str:
+        # only support: for var in range(stop) or range(start, stop)
+        loop = st.iterable
+        if isinstance(loop, CallExpr) and getattr(loop.func, "name", "") == "range":
+            args = loop.args
+            if len(args) == 1:
+                start = "0"
+                stop  = self._expr(args[0])
+            else:
+                start = self._expr(args[0])
+                stop  = self._expr(args[1])
 
-            # 2) translate every statement inside the while-body
-            for sub in st.body:
-                # prepend exactly one extra indent level so nested code lines up
-                lines.append(self.INDENT + self._stmt(sub))
-
-            # 3) close the block
+            # build the for-loop header
+            lines = [f"for (int64_t {st.var_name} = {start}; {st.var_name} < {stop}; ++{st.var_name}) {{"]
+            # inject body statements
+            for s in st.body:
+                lines.append(self.INDENT + self._stmt(s))
             lines.append("}")
             return "\n".join(lines)
+        else:
+            # fallback for other iterables
+            return "/* unsupported for-loop */"
+        return f"for(int64_t {st.var_name}={start}; {st.var_name}<{stop}; ++{st.var_name}) {{ /* ... */ }}"
+    
+    def _generate_BreakStmt(self, st: BreakStmt) -> str:
+        return "break;"
 
-        if isinstance(st, ForStmt):
-            # only support: for var in range(stop) or range(start, stop)
-            loop = st.iterable
-            if isinstance(loop, CallExpr) and getattr(loop.func, "name", "") == "range":
-                args = loop.args
-                if len(args) == 1:
-                    start = "0"
-                    stop  = self._expr(args[0])
-                else:
-                    start = self._expr(args[0])
-                    stop  = self._expr(args[1])
+    def _generate_ContinueStmt(self, st: ContinueStmt) -> str:
+        return "continue;"
 
-                # build the for-loop header
-                lines = [f"for (int64_t {st.var_name} = {start}; {st.var_name} < {stop}; ++{st.var_name}) {{"]
-                # inject body statements
-                for s in st.body:
-                    lines.append(self.INDENT + self._stmt(s))
-                lines.append("}")
-                return "\n".join(lines)
-            else:
-                # fallback for other iterables
-                return "/* unsupported for-loop */"
-            return f"for(int64_t {st.var_name}={start}; {st.var_name}<{stop}; ++{st.var_name}) {{ /* ... */ }}"
-        
-        if isinstance(st, BreakStmt):
-            return "break;"
+    def _generate_AssertStmt(self, st: AssertStmt) -> str:
+        cond = self._expr(st.condition)
+        return f"if(!({cond})) pb_fail(\"Assertion failed\");"
 
-        if isinstance(st, ContinueStmt):
-            return "continue;"
+    def _generate_RaiseStmt(self, st: RaiseStmt) -> str:
+        # dynamic exceptions not supported → abort
+        return 'pb_fail("Exception raised");'
 
-        if isinstance(st, AssertStmt):
-            cond = self._expr(st.condition)
-            return f"if(!({cond})) pb_fail(\"Assertion failed\");"
+    def _generate_GlobalStmt(self, st: GlobalStmt) -> str:
+        names = ", ".join(st.names)
+        return f"/* global {names} */"
 
-        if isinstance(st, RaiseStmt):
-            # dynamic exceptions not supported → abort
-            return 'pb_fail("Exception raised");'
+    def _generate_TryExceptStmt(self, st: TryExceptStmt) -> str:
+        return "/* try/except not supported at runtime */"
 
-        if isinstance(st, GlobalStmt):
-            names = ", ".join(st.names)
-            return f"/* global {names} */"
-
-        if isinstance(st, TryExceptStmt):
-            return "/* try/except not supported at runtime */"
-
-        if isinstance(st, VarDecl):
-            c_ty = self._c_type(st.declared_type)
-            val = self._expr(st.value)
-            # remember every variable’s PB type for later printf logic
-            if st.declared_type:
+    def _generate_VarDecl(self, st: VarDecl) -> str:
+        c_ty = self._c_type(st.declared_type)
+        val = self._expr(st.value)
+        # remember every variable’s PB type for later printf logic
+        if st.declared_type:
+            self._var_types[st.name] = st.declared_type
+        if isinstance(st.declared_type, str):
+            if st.declared_type in self._structs_emitted:
                 self._var_types[st.name] = st.declared_type
-            if isinstance(st.declared_type, str):
-                if st.declared_type in self._structs_emitted:
-                    self._var_types[st.name] = st.declared_type
-                elif st.declared_type.startswith("dict["):
-                    self._var_types[st.name] = "Dict_str_int"
-                elif st.declared_type.startswith("list["):
-                    self._var_types[st.name] = "List_int"
-                elif st.declared_type in ("int", "float", "bool", "str"):
-                    self._var_types[st.name] = st.declared_type
-            return f"{c_ty} {st.name} = {val};"
-
-        # fallbacks
-        return "/* unhandled stmt */;"
+            elif st.declared_type.startswith("dict["):
+                self._var_types[st.name] = "Dict_str_int"
+            elif st.declared_type.startswith("list["):
+                self._var_types[st.name] = "List_int"
+            elif st.declared_type in ("int", "float", "bool", "str"):
+                self._var_types[st.name] = st.declared_type
+        return f"{c_ty} {st.name} = {val};"
 
     @debug
     def _expr(self, e: Expr) -> str:
         """Dispatch and return a C expression (no indent, no semicolon)."""
-        if isinstance(e, Literal):
-            # map Python True/False → C `true`/`false`
-            if e.raw == "True":  return "true"
-            if e.raw == "False": return "false"
-            return e.raw
-        if isinstance(e, StringLiteral):
-            return f"\"{e.value}\""
-        if isinstance(e, Identifier):
-            return e.name
-        if isinstance(e, BinOp):
-            left  = self._expr(e.left)
-            right = self._expr(e.right)
-            op    = e.op
-            # floor-div → C integer divide
-            if op == "//":
-                op = "/"
-            # Python logic ops → C logical ops
-            if op == "and":
-                return f"({left} && {right})"
-            if op == "or":
-                return f"({left} || {right})"
-            if op == "is":
-                return f"({left} == {right})"
-            if op == "is not":
-                return f"({left} != {right})"
-            # default
-            return f"({left} {op} {right})"
-        if isinstance(e, UnaryOp):
-            operand = self._expr(e.operand)
-            if e.op == "not":
-                return f"!({operand})"
-            return f"({e.op}{operand})"
-
-        if isinstance(e, CallExpr):
-            # Special case: Class.__init__(self, ...) → Player____init__(self, ...)
-            if isinstance(e.func, AttributeExpr):
-                obj = e.func.obj
-                attr = e.func.attr
-
-                # Special case: Class.__init__(self, ...) → Player____init__((struct Player *) self, hp, mp_default)
-                if attr == "__init__" and isinstance(obj, Identifier):
-                    class_name = obj.name
-                    init_fn   = f"{class_name}____init__"
-                    # figure out how many params that init wants
-                    expected = self._function_params.get(init_fn, [])
-                    # build the actual args (as C expressions)
-                    actual = [self._expr(arg) for arg in e.args]
-                    # pad missing args using defaults
-                    defaults = self._function_defaults.get(init_fn, [])
-                    # skip the 'self' slot at index 0
-                    num_provided = len(actual) - 1    # arguments after 'self'
-                    for i in range(num_provided, len(defaults)):
-                        default = defaults[i]
-                        if default is None:
-                            raise RuntimeError(f"No default for parameter {i+1} of {init_fn}")
-                        actual.append(default)
-                    # cast self to the correct struct pointer
-                    self_expr = self._expr(e.args[0])
-                    casted   = f"(struct {class_name} *){self_expr}"
-                    # stitch the call
-                    args = ", ".join([casted] + actual[1:])
-                    return f"{init_fn}({args})"
-
-
-            # Constructor call like Player(...) or Mage(...)
-            elif isinstance(e.func, Identifier):
-                class_name = e.func.name
-                if class_name in self._structs_emitted:
-                    self._tmp_counter += 1
-                    var = f"__tmp_{class_name.lower()}_{self._tmp_counter}"
-                    init_func = f"{class_name}____init__"
-
-                    actual_args = [self._expr(arg) for arg in e.args]
-                    expected = self._function_params.get(init_func, [])
-                    # pad using the actual defaults from the .pb AST
-                    defaults = self._function_defaults.get(init_func, [])
-                    # skip the 'self' slot at index 0
-                    for i in range(len(actual_args), len(defaults)):
-                        if defaults[i] is None:
-                            raise RuntimeError(f"Missing default for parameter {i+1} of {init_func}")
-                        actual_args.append(defaults[i])
-
-                    args = ", ".join(actual_args)
-                    self._emit(f"struct {class_name} {var};")
-                    self._var_types[var] = class_name
-                    self._emit(f"{init_func}(&{var}, {args});")
-                    return f"&{var}"
-
-                # Normal function call — also handle defaults
-                fn_name = class_name
-                if fn_name in self._function_params:
-                    expected = self._function_params[fn_name]
-                    actual_args = [self._expr(arg) for arg in e.args]
-                    while len(actual_args) < len(expected):
-                        # Insert known defaults by name (manual for now)
-                        if fn_name == "increment":
-                            actual_args.append("1")
-                        else:
-                            actual_args.append("0")
-                    args = ", ".join(actual_args)
-                    return f"{fn_name}({args})"
-
-            # Method call: player.get_name() → Player__get_name(player)
-            if isinstance(e.func, AttributeExpr):
-                obj_expr = self._expr(e.func.obj)
-                method_name = e.func.attr
-
-                obj_var = getattr(e.func.obj, "name", None)
-                class_type = self._var_types.get(obj_var)
-                if class_type:
-                    mangled = f"{class_type}__{method_name}"
-                    args = ", ".join([obj_expr] + [self._expr(arg) for arg in e.args])
-                    return f"{mangled}({args})"
-
-
-            # Fallback: general function call expression
-            fn = self._expr(e.func)
-            args = ", ".join(self._expr(a) for a in e.args)
-            return f"{fn}({args})"
-
-
-        if isinstance(e, AttributeExpr):
-            # --- FIRST:   class attribute  ---------------------------
-            if isinstance(e.obj, Identifier) and e.obj.name in self._structs_emitted:
-                #   Player.species   →   Player_species
-                return f"{e.obj.name}_{e.attr}"
-            
-            obj = self._expr(e.obj)
-            attr = e.attr
-
-            # --- SECOND:  subclass instance --------------------------
-            if isinstance(e.obj, Identifier):
-                # 1.  Which class does this identifier refer to?
-                if e.obj.name == "self" and hasattr(self, "_current_class"):
-                    cls = self._current_class            # we are inside a method
-                else:
-                    cls = self._var_types.get(e.obj.name)
-
-                # 2.  If we know the class and the field is NOT owned by it,
-                #     let C look one level down into the embedded base struct.
-                if cls and e.attr not in self._fields.get(cls, set()):
-                    return f"{obj}->base.{e.attr}"
-
-            return f"{obj}->{attr}"
-
-        if isinstance(e, IndexExpr):
-            base = self._expr(e.base)
-            idx  = self._expr(e.index)
-            if isinstance(e.base, Identifier) and self._var_types.get(e.base.name, "") == "Dict_str_int":
-                return f"pb_dict_get({base}, {idx})"
-            return f"{base}.data[{idx}]"  # or list_int_get
-        if isinstance(e, ListExpr):
-            self._tmp_counter += 1
-            buf_name = f"__tmp_list_{self._tmp_counter}"
-            if not e.elements:
-                self._emit(f"int64_t {buf_name}[1] = {{0}};")
-                return f"(List_int){{ .len=0, .data={buf_name} }}"
-            else:
-                elems = ", ".join(self._expr(x) for x in e.elements)
-                self._emit(f"int64_t {buf_name}[] = {{{elems}}};")
-                return f"(List_int){{ .len={len(e.elements)}, .data={buf_name} }}"
-
-            # Not working with GCC C99
-            # elems = ", ".join(self._expr(x) for x in e.elements)
-            # return f"({{ .len={len(e.elements)}, .data=(int64_t[]){{{elems}}} }})"
-        if isinstance(e, DictExpr):
-            self._tmp_counter += 1
-            buf_name = f"__tmp_dict_{self._tmp_counter}"
-            pairs = ", ".join(
-                f'{{{self._expr(k)}, {self._expr(v)}}}' for k, v in zip(e.keys, e.values)
-            )
-            self._emit(f"Pair_str_int {buf_name}[] = {{{pairs}}};")
-            return f"(Dict_str_int){{ .len={len(e.keys)}, .data={buf_name} }}"
-
-            # Not working with GCC C99
-            # specialized to dict[str,int]
-            # pairs = ", ".join(f'{{"{self._expr(k)}",{self._expr(v)}}}' for k,v in zip(e.keys,e.values))
-            # return f"((Dict_str_int){{ .len={len(e.keys)}, .data=(Pair_str_int[]){{{pairs}}} }})"
-        elif isinstance(e, FStringLiteral):
-            buf  = "__fbuf"
-            fmt  = e.raw
-            specs = {"int": "%lld", "float": "%f", "str": "%s", "bool": "%s"}
-    
-            arg_list: list[str] = []
-            for var in e.vars:
-                pb_t   = self._var_types.get(var, "int")
-                fmt    = fmt.replace(f"{{{var}}}", specs.get(pb_t, "%lld"))
-                arg_list.append(var)
-    
-            joined = ", ".join(arg_list) or "0"           # keep GCC happy if empty
-            return f'(snprintf({buf}, 256, "{fmt}", {joined}), {buf})'
+        if isinstance(e, Literal): return self._generate_Literal(e)
+        if isinstance(e, StringLiteral): return self._generate_StringLiteral(e)
+        if isinstance(e, FStringLiteral): return self._generate_FStringLiteral(e)
+        if isinstance(e, Identifier): return self._generate_Identifier(e)
+        if isinstance(e, BinOp): return self._generate_BinOp(e)
+        if isinstance(e, UnaryOp): return self._generate_UnaryOp(e)
+        if isinstance(e, CallExpr): return self._generate_CallExpr(e)
+        if isinstance(e, AttributeExpr): return self._generate_AttributeExpr(e)
+        if isinstance(e, IndexExpr): return self._generate_IndexExpr(e)
+        if isinstance(e, ListExpr): return self._generate_ListExpr(e)
+        if isinstance(e, DictExpr): return self._generate_DictExpr(e)
 
         # fallback
         return "/* unhandled expr */"
+
+    # --- Specific Expression Generators ---
+    def _generate_Literal(self, e: Literal) -> str:
+        if e.raw == "True": return "true"
+        if e.raw == "False": return "false"
+        return e.raw
+
+    def _generate_StringLiteral(self, e: StringLiteral) -> str:
+        return f"\"{e.value}\""
+
+    def _generate_FStringLiteral(self, e: FStringLiteral) -> str:
+        buf  = "__fbuf"
+        fmt  = e.raw
+        specs = {"int": "%lld", "float": "%f", "str": "%s", "bool": "%s"}
+        
+        arg_list: list[str] = []
+        for var in e.vars:
+            pb_t   = self._var_types.get(var, "int")
+            fmt    = fmt.replace(f"{{{var}}}", specs.get(pb_t, "%lld"))
+            arg_list.append(var)
+        
+        joined = ", ".join(arg_list) or "0"           # keep GCC happy if empty
+        return f'(snprintf({buf}, 256, "{fmt}", {joined}), {buf})'
+
+    def _generate_Identifier(self, e: Identifier) -> str:
+        return e.name
+
+    def _generate_BinOp(self, e: BinOp) -> str:
+        left  = self._expr(e.left)
+        right = self._expr(e.right)
+        op    = e.op
+        # floor-div → C integer divide
+        if op == "//":
+            op = "/"
+        # Python logic ops → C logical ops
+        if op == "and":
+            return f"({left} && {right})"
+        if op == "or":
+            return f"({left} || {right})"
+        if op == "is":
+            return f"({left} == {right})"
+        if op == "is not":
+            return f"({left} != {right})"
+        # default
+        return f"({left} {op} {right})"
+
+    def _generate_UnaryOp(self, e: UnaryOp) -> str:
+        operand = self._expr(e.operand)
+        if e.op == "not":
+            return f"!({operand})"
+        return f"({e.op}{operand})"
+
+    def _generate_CallExpr(self, e: CallExpr) -> str:
+        # Special case: Class.__init__(self, ...) → Player____init__(self, ...)
+        if isinstance(e.func, AttributeExpr):
+            obj = e.func.obj
+            attr = e.func.attr
+
+            # Special case: Class.__init__(self, ...) → Player____init__((struct Player *) self, hp, mp_default)
+            if attr == "__init__" and isinstance(obj, Identifier):
+                class_name = obj.name
+                init_fn   = f"{class_name}____init__"
+                # figure out how many params that init wants
+                expected = self._function_params.get(init_fn, [])
+                # build the actual args (as C expressions)
+                actual = [self._expr(arg) for arg in e.args]
+                # pad missing args using defaults
+                defaults = self._function_defaults.get(init_fn, [])
+                # skip the 'self' slot at index 0
+                num_provided = len(actual) - 1    # arguments after 'self'
+                for i in range(num_provided, len(defaults)):
+                    default = defaults[i]
+                    if default is None:
+                        raise RuntimeError(f"No default for parameter {i+1} of {init_fn}")
+                    actual.append(default)
+                # cast self to the correct struct pointer
+                self_expr = self._expr(e.args[0])
+                casted   = f"(struct {class_name} *){self_expr}"
+                # stitch the call
+                args = ", ".join([casted] + actual[1:])
+                return f"{init_fn}({args})"
+
+        # Constructor call like Player(...) or Mage(...)
+        elif isinstance(e.func, Identifier):
+            class_name = e.func.name
+            if class_name in self._structs_emitted:
+                self._tmp_counter += 1
+                var = f"__tmp_{class_name.lower()}_{self._tmp_counter}"
+                init_func = f"{class_name}____init__"
+
+                actual_args = [self._expr(arg) for arg in e.args]
+                expected = self._function_params.get(init_func, [])
+                # pad using the actual defaults from the .pb AST
+                defaults = self._function_defaults.get(init_func, [])
+                # skip the 'self' slot at index 0
+                for i in range(len(actual_args), len(defaults)):
+                    if defaults[i] is None:
+                        raise RuntimeError(f"Missing default for parameter {i+1} of {init_func}")
+                    actual_args.append(defaults[i])
+
+                args = ", ".join(actual_args)
+                self._emit(f"struct {class_name} {var};")
+                self._var_types[var] = class_name
+                self._emit(f"{init_func}(&{var}, {args});")
+                return f"&{var}"
+
+            # Normal function call — also handle defaults
+            fn_name = class_name
+            if fn_name in self._function_params:
+                expected = self._function_params[fn_name]
+                actual_args = [self._expr(arg) for arg in e.args]
+                while len(actual_args) < len(expected):
+                    # Insert known defaults by name (manual for now)
+                    if fn_name == "increment":
+                        actual_args.append("1")
+                    else:
+                        actual_args.append("0")
+                args = ", ".join(actual_args)
+                return f"{fn_name}({args})"
+
+        # Method call: player.get_name() → Player__get_name(player)
+        if isinstance(e.func, AttributeExpr):
+            obj_expr = self._expr(e.func.obj)
+            method_name = e.func.attr
+
+            obj_var = getattr(e.func.obj, "name", None)
+            class_type = self._var_types.get(obj_var)
+            if class_type:
+                mangled = f"{class_type}__{method_name}"
+                args = ", ".join([obj_expr] + [self._expr(arg) for arg in e.args])
+                return f"{mangled}({args})"
+
+        # Fallback: general function call expression
+        fn = self._expr(e.func)
+        args = ", ".join(self._expr(a) for a in e.args)
+        return f"{fn}({args})"
+
+    def _generate_AttributeExpr(self, e: AttributeExpr) -> str:
+        # --- FIRST:   class attribute  ---------------------------
+        if isinstance(e.obj, Identifier) and e.obj.name in self._structs_emitted:
+            #   Player.species   →   Player_species
+            return f"{e.obj.name}_{e.attr}"
+        
+        obj = self._expr(e.obj)
+        attr = e.attr
+
+        # --- SECOND:  subclass instance --------------------------
+        if isinstance(e.obj, Identifier):
+            # 1.  Which class does this identifier refer to?
+            if e.obj.name == "self" and hasattr(self, "_current_class"):
+                cls = self._current_class            # we are inside a method
+            else:
+                cls = self._var_types.get(e.obj.name)
+
+            # 2.  If we know the class and the field is NOT owned by it,
+            #     let C look one level down into the embedded base struct.
+            if cls and e.attr not in self._fields.get(cls, set()):
+                return f"{obj}->base.{e.attr}"
+
+        return f"{obj}->{attr}"
+
+    def _generate_IndexExpr(self, e: IndexExpr) -> str:
+        base = self._expr(e.base)
+        idx  = self._expr(e.index)
+        if isinstance(e.base, Identifier) and self._var_types.get(e.base.name, "") == "Dict_str_int":
+            return f"pb_dict_get({base}, {idx})"
+        return f"{base}.data[{idx}]"  # or list_int_get
+    
+    def _generate_ListExpr(self, e: ListExpr) -> str:
+        self._tmp_counter += 1
+        buf_name = f"__tmp_list_{self._tmp_counter}"
+        if not e.elements:
+            self._emit(f"int64_t {buf_name}[1] = {{0}};")
+            return f"(List_int){{ .len=0, .data={buf_name} }}"
+        else:
+            elems = ", ".join(self._expr(x) for x in e.elements)
+            self._emit(f"int64_t {buf_name}[] = {{{elems}}};")
+            return f"(List_int){{ .len={len(e.elements)}, .data={buf_name} }}"
+
+        # Not working with GCC C99
+        # elems = ", ".join(self._expr(x) for x in e.elements)
+        # return f"({{ .len={len(e.elements)}, .data=(int64_t[]){{{elems}}} }})"
+    
+    def _generate_DictExpr(self, e: DictExpr) -> str:
+        self._tmp_counter += 1
+        buf_name = f"__tmp_dict_{self._tmp_counter}"
+        pairs = ", ".join(
+            f'{{{self._expr(k)}, {self._expr(v)}}}' for k, v in zip(e.keys, e.values)
+        )
+        self._emit(f"Pair_str_int {buf_name}[] = {{{pairs}}};")
+        return f"(Dict_str_int){{ .len={len(e.keys)}, .data={buf_name} }}"
+
+        # Not working with GCC C99
+        # specialized to dict[str,int]
+        # pairs = ", ".join(f'{{"{self._expr(k)}",{self._expr(v)}}}' for k,v in zip(e.keys,e.values))
+        # return f"((Dict_str_int){{ .len={len(e.keys)}, .data=(Pair_str_int[]){{{pairs}}} }})"
+
+
+    # --- Helper Methods ---
 
     def _collect_instance_fields(self, cls: ClassDef) -> dict[str, str]:
         """Return a dict of 'self.x' → pb type ('int', 'str', ...) inferred from assignment or method param."""
