@@ -64,7 +64,7 @@ raise, return, True, try, while
 | `float` | IEEE‑754 double | `double` |
 | `bool`  | `True`/`False` | `_Bool` |
 | `str`   | UTF‑8, immutable | `const char *` |
-| `list[T]` | homogeneous, mutable (runtime currently ships only `list[int]`) | `List_int` |
+| `list[T]` | homogeneous, mutable (`list[int]`, `list[str]`, `list[float]`, `list[bool]`) | `List_int`|
 | `dict[str,T]` | string keys (runtime ships only `dict[str,int]`) | `Dict_str_int` |
 | *User class* | single inheritance | `struct <Class>` |
 
@@ -268,7 +268,7 @@ Dynamic features (exceptions, dynamic dispatch) generate stub comments until imp
 | Area | Python 3 | PB 1.0 |
 |------|----------|--------|
 | Typing | dynamic; optional hints | **mandatory static types** |
-| Lists / dicts | heterogeneous | homogeneous; runtime ships only `list[int]`, `dict[str,int]` |
+| Lists / dicts | heterogeneous | homogeneous; `list[int | float | bool | str]`, `dict[str,int]` |
 | Dispatch | dynamic (`obj.m()`) | static (`Class__m(obj, …)`) |
 | Inheritance | multiple, `super()` | single, no `super()` helper |
 | Loops | any iterable | only `range` |

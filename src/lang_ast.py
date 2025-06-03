@@ -8,13 +8,8 @@ on a single, strongly‑typed representation.
 
 Conventions
 -----------
-* Forward‑references are written as *string literals* (or enabled via
-  ``from __future__ import annotations``) so that the file can be imported
-  without cyclical issues.
 * Every concrete node belongs to exactly one of the two root union aliases
   ``Stmt`` or ``Expr``.
-* Keep the nodes *minimal*: only store the fields required by later stages;
-  helper attributes (e.g. inferred types) live in those later passes.
 """
 
 from dataclasses import dataclass, field

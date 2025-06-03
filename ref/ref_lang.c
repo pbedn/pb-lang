@@ -226,8 +226,12 @@ int main(void)
     pb_print_str("=== Dict Literal and Access ===");
     Pair_str_int __tmp_dict_1[] = {{"volume", 10}, {"brightness", 75}};
     Dict_str_int settings = (Dict_str_int){ .len=2, .data=__tmp_dict_1 };
-    pb_print_int(pb_dict_get(settings, "volume"));
-    pb_print_int(pb_dict_get(settings, "brightness"));
+    pb_print_int(pb_dict_get_str_int(settings, "volume"));
+    pb_print_int(pb_dict_get_str_int(settings, "brightness"));
+    Pair_str_str __tmp_dict_2[] = {{"a", "sth here"}, {"b", "and here"}};
+    Dict_str_str map_str = (Dict_str_str){ .len=2, .data=__tmp_dict_2 };
+    pb_print_str(pb_dict_get_str_str(map_str, "a"));
+    pb_print_str(pb_dict_get_str_str(map_str, "b"));
     pb_print_str("=== Try / Except / Raise ===");
     /* try/except not supported at runtime */
     pb_print_str("=== Boolean Literals ===");

@@ -856,6 +856,8 @@ class Parser:
         fields: List[VarDecl] = []
         methods: List[FunctionDef] = []
 
+        is_empty_with_pass = False
+
         while not self.match(TokenType.DEDENT):
             if self.check(TokenType.NEWLINE):
                 self.advance()
@@ -865,10 +867,14 @@ class Parser:
                 fields.append(stmt)
             elif isinstance(stmt, FunctionDef):
                 methods.append(stmt)
+            elif isinstance(stmt, PassStmt):
+                # empty body with pass is allowed
+                is_empty_with_pass = True
+                continue
             else:
                 raise ParserError(f"Only variable declarations and methods allowed in class body at line {self.current().line}")
 
-        if not (fields or methods):
+        if not (fields or methods or is_empty_with_pass):
             raise ParserError(f"class '{name}' has no body (line {self.current().line})")
 
         return ClassDef(name, base, fields, methods)

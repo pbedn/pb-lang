@@ -1,17 +1,14 @@
 import os
 
-# Directories to include
-INCLUDE_DIRS = ['src', 'tests', 'ref', 'utils']
-
-# Directories to exclude
-EXCLUDE_DIRS = ['venv', '.venv', '__pycache__', 'build']
+INCLUDE_DIRS = ['src', 'ref']
+EXCLUDE_DIRS = ['venv', '.venv', '__pycache__', 'build', 'utils']
 
 # File extensions and specific filenames to include
-INCLUDE_EXTENSIONS = ['.py', '.pb', '.c', '.bnf', '.ebnf', '.grammar']
+INCLUDE_EXTENSIONS = ['.py', '.pb', '.c', '.h', '.bnf', '.ebnf', '.grammar']
 INCLUDE_FILENAMES = ['ref_lang.c']
 
 # Output file
-OUTPUT_FILE = 'all_in_one_dump.txt'
+OUTPUT_FILE = f'all_in_one_dump.txt'
 
 def should_include_dir(path):
     return any(path.startswith(d + os.sep) or path == d for d in INCLUDE_DIRS)
@@ -69,11 +66,21 @@ def write_combined_file(file_list, output_file):
                 out_f.write(f"[ERROR reading {file_path}: {e}]\n")
             out_f.write('\n\n')  # Add spacing between files
 
-def main():
+def main(t=None):
     files_to_include = collect_files()
     print(f"\nFound {len(files_to_include)} files to include.\n")
     write_combined_file(files_to_include, OUTPUT_FILE)
     print(f"Combined file written to {OUTPUT_FILE}")
 
 if __name__ == '__main__':
-    main()
+    import sys
+    t = None
+    if len(sys.argv) > 1:
+        t = sys.argv[1]
+
+        if t == 'src':
+            INCLUDE_DIRS = ['src', 'ref']
+        elif t == 'tests':
+            INCLUDE_DIRS = ['tests']
+        OUTPUT_FILE = f'all_{t}_in_one_dump.txt'
+    main(t)

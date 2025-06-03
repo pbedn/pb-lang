@@ -1,8 +1,79 @@
 import unittest
 from codegen import CodeGen
+from type_checker import TypeChecker
 from lang_ast import *
 
+def assert_all_inferred_types_filled(program: Program):
+    def visit_expr(e: Expr):
+        if hasattr(e, "inferred_type") and getattr(e, "inferred_type") is None:
+            raise RuntimeError(f"Missing inferred_type in {e!r}")
+        if isinstance(e, (BinOp, UnaryOp)):
+            visit_expr(e.left) if hasattr(e, "left") else None
+            visit_expr(e.right) if hasattr(e, "right") else None
+            visit_expr(e.operand) if hasattr(e, "operand") else None
+        elif isinstance(e, CallExpr):
+            visit_expr(e.func)
+            for arg in e.args:
+                visit_expr(arg)
+        elif isinstance(e, (AttributeExpr, IndexExpr)):
+            visit_expr(e.obj if hasattr(e, "obj") else e.base)
+            if hasattr(e, "index"):
+                visit_expr(e.index)
+        elif isinstance(e, ListExpr):
+            for el in e.elements:
+                visit_expr(el)
+        elif isinstance(e, DictExpr):
+            for k in e.keys + e.values:
+                visit_expr(k)
+        elif isinstance(e, (Identifier, Literal, StringLiteral, FStringLiteral)):
+            pass
+        else:
+            raise TypeError(f"Unhandled Expr type: {type(e).__name__}")
+
+    def visit_stmt(s: Stmt):
+        if isinstance(s, FunctionDef):
+            for param in s.params:
+                if param.inferred_type is None:
+                    raise RuntimeError(f"Missing inferred_type in param {param.name}")
+            for stmt in s.body:
+                visit_stmt(stmt)
+        elif isinstance(s, VarDecl):
+            visit_expr(s.value)
+            if s.inferred_type is None:
+                raise RuntimeError(f"Missing inferred_type in VarDecl {s.name}")
+        elif isinstance(s, AssignStmt):
+            visit_expr(s.target)
+            visit_expr(s.value)
+            if s.inferred_type is None:
+                raise RuntimeError(f"Missing inferred_type in AssignStmt")
+        elif isinstance(s, ExprStmt):
+            visit_expr(s.expr)
+        elif isinstance(s, WhileStmt):
+            visit_expr(s.condition)
+            for stmt in s.body:
+                visit_stmt(stmt)
+        elif isinstance(s, ReturnStmt):
+            if s.value: visit_expr(s.value)
+            if s.inferred_type is None:
+                raise RuntimeError("Missing inferred_type in ReturnStmt")
+        elif isinstance(s, IfStmt):
+            for branch in s.branches:
+                if branch.condition:
+                    visit_expr(branch.condition)
+                for stmt in branch.body:
+                    visit_stmt(stmt)
+        elif isinstance(s, (BreakStmt, ContinueStmt, PassStmt)):
+            pass
+        else:
+            # other stmt types as needed
+            pass
+
+    for stmt in program.body:
+        visit_stmt(stmt)
+
 def codegen_output(program: Program) -> str:
+    TypeChecker().check(program)
+    # assert_all_inferred_types_filled(program)
     return CodeGen().generate(program)
 
 def assert_contains_all(testcase, output: str, snippets: list[str]):
@@ -49,11 +120,26 @@ class TestCodeGen(unittest.TestCase):
             ClassDef(
                 name="Player",
                 base=None,
-                fields=[VarDecl("hp", "int", Literal("100"))],
+                fields=[],  # No class-level fields
                 methods=[
                     FunctionDef(
+                        name="__init__",
+                        params=[Parameter("self", None, None)],
+                        return_type="None",
+                        body=[
+                            AssignStmt(
+                                target=AttributeExpr(Identifier("self"), "hp"),
+                                value=Literal("100")
+                            )
+                        ],
+                        globals_declared=None
+                    ),
+                    FunctionDef(
                         name="heal",
-                        params=[Parameter("self", None, None), Parameter("amount", "int", None)],
+                        params=[
+                            Parameter("self", None, None),
+                            Parameter("amount", "int", None)
+                        ],
                         return_type="None",
                         body=[
                             AugAssignStmt(
@@ -70,10 +156,10 @@ class TestCodeGen(unittest.TestCase):
         output = codegen_output(prog)
         assert_contains_all(self, output, [
             "typedef struct Player {",
-            "int64_t hp;",
+            "int64_t hp;",                          # instance field
             "} Player;",
-            "void Player__heal(struct Player * self, int64_t amount)",
-            "self->hp += amount;"
+            "void Player__heal(struct Player * self, int64_t amount)",  # method declaration
+            "self->hp += amount;"                   # correct method body line
         ])
 
     def test_fstring_interpolation(self):
@@ -335,6 +421,8 @@ class TestCodeGen(unittest.TestCase):
                         elem_type="str",
                         inferred_type="list[str]"
                     )),
+                    ExprStmt(CallExpr(Identifier("print"), [IndexExpr(Identifier("arr"), Literal("0"))])),
+                    ExprStmt(CallExpr(Identifier("print"), [IndexExpr(Identifier("arr2"), Literal("1"))])),
                     ReturnStmt(Literal("0"))
                 ],
                 globals_declared=None
@@ -350,6 +438,8 @@ class TestCodeGen(unittest.TestCase):
             "List_int arr3 = (List_int){ .len=0, .data=__tmp_list_3 };",
             "const char * __tmp_list_4[1] = {0};",
             "List_str arr4 = (List_str){ .len=0, .data=__tmp_list_4 };",
+            "pb_print_bool(arr.data[0]);",
+            "pb_print_str(arr2.data[1]);",
             "return 0;"
         ])
 
@@ -364,11 +454,40 @@ class TestCodeGen(unittest.TestCase):
                         "d", "dict[str, int]",
                         DictExpr(
                             keys=[StringLiteral("a"), StringLiteral("b")],
-                            values=[Literal("1"), Literal("2")]
-                        )
+                            values=[Literal("1"), Literal("2")],
+                            elem_type="int",
+                            inferred_type="dict[str, int]",
+                        ),
+                        inferred_type='dict[str, int]'
                     ),
                     ExprStmt(CallExpr(Identifier("print"), [
-                        IndexExpr(Identifier("d"), StringLiteral("a"))
+                        IndexExpr(Identifier("d", "dict[str, int]"), StringLiteral("a"))
+                    ])),
+                    VarDecl(
+                        "d2", "dict[str, str]",
+                        DictExpr(
+                            keys=[StringLiteral("a"), StringLiteral("b")],
+                            values=[StringLiteral("sth here"), StringLiteral("and here")],
+                            elem_type="str",
+                            inferred_type="dict[str, str]",
+                        ),
+                        inferred_type='dict[str, str]',
+                    ),
+                    ExprStmt(CallExpr(Identifier("print"), [
+                        IndexExpr(Identifier("d2", "dict[str, str]"), StringLiteral("a"))
+                    ])),
+                    VarDecl(
+                        "d3", "dict[str, bool]",
+                        DictExpr(
+                            keys=[StringLiteral("a"), StringLiteral("b")],
+                            values=[Literal("True"), Literal("False")],
+                            elem_type="bool",
+                            inferred_type="dict[str, bool]",
+                        ),
+                        inferred_type='dict[str, bool]'
+                    ),
+                    ExprStmt(CallExpr(Identifier("print"), [
+                        IndexExpr(Identifier("d3", inferred_type="dict[str, bool]"), StringLiteral("a"))
                     ])),
                     ReturnStmt(Literal("0"))
                 ],
@@ -377,10 +496,16 @@ class TestCodeGen(unittest.TestCase):
         ])
         output = codegen_output(program)
         assert_contains_all(self, output, [
-            "Pair_str_int __tmp_dict_",
-            "Dict_str_int d =",
-            'pb_print_int(pb_dict_get(d, "a"));',
-            "return 0;"
+            'Pair_str_int __tmp_dict_1[] = {{"a", 1}, {"b", 2}};',
+            'Dict_str_int d = (Dict_str_int){ .len=2, .data=__tmp_dict_1 };',
+            'pb_print_int(pb_dict_get_str_int(d, "a"));',
+            'Pair_str_str __tmp_dict_2[] = {{"a", "sth here"}, {"b", "and here"}};',
+            'Dict_str_str d2 = (Dict_str_str){ .len=2, .data=__tmp_dict_2 };',
+            'pb_print_str(pb_dict_get_str_str(d2, "a"));',
+            'Pair_str_bool __tmp_dict_3[] = {{"a", true}, {"b", false}};',
+            'Dict_str_bool d3 = (Dict_str_bool){ .len=2, .data=__tmp_dict_3 };',
+            'pb_print_bool(pb_dict_get_str_bool(d3, "a"));',
+            'return 0;'
         ])
         
 
@@ -414,49 +539,6 @@ class TestCodeGen(unittest.TestCase):
         assert_contains_all(self, output, [
             "/* try/except not supported at runtime */",
             "return 0;"
-        ])
-
-    def test_class_inheritance_dispatch(self):
-        program = Program(body=[
-            ClassDef(
-                name="Player",
-                base=None,
-                fields=[VarDecl("hp", "int", Literal("100"))],
-                methods=[
-                    FunctionDef(
-                        name="get_hp",
-                        params=[Parameter("self", None, None)],
-                        return_type="int",
-                        body=[ReturnStmt(AttributeExpr(Identifier("self"), "hp"))],
-                        globals_declared=None
-                    )
-                ]
-            ),
-            ClassDef(
-                name="Mage",
-                base="Player",
-                fields=[],
-                methods=[]
-            ),
-            FunctionDef(
-                name="main",
-                params=[],
-                return_type="int",
-                body=[
-                    VarDecl("m", "Mage", CallExpr(Identifier("Mage"), [])),
-                    ExprStmt(CallExpr(Identifier("print"), [
-                        CallExpr(func=AttributeExpr(Identifier("m"), "get_hp"), args=[])
-                    ])),
-                    ReturnStmt(Literal("0"))
-                ],
-                globals_declared=None
-            )
-        ])
-        output = codegen_output(program)
-        assert_contains_all(self, output, [
-            "static inline int64_t Mage__get_hp(",
-            "struct Mage * self)",
-            "return Player__get_hp((struct Player *)self);"
         ])
 
     def test_global_variable_in_method(self):
@@ -574,18 +656,34 @@ class TestCodeGen(unittest.TestCase):
             "return 0;"
         ])
 
-    def test_class_vs_instance_attr(self):
+    def test_class_attrs_and_dynamic_instance_attr(self):
         program = Program(body=[
             ClassDef(
-                name="Thing",
+                name="Player",
                 base=None,
-                fields=[VarDecl("kind", "str", StringLiteral("generic"))],
+                fields=[
+                    VarDecl("mp", "int", Literal("100"))
+                ],
                 methods=[
                     FunctionDef(
-                        name="get_class_kind",
+                        name="__init__",
                         params=[Parameter("self", None, None)],
-                        return_type="str",
-                        body=[ReturnStmt(AttributeExpr(Identifier("Thing"), "kind"))],
+                        return_type="None",
+                        body=[
+                            AssignStmt(
+                                target=AttributeExpr(Identifier("self"), "hp"),
+                                value=Literal("150")
+                            )
+                        ],
+                        globals_declared=None
+                    ),
+                    FunctionDef(
+                        name="get_hp",
+                        params=[Parameter("self", None, None)],
+                        return_type="int",
+                        body=[
+                            ReturnStmt(AttributeExpr(Identifier("self"), "hp"))
+                        ],
                         globals_declared=None
                     )
                 ]
@@ -595,9 +693,15 @@ class TestCodeGen(unittest.TestCase):
                 params=[],
                 return_type="int",
                 body=[
-                    VarDecl("t", "Thing", CallExpr(Identifier("Thing"), [])),
+                    VarDecl("p", "Player", CallExpr(Identifier("Player"), [])),
                     ExprStmt(CallExpr(Identifier("print"), [
-                        CallExpr(func=AttributeExpr(Identifier("t"), "get_class_kind"), args=[], inferred_type="str")
+                        AttributeExpr(Identifier("p"), "hp")
+                    ])),
+                    ExprStmt(CallExpr(Identifier("print"), [
+                        CallExpr(AttributeExpr(Identifier("p"), "get_hp"), [])
+                    ])),
+                    ExprStmt(CallExpr(Identifier("print"), [
+                        AttributeExpr(Identifier("Player"), "mp")
                     ])),
                     ReturnStmt(Literal("0"))
                 ],
@@ -605,12 +709,133 @@ class TestCodeGen(unittest.TestCase):
             )
         ])
         output = codegen_output(program)
+
+        # Ensure generated struct contains both class and instance fields
         assert_contains_all(self, output, [
-            'const char * Thing_kind = "generic";',
-            "const char * Thing__get_class_kind(struct Thing * self)",
-            "return Thing_kind;",
-            "pb_print_str(Thing__get_class_kind(t));",
-            "return 0;"
+            "typedef struct Player {",
+            "int64_t mp;",
+            "int64_t hp;",
+            "} Player;",
+
+            # Global class-level field
+            "int64_t Player_mp = 100;",
+
+            # Proper __init__ method setting instance hp
+            "void Player____init__(struct Player * self)",
+            "self->hp = 150;",
+
+            # Method get_hp accessing instance field
+            "int64_t Player__get_hp(struct Player * self)",
+            "return self->hp;",
+
+            # main function uses all three accesses
+            "pb_print_int(p->hp);",
+            "pb_print_int(Player__get_hp(p));",
+            "pb_print_int(Player_mp);"
+        ])
+
+    def test_codegen_class_inheritance_with_fields(self):
+        program = Program(body=[
+            ClassDef(
+                name="Player",
+                base=None,
+                fields=[VarDecl("name", "str", StringLiteral("P"))],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[Parameter("self", "Player", None)],
+                        return_type="None",
+                        body=[
+                            AssignStmt(
+                                target=AttributeExpr(Identifier("self"), "hp"),
+                                value=Literal("150")
+                            )
+                        ]
+                    ),
+                    FunctionDef(
+                        name="get_hp",
+                        params=[Parameter("self", "Player", None)],
+                        return_type="int",
+                        body=[
+                            ReturnStmt(
+                                AttributeExpr(Identifier("self"), "hp")
+                            )
+                        ]
+                    )
+                ]
+            ),
+            ClassDef(
+                name="Mage",
+                base="Player",
+                fields=[],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[Parameter("self", "Mage", None)],
+                        return_type="None",
+                        body=[
+                            ExprStmt(
+                                CallExpr(
+                                    func=AttributeExpr(Identifier("Player"), "__init__"),
+                                    args=[Identifier("self")]
+                                )
+                            ),
+                            AssignStmt(
+                                target=AttributeExpr(Identifier("self"), "mana"),
+                                value=Literal("200")
+                            )
+                        ]
+                    )
+                ]
+            ),
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("p", "Player", CallExpr(Identifier("Player"), [])),
+                    ExprStmt(CallExpr(Identifier("print"), [
+                        AttributeExpr(Identifier("p"), "hp")
+                    ])),
+                    ExprStmt(CallExpr(Identifier("print"), [
+                        CallExpr(AttributeExpr(Identifier("p"), "get_hp"), [])
+                    ])),
+                    ExprStmt(CallExpr(Identifier("print"), [
+                        AttributeExpr(Identifier("Player"), "name")
+                    ])),
+                    VarDecl("m", "Mage", CallExpr(Identifier("Mage"), [])),
+                    ExprStmt(CallExpr(Identifier("print"), [
+                        AttributeExpr(Identifier("m"), "hp")
+                    ])),
+                    ExprStmt(CallExpr(Identifier("print"), [
+                        AttributeExpr(Identifier("m"), "mana")
+                    ])),
+                    ExprStmt(CallExpr(Identifier("print"), [
+                        CallExpr(AttributeExpr(Identifier("m"), "get_hp"), [])
+                    ])),
+                    ReturnStmt(Literal("0"))
+                ]
+            )
+        ])
+        c = codegen_output(program)
+        assert_contains_all(self, c, [
+            "typedef struct Player {",
+            "const char * name;",
+            "int64_t hp;",
+            "typedef struct Mage {",
+            "Player base;",
+            "int64_t mana;",
+            "const char * Player_name = \"P\";",
+            "void Player____init__(struct Player * self);",
+            "int64_t Player__get_hp(struct Player * self);",
+            "void Mage____init__(struct Mage * self);",
+            "Player____init__((struct Player *)self);",
+            "pb_print_int(p->hp);",
+            "pb_print_int(Player__get_hp(p));",
+            "pb_print_str(Player_name);",
+            "pb_print_int(m->base.hp);",
+            "pb_print_int(m->mana);",
+            "pb_print_int(Mage__get_hp(m));"
         ])
 
     def test_pass_statement(self):
@@ -708,35 +933,6 @@ class TestCodeGen(unittest.TestCase):
         output = codegen_output(prog)
         assert_contains_all(self, output, [
             'pb_print_str(get_name());',
-            'return 0;'
-        ])
-
-    def test_print_attribute_with_inferred_type(self):
-        # AttributeExpr with inferred_type
-        prog = Program(body=[
-            ClassDef(
-                name="Player",
-                base=None,
-                fields=[VarDecl("name", "str", StringLiteral("Alice"))],
-                methods=[]
-            ),
-            FunctionDef(
-                name="main",
-                params=[],
-                return_type="int",
-                body=[
-                    VarDecl("p", "Player", CallExpr(Identifier("Player"), [])),
-                    ExprStmt(CallExpr(Identifier("print"), [
-                        AttributeExpr(Identifier("p"), "name", inferred_type="str")
-                    ])),
-                    ReturnStmt(Literal("0", inferred_type="int"))
-                ],
-                globals_declared=None
-            )
-        ])
-        output = codegen_output(prog)
-        assert_contains_all(self, output, [
-            'pb_print_str(p->name);',
             'return 0;'
         ])
 

@@ -166,6 +166,10 @@ def main() -> int:
     print(settings["volume"])
     print(settings["brightness"])
 
+    map_str: dict[str, str] = {"a": "sth here", "b": "and here"}
+    print(map_str["a"])
+    print(map_str["b"])
+
     print("=== Try / Except / Raise ===")
     try:
         result: int = divide(10, 0)

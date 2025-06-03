@@ -88,7 +88,7 @@ class TestTypeCheckerInternals(unittest.TestCase):
 
     def test_check_expr_identifier_undefined(self):
         with self.assertRaises(TypeError):
-            self.tc.check_expr(Identifier(name="z"))
+            self.tc.check_expr(Identifier(name="z", inferred_type="str"))
 
     def test_binop_add_ints(self):
         expr = BinOp(Literal("1"), "+", Literal("2"))
@@ -2107,7 +2107,7 @@ class TestTypeCheckerProgramLevel(unittest.TestCase):
         ])
         with self.assertRaises(TypeError) as ctx:
             TypeChecker().check(prog)
-        self.assertIn("Class 'A' has no instance attribute 'y'", str(ctx.exception))
+        self.assertIn("Instance `self` for class 'A' has no attribute 'y'", str(ctx.exception))
 
     def test_aug_assign_on_instance_field_outside_method(self):
         """

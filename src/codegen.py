@@ -52,7 +52,7 @@ def debug(func):
         else:
             ret = f"<{type(result).__name__}>"
 
-        # logger.debug(f"{prefix}← {func.__name__} returned {ret}")
+        logger.debug(f"{prefix}← {func.__name__} returned {ret}")
         return result
 
     return wrapper
@@ -62,7 +62,6 @@ class CodeGen:
 
     INDENT = "    "
 
-    @debug
     def __init__(self) -> None:
         self._lines: List[str] = []
         self._indent: int = 0
@@ -80,7 +79,6 @@ class CodeGen:
         self._fields: dict[str, set[str]] = {}   # class -> set(field names)
         self._base:   dict[str, str|None] = {}   # class -> base name or None
 
-    @debug
     def generate(self, program: Program) -> str:
         """Generate the complete C source for `program`."""
         self._lines.clear()
@@ -106,13 +104,11 @@ class CodeGen:
             # top-level VarDecl or Assign go to globals, already handled
         return "\n".join(self._lines)
 
-    @debug
     def _emit(self, line: str = "") -> None:
         prefix = self.INDENT * self._indent
         for sub in line.splitlines():
             self._lines.append(f"{prefix}{sub}")
 
-    @debug
     def _emit_headers_and_runtime(self) -> None:
         if self._runtime_emitted:
             return
@@ -122,7 +118,6 @@ class CodeGen:
         self._emit()
 
     @staticmethod
-    @debug
     def _c_type(pb_type: Optional[str]) -> str:
         """Map PB type to C99 type spelling."""
         if pb_type is None or pb_type == "None":
@@ -138,15 +133,20 @@ class CodeGen:
         if pb_type.startswith("list[") and pb_type.endswith("]"):
             return {
                 'list[int]': 'List_int',
+                'list[float]': 'List_float',
                 'list[bool]': 'List_bool',
                 'list[str]': 'List_str',
             }[pb_type]
         if pb_type.startswith("dict[") and pb_type.endswith("]"):
-            return "Dict_str_int"
+            return {
+                'dict[str, int]': 'Dict_str_int',
+                'dict[str, float]': 'Dict_str_float',
+                'dict[str, bool]': 'Dict_str_bool',
+                'dict[str, str]': 'Dict_str_str',
+            }[pb_type]
         # user class
         return f"struct {pb_type} *"
 
-    @debug
     def _emit_class_structs(self, program: Program) -> None:
         """Emit structs (with single inheritance) for each ClassDef in the program."""
         # inside _emit_class_structs
@@ -210,7 +210,6 @@ class CodeGen:
             self._base[stmt.name]   = stmt.base
 
 
-    @debug
     def _emit_global_decls(self, program: Program) -> None:
         """Emit global variables at top-level."""
         if self._globals_emitted:
@@ -228,7 +227,6 @@ class CodeGen:
         if self._globals_emitted:
             self._emit()
 
-    @debug
     def _emit_function_prototypes(self, program: Program) -> None:
         """Emit prototypes for every function the code-gen will create."""
         # — top-level (non-main) functions —
@@ -260,7 +258,6 @@ class CodeGen:
         self._emit()
 
 
-    @debug
     def _func_proto(self, fn: FunctionDef) -> str:
         ret = self._c_type(fn.return_type)
         params = []
@@ -271,7 +268,6 @@ class CodeGen:
             params = ["void"]
         return f"{ret} {fn.name}({', '.join(params)})"
 
-    @debug
     def _emit_function(self, fn: FunctionDef) -> None:
         """Emit a standard (non-main) function definition."""
         prev = getattr(self, "_current_class", None)
@@ -313,7 +309,6 @@ class CodeGen:
         self._emit()
         self._current_class = prev                   # restore on exit
 
-    @debug
     def _emit_main(self, fn: FunctionDef) -> None:
         """Map PB `main()` → `int main(void)`."""
         self._emit("int main(void)")
@@ -327,7 +322,6 @@ class CodeGen:
         self._emit("}")
         self._emit()
 
-    @debug
     def _emit_class_def(self, cls: ClassDef) -> None:
         """
         Emit each method of `cls` as a standalone function taking
@@ -375,7 +369,6 @@ class CodeGen:
                     self._emit("}")
                     self._emit()
 
-    @debug
     def _stmt(self, st: Any) -> str:
         """Translate one AST statement → C, returning a full C statement/block."""
         # Dispatch to specific generator methods based on node type
@@ -401,7 +394,6 @@ class CodeGen:
         return f"/* unhandled_stmt: {type(st).__name__} */;"
 
     # --- Specific Statement Generators ---
-    @debug
     def _generate_ExprStmt(self, expr: Expr) -> str:
         if isinstance(expr, CallExpr) and \
            isinstance(expr.func, Identifier) and expr.func.name == "print":
@@ -411,12 +403,32 @@ class CodeGen:
     def _get_expr_type(self, expr: Expr) -> Optional[str]:
         return getattr(expr, "inferred_type", None)
 
-    @debug
     def _generate_print_call(self, ce: CallExpr) -> str:
+
+        def _print_function_for_type(t: str) -> str:
+            return {
+                "str": "pb_print_str",
+                "bool": "pb_print_bool",
+                "float": "pb_print_double",
+            }.get(t, "pb_print_int")  # default to int
+
+        def _extract_dict_value_type(type_str: str) -> str:
+            # Assumes type_str starts with "dict["
+            try:
+                key_type, val_type = map(str.strip, type_str[5:-1].split(",", 1))
+                if key_type != "str":
+                    ("Only dicts with string keys are supported")
+                return val_type
+            except Exception:
+                RuntimeError(f"Invalid dict type: {type_str}")
+                return "int"
+
         lines: list[str] = []
 
         for arg in ce.args:
             arg_expr = self._expr(arg)
+            print_arg = arg_expr
+            t = self._get_expr_type(arg)
 
             # Always prefer explicit string forms for string literals and f-strings
             if isinstance(arg, (StringLiteral, FStringLiteral)):
@@ -430,18 +442,29 @@ class CodeGen:
             # - IndexExpr       arr[0], d["x"]
             # - CallExpr        get_name()
             if isinstance(arg, Identifier):
-                t = self._get_expr_type(arg) or self._var_types.get(arg.name, "int")
-            else:
-                t = self._get_expr_type(arg)
+                t = t or self._var_types.get(arg.name, "int")
 
-            if t == "str":
-                lines.append(f"pb_print_str({arg_expr});")
-            elif t == "bool":
-                lines.append(f"pb_print_bool({arg_expr});")
-            elif t == "float":
-                lines.append(f"pb_print_double({arg_expr});")
-            else:
-                lines.append(f"pb_print_int({arg_expr});")
+            if isinstance(arg, IndexExpr):
+                base_type = self._get_expr_type(arg.base)
+                if base_type and base_type.startswith("dict["):
+                    value_type = _extract_dict_value_type(base_type)
+                    func = f"pb_dict_get_str_{value_type}"
+                    key = self._expr(arg.index)
+                    base = self._expr(arg.base)
+                    print_arg = f"{func}({base}, {key})"
+                    t = value_type
+                elif base_type and base_type.startswith("list["):
+                    elem_type = base_type[5:-1]
+                    base = self._expr(arg.base)
+                    index = self._expr(arg.index)
+                    print_arg = f"{base}.data[{index}]"
+                    t = elem_type
+
+            if not t:
+                raise RuntimeError(f"No inferred type for: {arg}")
+
+            print_func = _print_function_for_type(t)
+            lines.append(f"{print_func}({print_arg});")
 
         return "\n".join(lines)
 
@@ -546,15 +569,10 @@ class CodeGen:
         if isinstance(st.declared_type, str):
             if st.declared_type in self._structs_emitted:
                 self._var_types[st.name] = st.declared_type
-            elif st.declared_type.startswith("dict["):
-                self._var_types[st.name] = "Dict_str_int"
-            elif st.declared_type.startswith("list["):
-                self._var_types[st.name] = "List_int"
             elif st.declared_type in ("int", "float", "bool", "str"):
                 self._var_types[st.name] = st.declared_type
         return f"{c_ty} {st.name} = {val};"
 
-    @debug
     def _expr(self, e: Expr) -> str:
         """Dispatch and return a C expression (no indent, no semicolon)."""
         if isinstance(e, Literal): return self._generate_Literal(e)
@@ -674,7 +692,10 @@ class CodeGen:
                 args = ", ".join(actual_args)
                 self._emit(f"struct {class_name} {var};")
                 self._var_types[var] = class_name
-                self._emit(f"{init_func}(&{var}, {args});")
+                if args:
+                    self._emit(f"{init_func}(&{var}, {args});")
+                else:
+                    self._emit(f"{init_func}(&{var});")
                 return f"&{var}"
 
             # Normal function call — also handle defaults
@@ -735,9 +756,7 @@ class CodeGen:
     def _generate_IndexExpr(self, e: IndexExpr) -> str:
         base = self._expr(e.base)
         idx  = self._expr(e.index)
-        if isinstance(e.base, Identifier) and self._var_types.get(e.base.name, "") == "Dict_str_int":
-            return f"pb_dict_get({base}, {idx})"
-        return f"{base}.data[{idx}]"  # or list_int_get
+        return f"{base}.data[{idx}]"
     
     def _generate_ListExpr(self, e: ListExpr) -> str:
         self._tmp_list_counter += 1
@@ -757,11 +776,18 @@ class CodeGen:
     def _generate_DictExpr(self, e: DictExpr) -> str:
         self._tmp_dict_counter += 1
         buf_name = f"__tmp_dict_{self._tmp_dict_counter}"
+
+        dict_c_type = self._c_type(e.inferred_type)
+
         pairs = ", ".join(
             f'{{{self._expr(k)}, {self._expr(v)}}}' for k, v in zip(e.keys, e.values)
         )
-        self._emit(f"Pair_str_int {buf_name}[] = {{{pairs}}};")
-        return f"(Dict_str_int){{ .len={len(e.keys)}, .data={buf_name} }}"
+        if not pairs:
+            self._emit(f"Pair_str_{e.elem_type} {buf_name}[1] = {{0}};")
+            return f"({dict_c_type}){{ .len=0, .data={buf_name} }}" 
+
+        self._emit(f"Pair_str_{e.elem_type} {buf_name}[] = {{{pairs}}};")
+        return f"({dict_c_type}){{ .len={len(e.keys)}, .data={buf_name} }}"
 
         # Not working with GCC C99
         # specialized to dict[str,int]

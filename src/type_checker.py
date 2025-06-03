@@ -162,6 +162,13 @@ class TypeChecker:
             self.known_classes.add(exc)
             self.functions[exc] = (["str"], exc, 1)
 
+    # TODO
+    # def assert_all_exprs_typed(node: Node):
+    #     for child in walk_ast(node):
+    #         if isinstance(child, (Expr,)):
+    #             assert getattr(child, "inferred_type", None) is not None, f"Missing type: {child}"
+
+
     def check(self, program: Program):
         """Type-check the entire program."""
         seen_main = False
@@ -298,11 +305,7 @@ class TypeChecker:
             if name in self.env:
                 expr.inferred_type = self.env[name]
                 return self.env[name]
-            elif name in self.functions:
-                expr.inferred_type = "function"
-                return "function"
-            else:
-                raise TypeError(f"Undefined variable or function '{name}'")
+            raise TypeError(f"Undefined variable or function '{name}'")
 
         # Both sides must be of compatible types for the operator.
         elif isinstance(expr, BinOp):
@@ -391,15 +394,14 @@ class TypeChecker:
                                 raise TypeError(f"Argument {i+1} to '{fname}' expected {expected}, got {actual}")
 
                     expr.inferred_type = fname
-                    return fname  # 🧠 The constructed class becomes the expression's type
-
+                    return fname  # The constructed class becomes the expression's type
 
                 if fname == "print":
                     for arg in expr.args:
                         t = self.check_expr(arg)
                         if t.startswith("list["):
                             raise TypeError("Cannot print a list directly")
-                    expr.inferred_type = "None"
+                    expr.inferred_type = "function"
                     return "None"
                 if fname not in self.functions:
                     raise TypeError(f"Call to undefined function '{fname}'")
@@ -514,7 +516,15 @@ class TypeChecker:
                     raise TypeError(f"'{obj_name}' has unknown type '{class_type}'")
                 fields = self.instance_fields[class_type]
                 if expr.attr not in fields:
-                    raise TypeError(f"Class '{class_type}' has no instance attribute '{expr.attr}'")
+                    raise TypeError(f"Instance `{obj_name}` for class '{class_type}' has no attribute '{expr.attr}'")
+
+                # Todo: think if allowing setting from class attrs here make sense, if yes then propagate that in other places
+                #     if expr.attr not in self.class_attrs[class_type]:
+                #         raise TypeError(f"Instance `{obj_name}` for class '{class_type}' has no attribute '{expr.attr}'")
+                #     else:
+                #         expr.inferred_type = self.class_attrs[class_type][expr.attr]
+                # else:
+                #     expr.inferred_type = fields[expr.attr]
                 expr.inferred_type = fields[expr.attr]
                 return expr.inferred_type
 
@@ -545,6 +555,7 @@ class TypeChecker:
                     raise TypeError(f"List index must be int, got {index_type}")
                 elem = base_type[5:-1]
                 expr.elem_type = elem
+                expr.inferred_type = base_type
                 return elem
 
             elif base_type.startswith("dict[") and base_type.endswith("]"):
@@ -552,7 +563,7 @@ class TypeChecker:
                     raise TypeError(f"Dict key must be str, got {index_type}")
                 elem = base_type[len("dict[str, "):-1]
                 expr.elem_type = elem
-                # expr.inferred_type = f"dict[str, {elem}]"
+                expr.inferred_type = base_type
                 return elem
 
             else:
@@ -727,7 +738,6 @@ class TypeChecker:
                     f"Function '{fn.name}' declared to return {fn.return_type} but no return statement found"
                 )
 
-
         self.env = old_env
         self.current_return_type = old_ret
         self.current_function_name = None  # Clear context
@@ -793,8 +803,8 @@ class TypeChecker:
         """Check augmented assignment like x += 1.
 
         Allows safe type promotion:
-        - float += int ✅
-        - float /= int ✅
+        - float += int
+        - float /= int
         """
         target = stmt.target
         actual_type = self.check_expr(stmt.value)
@@ -845,9 +855,9 @@ class TypeChecker:
 
                 That means bugs like these would go undetected:
 
-                mage.hp += "oops"              # ❌ string into int
-                mage.unknown_field += 10       # ❌ nonexistent field
-                some_random += 1               # ❌ invalid variable
+                mage.hp += "oops"              # string into int
+                mage.unknown_field += 10       # nonexistent field
+                some_random += 1               # invalid variable
                 """
                 return
 

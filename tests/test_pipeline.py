@@ -228,7 +228,6 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn("List_int nums =", c)
         self.assertIn("int64_t first = nums.data[0];", c)
 
-    @unittest.skip("Not supported yet")
     def test_list_of_bools(self):
         code = (
             "def main() -> int:\n"
@@ -238,9 +237,10 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    return 0\n"
         )
         c_code = self.compile_pipeline(code)
-        self.assertIn('bool flags[] = { true, false, true };', c_code)
-        self.assertIn('bool x = flags[0];', c_code)
-        self.assertIn('printf("%s\\n", x ? "true" : "false");', c_code)
+        self.assertIn('bool __tmp_list_1[] = {true, false, true};', c_code)
+        self.assertIn('List_bool flags = (List_bool){ .len=3, .data=__tmp_list_1 };', c_code)
+        self.assertIn('bool x = flags.data[0];', c_code)
+        self.assertIn('pb_print_bool(x);', c_code)
 
     @unittest.skip("Not supported yet")
     def test_list_mixed_types_error(self):
@@ -255,7 +255,7 @@ class TestCodeGenFromSource(unittest.TestCase):
 
     # dict ------------------------------------------------------
 
-    def test_dict_literal_access_from_source(self):
+    def test_dict_int_literal_access_from_source(self):
         code = (
             "def main() -> int:\n"
             "    d: dict[str, int] = {\"a\": 1, \"b\": 2}\n"
@@ -263,8 +263,47 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    return 0\n"
         )
         c = self.compile_pipeline(code)
-        self.assertIn("Dict_str_int d =", c)
-        self.assertIn('pb_print_int(pb_dict_get(d, "a"));', c)
+        self.assertIn('Pair_str_int __tmp_dict_1[] = {{"a", 1}, {"b", 2}};', c)
+        self.assertIn("Dict_str_int d = (Dict_str_int){ .len=2, .data=__tmp_dict_1 };", c)
+        self.assertIn('pb_print_int(pb_dict_get_str_int(d, "a"));', c)
+
+    def test_dict_str_literal_access_from_source(self):
+        code = (
+            "def main() -> int:\n"
+            "    d: dict[str, str] = {\"a\": \"sth\", \"b\": \"here\"}\n"
+            "    print(d[\"a\"])\n"
+            "    return 0\n"
+        )
+        c = self.compile_pipeline(code)
+        self.assertIn('Pair_str_str __tmp_dict_1[] = {{"a", "sth"}, {"b", "here"}};', c)
+        self.assertIn("Dict_str_str d = (Dict_str_str){ .len=2, .data=__tmp_dict_1 };", c)
+        self.assertIn('pb_print_str(pb_dict_get_str_str(d, "a"));', c)
+
+    def test_dict_bool_literal_access_from_source(self):
+        code = (
+            "def main() -> int:\n"
+            "    d: dict[str, bool] = {\"a\": True, \"b\": False}\n"
+            "    print(d[\"a\"])\n"
+            "    return 0\n"
+        )
+        c = self.compile_pipeline(code)
+        self.assertIn('Pair_str_bool __tmp_dict_1[] = {{"a", true}, {"b", false}};', c)
+        self.assertIn("Dict_str_bool d = (Dict_str_bool){ .len=2, .data=__tmp_dict_1 };", c)
+        self.assertIn('pb_print_bool(pb_dict_get_str_bool(d, "a"));', c)
+
+    def test_dict_float_literal_access_from_source(self):
+        code = (
+            "def main() -> int:\n"
+            "    d: dict[str, float] = {\"a\": 1.0, \"b\": 2.0}\n"
+            "    print(d[\"a\"])\n"
+            "    return 0\n"
+        )
+        c = self.compile_pipeline(code)
+        self.assertIn('Pair_str_float __tmp_dict_1[] = {{"a", 1.0}, {"b", 2.0}};', c)
+        self.assertIn("Dict_str_float d = (Dict_str_float){ .len=2, .data=__tmp_dict_1 };", c)
+        self.assertIn('pb_print_double(pb_dict_get_str_float(d, "a"));', c)
+
+    # logical ------------------------------------------------------
 
     def test_is_and_is_not_from_source(self):
         code = (
@@ -312,6 +351,87 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn("struct Player __tmp_", c)
         self.assertIn("Player____init__(&__tmp_", c)
         self.assertIn("pb_print_int(Player__get_hp(p));", c)
+
+    def test_class_attrs_and_dynamic_instance_attr_with_static_and_dynamic_access(self):
+        code = (
+            "class Player:\n"
+            "    mp: int = 100\n"
+            "\n"
+            "    def __init__(self) -> None:\n"
+            "        self.hp = 150\n"
+            "\n"
+            "    def get_hp(self) -> int:\n"
+            "        return self.hp\n"
+            "\n"
+            "def main() -> int:\n"
+            "    p: Player = Player()\n"
+            "    print(p.hp)\n"
+            "    print(p.get_hp())\n"
+            "    print(Player.mp)\n"
+            "    return 0\n"
+        )
+        c = self.compile_pipeline(code)
+
+        # Check that instance and class fields are both accessed correctly
+        self.assertIn("struct Player __tmp_", c)
+        self.assertIn("Player____init__(&__tmp_", c)
+        self.assertIn("pb_print_int(p->hp);", c)
+        self.assertIn("pb_print_int(Player__get_hp(p));", c)
+        self.assertIn("pb_print_int(Player_mp);", c)
+
+        # Optional: confirm structure of Player includes both fields
+        self.assertIn("typedef struct Player {", c)
+        self.assertIn("int64_t hp;", c)
+        self.assertIn("int64_t mp;", c)
+
+        # Optional: confirm static field initialization
+        self.assertIn("int64_t Player_mp = 100;", c)
+
+    def test_codegen_class_inheritance_with_fields(self):
+        code = (
+            "class Player:\n"
+            "    name: str = \"P\"\n"
+            "\n"
+            "    def __init__(self) -> None:\n"
+            "        self.hp = 150\n"
+            "\n"
+            "    def get_hp(self) -> int:\n"
+            "        return self.hp\n"
+            "\n"
+            "class Mage(Player):\n"
+            "    def __init__(self) -> None:\n"
+            "        Player.__init__(self)\n"
+            "        self.mana = 200\n"
+            "\n"
+            "def main() -> int:\n"
+            "    p: Player = Player()\n"
+            "    print(p.hp)\n"
+            "    print(p.get_hp())\n"
+            "    print(Player.name)\n"
+            "    m: Mage = Mage()\n"
+            "    print(m.hp)\n"
+            "    print(m.mana)\n"
+            "    print(m.get_hp())\n"
+            "    return 0\n"
+        )
+        c = self.compile_pipeline(code)
+        self.assertIn("typedef struct Player {", c)
+        self.assertIn("const char * name;", c)
+        self.assertIn("int64_t hp;", c)
+        self.assertIn("typedef struct Mage {", c)
+        self.assertIn("Player base;", c)
+        self.assertIn("int64_t mana;", c)
+        self.assertIn("const char * Player_name = \"P\";", c)
+        self.assertIn("void Player____init__(struct Player * self);", c)
+        self.assertIn("int64_t Player__get_hp(struct Player * self);", c)
+        self.assertIn("void Mage____init__(struct Mage * self);", c)
+        self.assertIn("Player____init__((struct Player *)self);", c)
+        self.assertIn("pb_print_int(p->hp);", c)
+        self.assertIn("pb_print_int(Player__get_hp(p));", c)
+        self.assertIn("pb_print_str(Player_name);", c)
+        self.assertIn("pb_print_int(m->base.hp);", c)
+        self.assertIn("pb_print_int(m->mana);", c)
+        self.assertIn("pb_print_int(Mage__get_hp(m));", c)
 
     def test_class_inheritance_and_override(self):
         """type checker doesn't allow calling constructors for subclasses
