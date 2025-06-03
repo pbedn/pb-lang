@@ -188,6 +188,11 @@ def main() -> int:
     print(first_flag)
     print(second_flag)
 
+    print("=== Empty List ===")
+    arr_int: list[int] = []
+    arr_str: list[int] = []
+    arr_bool: list[bool] = []
+
     # If/Elif/Else chain
     print("=== If/Elif/Else ===")
     n: int = 5

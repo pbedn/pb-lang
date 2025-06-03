@@ -33,6 +33,7 @@ def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = F
     try:
         checker = TypeChecker()
         checker.check(ast)
+        if debug: print("ENRICHED AST:\n"); pprint(ast); print(f"{'-'*80}\n")
     except TypeError as e:
         print(f"Type Error: {e}")
         return False

@@ -286,7 +286,9 @@ class TestCodeGen(unittest.TestCase):
                 return_type="int",
                 body=[
                     VarDecl("nums", "list[int]", ListExpr(
-                        elements=[Literal("10"), Literal("20"), Literal("30")]
+                        elements=[Literal("10"), Literal("20"), Literal("30")],
+                        elem_type="int",
+                        inferred_type="list[int]"
                     )),
                     VarDecl("first", "int", IndexExpr(Identifier("nums"), Literal("0"))),
                     ExprStmt(CallExpr(Identifier("print"), [Identifier("first")])),
@@ -297,10 +299,57 @@ class TestCodeGen(unittest.TestCase):
         ])
         output = codegen_output(program)
         assert_contains_all(self, output, [
-            "int64_t __tmp_list_",
-            "List_int nums =",
+            "int64_t __tmp_list_1[] = {10, 20, 30}",
+            "List_int nums = (List_int){ .len=3, .data=__tmp_list_1 };",
             "int64_t first = nums.data[0];",
             "pb_print_int(first);",
+            "return 0;"
+        ])
+
+    def test_list_bool_list_str(self):
+        program = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("arr", "list[bool]", ListExpr(
+                        elements=[Literal("True"), Literal("False")],
+                        elem_type="bool",
+                        inferred_type="list[bool]"
+                    )),
+                    VarDecl("arr2", "list[str]", ListExpr(
+                        elements=[
+                            StringLiteral(value="true", inferred_type="str"),
+                            StringLiteral(value="true", inferred_type="str")],
+                        elem_type="str",
+                        inferred_type="list[str]"
+                    )),
+                    VarDecl("arr3", "list[int]", ListExpr(
+                        elements=[],
+                        elem_type="int",
+                        inferred_type="list[int]"
+                    )),
+                    VarDecl("arr4", "list[str]", ListExpr(
+                        elements=[],
+                        elem_type="str",
+                        inferred_type="list[str]"
+                    )),
+                    ReturnStmt(Literal("0"))
+                ],
+                globals_declared=None
+            )
+        ])
+        output = codegen_output(program)
+        assert_contains_all(self, output, [
+            "bool __tmp_list_1[] = {true, false};",
+            "List_bool arr = (List_bool){ .len=2, .data=__tmp_list_1 };",
+            "const char * __tmp_list_2[] = {\"true\", \"true\"};",
+            "List_str arr2 = (List_str){ .len=2, .data=__tmp_list_2 };",
+            "int64_t __tmp_list_3[1] = {0};",
+            "List_int arr3 = (List_int){ .len=0, .data=__tmp_list_3 };",
+            "const char * __tmp_list_4[1] = {0};",
+            "List_str arr4 = (List_str){ .len=0, .data=__tmp_list_4 };",
             "return 0;"
         ])
 

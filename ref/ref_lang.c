@@ -224,8 +224,8 @@ int main(void)
     pb_print_int(first_number);
     pb_print_int(second_number);
     pb_print_str("=== Dict Literal and Access ===");
-    Pair_str_int __tmp_dict_2[] = {{"volume", 10}, {"brightness", 75}};
-    Dict_str_int settings = (Dict_str_int){ .len=2, .data=__tmp_dict_2 };
+    Pair_str_int __tmp_dict_1[] = {{"volume", 10}, {"brightness", 75}};
+    Dict_str_int settings = (Dict_str_int){ .len=2, .data=__tmp_dict_1 };
     pb_print_int(pb_dict_get(settings, "volume"));
     pb_print_int(pb_dict_get(settings, "brightness"));
     pb_print_str("=== Try / Except / Raise ===");
@@ -237,12 +237,19 @@ int main(void)
         pb_print_str("x is True and y is False");
     }
     pb_print_str("=== Boolean List and Indexing ===");
-    int64_t __tmp_list_3[] = {true, false, true};
-    List_int flags = (List_int){ .len=3, .data=__tmp_list_3 };
+    bool __tmp_list_2[] = {true, false, true};
+    List_bool flags = (List_bool){ .len=3, .data=__tmp_list_2 };
     bool first_flag = flags.data[0];
     bool second_flag = flags.data[1];
     pb_print_bool(first_flag);
     pb_print_bool(second_flag);
+    pb_print_str("=== Empty List ===");
+    int64_t __tmp_list_3[1] = {0};
+    List_int arr_int = (List_int){ .len=0, .data=__tmp_list_3 };
+    int64_t __tmp_list_4[1] = {0};
+    List_int arr_str = (List_int){ .len=0, .data=__tmp_list_4 };
+    bool __tmp_list_5[1] = {0};
+    List_bool arr_bool = (List_bool){ .len=0, .data=__tmp_list_5 };
     pb_print_str("=== If/Elif/Else ===");
     int64_t n = 5;
     if ((n == 0)) {
@@ -285,9 +292,9 @@ int main(void)
     mm /= 2;
     pb_print_double(mm);
     pb_print_str("=== Class Instantiation and Methods ===");
-    struct Player __tmp_player_4;
-    Player____init__(&__tmp_player_4, 110, 150);
-    struct Player * player = &__tmp_player_4;
+    struct Player __tmp_player_1;
+    Player____init__(&__tmp_player_1, 110, 150);
+    struct Player * player = &__tmp_player_1;
     pb_print_int(player->hp);
     pb_print_str("Healing player by 50...");
     Player__heal(player, 50);
@@ -297,12 +304,12 @@ int main(void)
     pb_print_str("Updated counter:");
     pb_print_int(counter);
     pb_print_str("=== Class vs Instance Variables ===");
-    struct Player __tmp_player_5;
-    Player____init__(&__tmp_player_5, 1234, 150);
-    struct Player * player1 = &__tmp_player_5;
-    struct Player __tmp_player_6;
-    Player____init__(&__tmp_player_6, 5678, 150);
-    struct Player * player2 = &__tmp_player_6;
+    struct Player __tmp_player_2;
+    Player____init__(&__tmp_player_2, 1234, 150);
+    struct Player * player1 = &__tmp_player_2;
+    struct Player __tmp_player_3;
+    Player____init__(&__tmp_player_3, 5678, 150);
+    struct Player * player2 = &__tmp_player_3;
     player1->score = 100;
     pb_print_str("Player1 score:");
     pb_print_int(player1->score);
@@ -323,9 +330,9 @@ int main(void)
     player->hp = 999;
     pb_print_int(player->hp);
     pb_print_str("=== Inheritance: Mage Subclass ===");
-    struct Mage __tmp_mage_7;
-    Mage____init__(&__tmp_mage_7, 120);
-    struct Mage * mage = &__tmp_mage_7;
+    struct Mage __tmp_mage_4;
+    Mage____init__(&__tmp_mage_4, 120);
+    struct Mage * mage = &__tmp_mage_4;
     pb_print_str("Mage name:");
     pb_print_str(Mage__get_name(mage));
     pb_print_str("Mage HP:");

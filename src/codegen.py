@@ -75,6 +75,8 @@ class CodeGen:
         self._function_defaults: dict[str, list[str|None]] = {}
         self._function_returns: dict[str, Optional[str]] = {}
         self._tmp_counter: int = 0
+        self._tmp_list_counter: int = 0
+        self._tmp_dict_counter: int = 0
         self._fields: dict[str, set[str]] = {}   # class -> set(field names)
         self._base:   dict[str, str|None] = {}   # class -> base name or None
 
@@ -106,8 +108,6 @@ class CodeGen:
 
     @debug
     def _emit(self, line: str = "") -> None:
-        # self._lines.append(f"{self.INDENT * self._indent}{line}")
-        # handle multi-line strings gracefully
         prefix = self.INDENT * self._indent
         for sub in line.splitlines():
             self._lines.append(f"{prefix}{sub}")
@@ -136,7 +136,11 @@ class CodeGen:
         if pb_type in tbl:
             return tbl[pb_type]
         if pb_type.startswith("list[") and pb_type.endswith("]"):
-            return "List_int"
+            return {
+                'list[int]': 'List_int',
+                'list[bool]': 'List_bool',
+                'list[str]': 'List_str',
+            }[pb_type]
         if pb_type.startswith("dict[") and pb_type.endswith("]"):
             return "Dict_str_int"
         # user class
@@ -319,7 +323,6 @@ class CodeGen:
         self._emit("(void)__fbuf;")
         for stmt in fn.body:
             self._emit(self._stmt(stmt))
-        # self._emit("return 0;")
         self._indent -= 1
         self._emit("}")
         self._emit()
@@ -737,23 +740,23 @@ class CodeGen:
         return f"{base}.data[{idx}]"  # or list_int_get
     
     def _generate_ListExpr(self, e: ListExpr) -> str:
-        self._tmp_counter += 1
-        buf_name = f"__tmp_list_{self._tmp_counter}"
+        self._tmp_list_counter += 1
+        buf_name = f"__tmp_list_{self._tmp_list_counter}"
+
+        elem_c_type = self._c_type(e.elem_type)
+        list_c_type = self._c_type(e.inferred_type)
+
         if not e.elements:
-            self._emit(f"int64_t {buf_name}[1] = {{0}};")
-            return f"(List_int){{ .len=0, .data={buf_name} }}"
+            self._emit(f"{elem_c_type} {buf_name}[1] = {{0}};")
+            return f"({list_c_type}){{ .len=0, .data={buf_name} }}"
         else:
             elems = ", ".join(self._expr(x) for x in e.elements)
-            self._emit(f"int64_t {buf_name}[] = {{{elems}}};")
-            return f"(List_int){{ .len={len(e.elements)}, .data={buf_name} }}"
+            self._emit(f"{elem_c_type} {buf_name}[] = {{{elems}}};")
+            return f"({list_c_type}){{ .len={len(e.elements)}, .data={buf_name} }}"
 
-        # Not working with GCC C99
-        # elems = ", ".join(self._expr(x) for x in e.elements)
-        # return f"({{ .len={len(e.elements)}, .data=(int64_t[]){{{elems}}} }})"
-    
     def _generate_DictExpr(self, e: DictExpr) -> str:
-        self._tmp_counter += 1
-        buf_name = f"__tmp_dict_{self._tmp_counter}"
+        self._tmp_dict_counter += 1
+        buf_name = f"__tmp_dict_{self._tmp_dict_counter}"
         pairs = ", ".join(
             f'{{{self._expr(k)}, {self._expr(v)}}}' for k, v in zip(e.keys, e.values)
         )
