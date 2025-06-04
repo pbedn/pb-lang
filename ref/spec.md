@@ -281,15 +281,36 @@ Dynamic features (exceptions, dynamic dispatch) generate stub comments until imp
 
 ```pb
 # hello.pb
-def main() -> None:
-    name: str = "PB"
-    for i in range(3):
-        print(f"{i}: Hello, {name}!")
+hello: str = "Hello World"
+
+def main() -> int:
+    print(hello)
+    return 0
 ```
 
-Compile → `gcc hello.c` → run.
+```
+$ python run.py run .\examples\hello.pb
+```
 
 The reference script **`lang.pb`** exercises every feature and is guaranteed to compile.
+
+### Toolchain
+
+```
+$python run.py -h
+usage: run.py [-h] [-v] [-d] {toc,build,run} file
+
+PB Language Toolchain
+
+positional arguments:
+  {toc,build,run}  Action to perform
+  file             Path to .pb source file
+
+options:
+  -h, --help       show this help message and exit
+  -v, --verbose    Enable verbose output
+  -d, --debug      Enable debug output
+```
 
 ---
 
@@ -299,7 +320,7 @@ The reference script **`lang.pb`** exercises every feature and is guaranteed to 
 * Enums
 * Variadic arguments
 * Relative imports
-* Full standard library in PB
+* Standard library in PB
 
 ---
 
