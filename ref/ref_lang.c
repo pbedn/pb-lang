@@ -1,4 +1,4 @@
-#include "runtime.h"
+#include "pb_runtime.h"
 typedef struct Player {
     int64_t hp;
     const char * species;

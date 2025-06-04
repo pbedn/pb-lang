@@ -114,7 +114,7 @@ class CodeGen:
             return
         self._runtime_emitted = True
 
-        self._emit('''#include "runtime.h"''')
+        self._emit('''#include "pb_runtime.h"''')
         self._emit()
 
     @staticmethod

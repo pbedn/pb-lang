@@ -9,8 +9,6 @@ from parser import Parser, ParserError
 from codegen import CodeGen
 from type_checker import TypeChecker, TypeError
 
-from utils import elapsed
-
 
 def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = False, debug: bool = False):
     lexer = Lexer(source_code)
@@ -46,7 +44,6 @@ def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = F
     with open(output_path, "w") as f:
         f.write(c_code)
 
-    copy_runtime_header(output_path, verbose)
     if verbose: print(f"C code written to {output_path}")
     return True
 
@@ -70,7 +67,21 @@ def build(source_code: str, output_file: str, verbose: bool = False, debug: bool
 
     c_path = get_build_output_path(f"{output_file}.c")
     exe_file = get_build_output_path(output_file) + (".exe" if os.name == "nt" else "")
-    compile_cmd = ["gcc", "-std=c99", "-W", c_path, "-o", exe_file]
+
+    runtime_header = get_build_output_path("pb_runtime.h")
+    runtime_lib = get_build_output_path("pb_runtime.a")
+
+    # Check if runtime library exists
+    if not os.path.isfile(runtime_lib):
+        if verbose: print("Runtime library not found; building it now...")
+        build_runtime_library(verbose=verbose, debug=debug)    
+
+    compile_cmd = [
+        "gcc", "-std=c99", "-W", c_path,
+        "-o", exe_file,
+        "-I", runtime_header,
+        runtime_lib
+    ]
 
     result = subprocess.run(compile_cmd, capture_output=True, text=True)
     if result.returncode == 0:
@@ -100,42 +111,68 @@ def get_build_output_path(output_file: str) -> str:
     os.makedirs(build_dir, exist_ok=True)
     return os.path.join(build_dir, output_file)
 
-@elapsed
-def copy_runtime_header(c_output_path: str, verbose: bool = False):
+
+def build_runtime_library(verbose: bool = False, debug: bool = False):
     """
-    Copies 'runtime.h' from the same directory as this script
-    to the directory containing the C file (overwriting if exists).
+    Builds the PB runtime into a static library (pb_runtime.a)
+    and copies the header to the build directory.
     """
-    dest_dir = os.path.dirname(c_output_path)
     this_dir = os.path.dirname(os.path.abspath(__file__))
-    runtime_src = os.path.join(this_dir, "runtime.h")
+    root_dir = os.path.abspath(os.path.join(this_dir, ".."))
+    src_c = os.path.join(this_dir, "pb_runtime.c")
+    src_h = os.path.join(this_dir, "pb_runtime.h")
+    build_dir = os.path.join(root_dir, "build")
+    os.makedirs(build_dir, exist_ok=True)
 
-    if not os.path.isfile(runtime_src):
-        raise FileNotFoundError(f"runtime.h not found at: {runtime_src}")
+    lib_path = os.path.join(build_dir, "pb_runtime.a")
+    header_dest = os.path.join(build_dir, "pb_runtime.h")
 
-    dest_path = os.path.join(dest_dir, "runtime.h")
+    if not os.path.isfile(src_c):
+        print(f"pb_runtime.c not found at: {src_c}")
+        return
 
-    # Only copy if destination does not exist or is older than source
-    need_copy = (
-        not os.path.exists(dest_path)
-        or os.path.getmtime(runtime_src) > os.path.getmtime(dest_path)
-    )
-    if need_copy:
-        shutil.copy2(runtime_src, dest_path)
-        if verbose: print(f"[info] Copied runtime.h to {dest_path}")
-    else:
-        if verbose: print(f"[info] runtime.h in {dest_dir} is up to date")
+    # Compile to object file
+    obj_path = os.path.join(build_dir, "pb_runtime.o")
+    compile_cmd = ["gcc", "-std=c99", "-c", src_c, "-o", obj_path]
+    if debug: print("Compile command:", " ".join(compile_cmd))
+
+    result = subprocess.run(compile_cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"Compilation failed:\n{result.stderr}")
+        return
+
+    # Archive into static library
+    # lib_path = os.path.join(build_dir, "libpbruntime.a")
+    ar_cmd = ["ar", "rcs", lib_path, obj_path]
+    if debug: print("Archive command:", " ".join(ar_cmd))
+
+    result = subprocess.run(ar_cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"Archiving failed:\n{result.stderr}")
+        return
+
+    if verbose:
+        print(f"Built static library: {lib_path}")
+
+    # Copy header
+    shutil.copy2(src_h, header_dest)
+    if verbose:
+        print(f"Copied pb_runtime.h to: {header_dest}")
 
 
 def main():
     parser = argparse.ArgumentParser(description="PB Language Toolchain")
-    parser.add_argument("command", choices=["toc", "build", "run"], help="Action to perform")
-    parser.add_argument("file", help="Path to .pb source file")
+    parser.add_argument("command", choices=["toc", "build", "run", "buildlib"], help="Action to perform")
+    parser.add_argument("file", nargs="?", help="Path to .pb source file")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("-d", "--debug", action="store_true", help="Enable debug output")
     args = parser.parse_args()
 
-    if not args.file.endswith(".pb"):
+    if args.command == "buildlib":
+        build_runtime_library(verbose=args.verbose, debug=args.debug)
+        return
+
+    if not args.file or not args.file.endswith(".pb"):
         print("Input file must be .pb")
         return
 

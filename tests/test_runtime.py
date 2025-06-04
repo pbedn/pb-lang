@@ -2,12 +2,14 @@ import unittest
 import subprocess
 import tempfile
 import sys
+import os
 from type_checker import TypeError
 from lexer import Lexer
 from parser import Parser
 from codegen import CodeGen
 from type_checker import TypeChecker
-from main import copy_runtime_header
+
+from tests import build_dir
 
 
 class TestPipelineRuntime(unittest.TestCase):
@@ -26,14 +28,25 @@ class TestPipelineRuntime(unittest.TestCase):
             c_file.write(c_code.encode("utf-8"))
             c_file_path = c_file.name
 
-        copy_runtime_header(c_file_path)
-
         # Compile using GCC
         exe_path = c_file_path[:-2]
         if sys.platform == "win32":
             exe_path += ".exe"
 
-        compile_cmd = ["gcc", c_file_path, "-o", exe_path]
+        # Runtime build once
+        # need to make sure pb_runtime.a is up to date
+        runtime_lib = os.path.join(build_dir, "pb_runtime.a")
+        if not os.path.isfile(runtime_lib):
+            print("Runtime library not found; building it now...")
+            result = subprocess.run("python run.py buildlib")
+
+        compile_cmd = [
+            "gcc", "-std=c99", "-W", c_file_path,
+            "-o", exe_path,
+            "-I", build_dir,
+            os.path.join(build_dir, "pb_runtime.a")
+        ]
+
         result = subprocess.run(compile_cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"GCC build failed:\n{result.stderr}")
