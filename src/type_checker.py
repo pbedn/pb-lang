@@ -182,7 +182,7 @@ class TypeChecker:
         program.inferred_instance_fields = dict(self.instance_fields)
         return program
 
-    def check_stmt(self, stmt: Stmt):
+    def check_stmt(self, stmt: Stmt, parent: Stmt | None = None):
         """Type-check a single statement."""
         if isinstance(stmt, VarDecl):
             self.check_var_decl(stmt)
@@ -195,7 +195,7 @@ class TypeChecker:
         elif isinstance(stmt, FunctionDef):
             self.check_function_def(stmt)
         elif isinstance(stmt, ReturnStmt):
-            self.check_return_stmt(stmt)
+            self.check_return_stmt(stmt, parent)
         elif isinstance(stmt, IfStmt):
             self.check_if_stmt(stmt)
         elif isinstance(stmt, WhileStmt):
@@ -625,7 +625,7 @@ class TypeChecker:
 
         raise NotImplementedError(f"Type inference not implemented for {type(expr).__name__}")
 
-    def check_return_stmt(self, stmt: ReturnStmt):
+    def check_return_stmt(self, stmt: ReturnStmt, parent: Stmt | None):
         """Ensure return value matches expected function return type."""
         # return is only allowed inside functions
         if self.current_return_type is None:
@@ -640,7 +640,9 @@ class TypeChecker:
         else:
             actual_type = self.check_expr(stmt.value)
             if actual_type != self.current_return_type:
-                raise TypeError(f"Return type mismatch: expected {self.current_return_type}, got {actual_type}")
+                value = stmt.value.raw if stmt.value is Literal else stmt
+                raise TypeError(f"Return type mismatch: expected `{self.current_return_type}`, got `{actual_type}` "
+                                f"in function `{getattr(parent, "name", "Unknown Func")}`")
             stmt.inferred_type = actual_type
 
     def check_function_def(self, fn: FunctionDef):
@@ -711,7 +713,7 @@ class TypeChecker:
         has_pass = False
         has_return = False
         for stmt in fn.body:
-            self.check_stmt(stmt)
+            self.check_stmt(stmt, fn)
             if isinstance(stmt, PassStmt):
                 has_pass = True
             elif isinstance(stmt, ReturnStmt):

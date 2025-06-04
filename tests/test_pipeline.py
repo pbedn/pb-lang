@@ -1,7 +1,7 @@
 import os
 import unittest
 from lexer import Lexer
-from parser import Parser
+from parser import Parser, ParserError
 from type_checker import TypeChecker, TypeError
 from codegen import CodeGen
 
@@ -159,7 +159,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    pass\n"
             "    return 0\n"
         )
-        with self.assertRaises(TypeError):
+        with self.assertRaises(ParserError):
             self.compile_pipeline(code)
 
     def test_if_stmt_from_source(self):

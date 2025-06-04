@@ -518,18 +518,15 @@ class TestParseStatements(ParserTestCase):
         code = (
             "x: int = 10\n"
             "x += 1\n"
-            "if x > 5:\n"
-            "    print(x)\n"
         )
         parser = self.parse_tokens(code)
         prog = parser.parse()
 
         # Expected: Program with 3 statements
         self.assertIsInstance(prog, Program)
-        self.assertEqual(len(prog.body), 3)
+        self.assertEqual(len(prog.body), 2)
         self.assertIsInstance(prog.body[0], VarDecl)
         self.assertIsInstance(prog.body[1], AugAssignStmt)
-        self.assertIsInstance(prog.body[2], IfStmt)
 
     def test_parse_while_stmt(self):
         code = (
@@ -564,7 +561,6 @@ class TestParseStatements(ParserTestCase):
             "while True:\n"
             "    break\n"
             "    continue\n"
-            "    pass\n"
         )
         parser = self.parse_tokens(code)
         loop   = parser.parse_statement()     # parse the while-loop
@@ -574,7 +570,6 @@ class TestParseStatements(ParserTestCase):
         body = loop.body
         self.assertIsInstance(body[0], BreakStmt)
         self.assertIsInstance(body[1], ContinueStmt)
-        self.assertIsInstance(body[2], PassStmt)
 
     def test_parse_function_def(self):
         code = (
@@ -1026,7 +1021,6 @@ class TestParserEdgeCases(unittest.TestCase):
         with self.assertRaises(ParserError):
             self.parse_program(bad_fun)
 
-    # FStringLiteral vars integrity -----------------------------------
     def test_fstring_vars_list(self):
         lit = Parser(self.lex('f"{a}{b}{c}"\n')).parse_literal()
         self.assertIsInstance(lit, FStringLiteral)
@@ -1062,6 +1056,37 @@ class TestParserEdgeCases(unittest.TestCase):
     def test_chained_comparison_error(self):
         with self.assertRaises(ParserError):
             self.parse_program("a < b < c\n")
+
+    def test_function_call_not_allowed_in_global_scope(self):
+        self.assertRaisesRegex(ParserError, "Function call", self.parse_program, "print(5)\n")
+
+    def test_if_statement_not_allowed_in_global_scope(self):
+        with self.assertRaisesRegex(ParserError, "Statement `If` not allowed in global scope."):
+            self.parse_program("if True:\n    pass\n")
+
+    def test_while_statement_not_allowed_in_global_scope(self):
+        with self.assertRaisesRegex(ParserError, "Statement `While` not allowed in global scope."):
+            self.parse_program("while True:\n    pass\n")
+
+    def test_for_statement_not_allowed_in_global_scope(self):
+        with self.assertRaisesRegex(ParserError, "Statement `For` not allowed in global scope."):
+            self.parse_program("for i in range(5):\n    pass\n")
+
+    def test_try_except_statement_not_allowed_in_global_scope(self):
+        with self.assertRaisesRegex(ParserError, "Statement `TryExcept` not allowed in global scope."):
+            self.parse_program("try:\n    pass\nexcept:\n    pass\n")
+
+    def test_raise_statement_not_allowed_in_global_scope(self):
+        with self.assertRaisesRegex(ParserError, "Statement `Raise` not allowed in global scope."):
+            self.parse_program("raise Exception()\n")
+
+    def test_assert_statement_not_allowed_in_global_scope(self):
+        with self.assertRaisesRegex(ParserError, "Statement `Assert` not allowed in global scope."):
+            self.parse_program("assert False\n")
+
+    def test_pass_statement_not_allowed_in_global_scope(self):
+        with self.assertRaisesRegex(ParserError, "Statement `Pass` not allowed in global scope."):
+            self.parse_program("pass\n")
 
 
 class TestGenericTypes(ParserTestCase):

@@ -171,30 +171,35 @@ class TestTypeCheckerInternals(unittest.TestCase):
     def test_return_stmt_matching_type(self):
         self.tc.current_return_type = "int"
         stmt = ReturnStmt(value=Literal("1"))
-        self.tc.check_return_stmt(stmt)  # should not raise
+        fn = FunctionDef(name='main', params=[], body=[], return_type="")
+        self.tc.check_return_stmt(stmt, fn)  # should not raise
 
     def test_return_stmt_mismatch(self):
         self.tc.current_return_type = "int"
         stmt = ReturnStmt(value=Literal("3.14"))
+        fn = FunctionDef(name='main', params=[], body=[], return_type="")
         with self.assertRaises(TypeError):
-            self.tc.check_return_stmt(stmt)
+            self.tc.check_return_stmt(stmt, fn)
 
     def test_return_stmt_void_expected(self):
         self.tc.current_return_type = "None"
         stmt = ReturnStmt(value=None)
-        self.tc.check_return_stmt(stmt)  # OK
+        fn = FunctionDef(name='main', params=[], body=[], return_type="")
+        self.tc.check_return_stmt(stmt, fn)  # OK
 
     def test_return_stmt_nonvoid_in_void_function(self):
         self.tc.current_return_type = "None"
         stmt = ReturnStmt(value=Literal("1"))
+        fn = FunctionDef(name='main', params=[], body=[], return_type="")
         with self.assertRaises(TypeError):
-            self.tc.check_return_stmt(stmt)
+            self.tc.check_return_stmt(stmt, fn)
 
     def test_return_stmt_outside_function(self):
         self.tc.current_return_type = None
         stmt = ReturnStmt(value=Literal("42"))
+        fn = FunctionDef(name='main', params=[], body=[], return_type="")
         with self.assertRaises(TypeError):
-            self.tc.check_return_stmt(stmt)
+            self.tc.check_return_stmt(stmt, fn)
 
     def test_check_function_def_valid(self):
         fn = FunctionDef(

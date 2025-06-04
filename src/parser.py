@@ -81,7 +81,7 @@ class Parser:
     def expect(self, type_: TokenType) -> Token:
         tok = self.current()
         if tok.type != type_:
-            raise ParserError(f"Expected {type_.name}, got {tok.type.name} at {tok.line},{tok.column}")
+            raise ParserError(f"Expected `{type_.name}`, got `{tok.type.name}` at line: {tok.line}, col: {tok.column}, token: `{tok.value}`")
         self.advance()
         return tok
 
@@ -107,6 +107,13 @@ class Parser:
                 continue
             # print(f"[DEBUG]: Peek next token: {self.peek()}")
             stmt = self.parse_statement()
+            if isinstance(stmt, ExprStmt):
+                raise ParserError(f"Function call `{stmt.expr.func.name}` not allowed in global scope.")
+            if isinstance(stmt, (
+                IfStmt, WhileStmt, ForStmt, TryExceptStmt, RaiseStmt, AssertStmt, PassStmt)
+            ):
+                raise ParserError(f"Statement `{stmt.__class__.__name__[:-4]}` not allowed in global scope.")
+
             body.append(stmt)
 
         return Program(body)
@@ -777,11 +784,16 @@ class Parser:
             if self.check(TokenType.NEWLINE):
                 self.advance()
                 continue
-            body.append(self.parse_statement())
+            stmt = self.parse_statement()
+            body.append(stmt)
+
+        if len(body) > 1 and PassStmt() in body:
+            raise ParserError("Function body must be empty when using `pass` statement")
+
         self.fn_depth -= 1
 
         if not body:
-            raise ParserError("function body cannot be empty "
+            raise ParserError("Function body cannot be empty "
                               f"(see {self.current().line},{self.current().column})")
 
         return FunctionDef(name, params, body, return_type)
