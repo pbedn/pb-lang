@@ -9,6 +9,25 @@ from parser import Parser, ParserError
 from codegen import CodeGen
 from type_checker import TypeChecker, TypeError
 
+RICH_PRINT = False
+
+def pretty_print_code(code: str, lexer="c"):
+    """
+    Pretty print code using the rich library.
+    """
+    if RICH_PRINT:
+        from rich.syntax import Syntax
+        from rich.console import Console
+        syntax = Syntax(code, lexer, theme="lightbulb", line_numbers=True, background_color="#0C0C0C")
+        Console().print(syntax)
+    else:
+        print(code)
+
+def enable_rich():
+    global RICH_PRINT
+    from rich.pretty import pprint as rich_pprint
+    globals()['pprint'] = rich_pprint
+    RICH_PRINT = True
 
 def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = False, debug: bool = False):
     lexer = Lexer(source_code)
@@ -22,7 +41,7 @@ def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = F
     parser = Parser(tokens)
     try:
         ast = parser.parse()
-        if debug: print("AST:\n"); pprint(ast); print(f"{'-'*80}\n")
+        if debug: print("PARSER AST:\n"); pprint(ast); print(f"{'-'*80}\n")
     except ParserError as e:
         print(f"Parser error: {e}")
         return False
@@ -31,14 +50,15 @@ def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = F
     try:
         checker = TypeChecker()
         checker.check(ast)
-        if debug: print("ENRICHED AST:\n"); pprint(ast); print(f"{'-'*80}\n")
+        if debug: print("TYPED ENRICHED AST:\n"); pprint(ast); print(f"{'-'*80}\n")
     except TypeError as e:
         print(f"Type Error: {e}")
         return False
 
     codegen = CodeGen()
     c_code = codegen.generate(ast)
-    if debug: print("C CODE:\n"); print(c_code); print(f"{'-'*80}\n")
+    if debug: print("PB CODE:\n"); pretty_print_code(source_code, "py"); print(f"{'-'*80}\n")
+    if debug: print("C CODE:\n"); pretty_print_code(c_code, "c"); print(f"{'-'*80}\n")
 
     output_path = get_build_output_path(output_file)
     with open(output_path, "w") as f:
@@ -166,8 +186,12 @@ def main():
     parser.add_argument("file", nargs="?", help="Path to .pb source file")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("-d", "--debug", action="store_true", help="Enable debug output")
+    parser.add_argument("-r", "--rich", action="store_true", help="Pretty print with rich")
     args = parser.parse_args()
 
+    if args.rich:
+        enable_rich()
+        
     if args.command == "buildlib":
         build_runtime_library(verbose=args.verbose, debug=args.debug)
         return
