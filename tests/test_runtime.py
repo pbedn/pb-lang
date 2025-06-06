@@ -114,6 +114,47 @@ class TestPipelineRuntime(unittest.TestCase):
         self.assertEqual(lines[0], "1.500000")
         self.assertEqual(lines[1], "3.500000")
 
+    def test_list_indexing_and_printing(self):
+        code = (
+            "def main() -> int:\n"
+            "    arr_int: list[int] = [100]\n"
+            "    print(arr_int[0])\n"
+            "    arr_int[0] = 1\n"
+            "    print(arr_int[0])\n"
+            "    print(arr_int)\n"
+            "\n"
+            "    arr_str: list[str] = [\"a\", 'b']\n"
+            "    print(arr_str[0])\n"
+            "    arr_str[0] = \"C\"\n"
+            "    arr_str[1] = \"C\"\n"
+            "    try:\n"
+            "        arr_str[2] = \"C\"\n"
+            "    except:\n"
+            "        pass\n"
+            "    print(arr_str[0])\n"
+            "    print(arr_str)\n"
+            "\n"
+            "    arr_bool: list[bool] = [True]\n"
+            "    arr_bool[0] = False\n"
+            "    print(arr_bool)\n"
+            "    return 0\n"
+        )
+        output = self.compile_and_run(code)
+        lines = output.strip().splitlines()
+
+        # Assertions for arr_int
+        self.assertEqual(lines[0], "100")              # arr_int[0] before assignment
+        self.assertEqual(lines[1], "1")                # arr_int[0] after assignment
+        self.assertEqual(lines[2], "[1]")              # arr_int list contents
+
+        # Assertions for arr_str
+        self.assertEqual(lines[3], "a")                # arr_str[0] before assignment
+        self.assertEqual(lines[4], "C")                # arr_str[0] after assignment
+        self.assertEqual(lines[5], '["C", "C"]')           # arr_str list contents
+
+        # Assertions for arr_bool
+        self.assertEqual(lines[6], "[false]")          # arr_bool after assignment
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -223,6 +223,36 @@ int main(void)
     int64_t second_number = numbers.data[1];
     pb_print_int(first_number);
     pb_print_int(second_number);
+    pb_print_str("=== Boolean List and Indexing ===");
+    bool __tmp_list_2[] = {true, false, true};
+    List_bool flags = (List_bool){ .len=3, .data=__tmp_list_2 };
+    bool first_flag = flags.data[0];
+    bool second_flag = flags.data[1];
+    pb_print_bool(first_flag);
+    pb_print_bool(second_flag);
+    pb_print_str("=== List Operations ===");
+    int64_t __tmp_list_3[1] = {0};
+    List_int arr_int_empty = (List_int){ .len=0, .data=__tmp_list_3 };
+    const char * __tmp_list_4[1] = {0};
+    List_str arr_str_empty = (List_str){ .len=0, .data=__tmp_list_4 };
+    bool __tmp_list_5[1] = {0};
+    List_bool arr_bool_empty = (List_bool){ .len=0, .data=__tmp_list_5 };
+    int64_t __tmp_list_6[] = {1, 2, 3};
+    List_int arr_int_init = (List_int){ .len=3, .data=__tmp_list_6 };
+    const char * __tmp_list_7[] = {"abc", "def"};
+    List_str arr_str_init = (List_str){ .len=2, .data=__tmp_list_7 };
+    bool __tmp_list_8[] = {true, false};
+    List_bool arr_bool_init = (List_bool){ .len=2, .data=__tmp_list_8 };
+    list_int_print(&arr_int_init);
+    list_str_print(&arr_str_init);
+    list_bool_print(&arr_bool_init);
+    pb_print_str(arr_str_init.data[1]);
+    list_int_set(&arr_int_init, 0, 100);
+    list_str_set(&arr_str_init, 0, "some string");
+    list_bool_set(&arr_bool_init, 0, false);
+    list_int_print(&arr_int_init);
+    list_str_print(&arr_str_init);
+    list_bool_print(&arr_bool_init);
     pb_print_str("=== Dict Literal and Access ===");
     Pair_str_int __tmp_dict_1[] = {{"volume", 10}, {"brightness", 75}};
     Dict_str_int settings = (Dict_str_int){ .len=2, .data=__tmp_dict_1 };
@@ -240,20 +270,6 @@ int main(void)
     if ((x && !(y))) {
         pb_print_str("x is True and y is False");
     }
-    pb_print_str("=== Boolean List and Indexing ===");
-    bool __tmp_list_2[] = {true, false, true};
-    List_bool flags = (List_bool){ .len=3, .data=__tmp_list_2 };
-    bool first_flag = flags.data[0];
-    bool second_flag = flags.data[1];
-    pb_print_bool(first_flag);
-    pb_print_bool(second_flag);
-    pb_print_str("=== Empty List ===");
-    int64_t __tmp_list_3[1] = {0};
-    List_int arr_int = (List_int){ .len=0, .data=__tmp_list_3 };
-    int64_t __tmp_list_4[1] = {0};
-    List_int arr_str = (List_int){ .len=0, .data=__tmp_list_4 };
-    bool __tmp_list_5[1] = {0};
-    List_bool arr_bool = (List_bool){ .len=0, .data=__tmp_list_5 };
     pb_print_str("=== If/Elif/Else ===");
     int64_t n = 5;
     if ((n == 0)) {

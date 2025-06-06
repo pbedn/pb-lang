@@ -161,6 +161,37 @@ def main() -> int:
     print(first_number)
     print(second_number)
 
+    # Boolean list and indexing
+    print("=== Boolean List and Indexing ===")
+    flags: list[bool] = [True, False, True]
+    first_flag: bool = flags[0]
+    second_flag: bool = flags[1]
+    print(first_flag)
+    print(second_flag)
+
+    print("=== List Operations ===")
+    # Init empty list
+    arr_int_empty: list[int] = []
+    arr_str_empty: list[str] = []
+    arr_bool_empty: list[bool] = []
+
+    # Init list ust not be empty -> current limitation for indexing set operation
+    arr_int_init: list[int] = [1, 2, 3]
+    arr_str_init: list[str] = ["abc", "def"]
+    arr_bool_init: list[bool] = [True, False]
+    # Can print list and list elements
+    print(arr_int_init)
+    print(arr_str_init)
+    print(arr_bool_init)
+    print(arr_str_init[1])
+
+    arr_int_init[0] = 100
+    arr_str_init[0] = "some string"
+    arr_bool_init[0] = False
+    print(arr_int_init)
+    print(arr_str_init)
+    print(arr_bool_init)
+
     print("=== Dict Literal and Access ===")
     settings: dict[str, int] = {"volume": 10, "brightness": 75}
     print(settings["volume"])
@@ -183,19 +214,6 @@ def main() -> int:
     y: bool = False
     if x and not y:  # Logical AND and NOT
         print("x is True and y is False")
-
-    # Boolean list and indexing
-    print("=== Boolean List and Indexing ===")
-    flags: list[bool] = [True, False, True]
-    first_flag: bool = flags[0]
-    second_flag: bool = flags[1]
-    print(first_flag)
-    print(second_flag)
-
-    print("=== Empty List ===")
-    arr_int: list[int] = []
-    arr_str: list[int] = []
-    arr_bool: list[bool] = []
 
     # If/Elif/Else chain
     print("=== If/Elif/Else ===")

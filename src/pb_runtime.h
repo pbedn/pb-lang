@@ -47,52 +47,40 @@ typedef struct {
 #define INITIAL_LIST_CAPACITY 4
 
 void list_int_grow_if_needed(List_int *lst);
-
 void list_int_init(List_int *lst);
-
+void list_int_set(List_int *lst, int64_t index, int64_t value);
 void list_int_append(List_int *lst, int64_t value);
-
 int64_t list_int_pop(List_int *lst);
-
 bool list_int_remove(List_int *lst, int64_t value);
-
 void list_int_free(List_int *lst);
+void list_int_print(const List_int *lst);
 
 void list_float_grow_if_needed(List_float *lst);
-
 void list_float_init(List_float *lst);
-
+void list_float_set(List_float *lst, int64_t index, double value);
 void list_float_append(List_float *lst, double value);
-
 double list_float_pop(List_float *lst);
-
 bool list_float_remove(List_float *lst, double value);
-
 void list_float_free(List_float *lst);
+void list_float_print(const List_float *lst);
 
 void list_bool_grow_if_needed(List_bool *lst);
-
 void list_bool_init(List_bool *lst);
-
+void list_bool_set(List_bool *lst, int64_t index, bool value);
 void list_bool_append(List_bool *lst, bool value);
-
 bool list_bool_pop(List_bool *lst);
-
 bool list_bool_remove(List_bool *lst, bool value);
-
 void list_bool_free(List_bool *lst);
+void list_bool_print(const List_bool *lst);
 
 void list_str_grow_if_needed(List_str *lst);
-
 void list_str_init(List_str *lst);
-
+void list_str_set(List_str *lst, int64_t index, const char *value);
 void list_str_append(List_str *lst, const char *value);
-
 const char *list_str_pop(List_str *lst);
-
 bool list_str_remove(List_str *lst, const char *value);
-
 void list_str_free(List_str *lst);
+void list_str_print(const List_str *lst);
 
 /* ------------ DICT ------------- */
 

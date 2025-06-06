@@ -234,7 +234,7 @@ class TestTypeCheckerInternals(unittest.TestCase):
     def test_assign_stmt_matching_type(self):
         self.tc.env["x"] = "int"
         stmt = AssignStmt(target=Identifier("x"), value=Literal("42"))
-        self.tc.check_assign_stmt(stmt)  # OK
+        self.tc.check_assign_stmt(stmt)
 
     def test_assign_stmt_mismatch(self):
         self.tc.env["x"] = "int"
@@ -247,12 +247,11 @@ class TestTypeCheckerInternals(unittest.TestCase):
         with self.assertRaises(TypeError):
             self.tc.check_assign_stmt(stmt)
 
-    def test_assign_stmt_non_identifier_target(self):
-        self.tc.env["x"] = "int"
-        # Simulate invalid target like x[0] = ...
-        stmt = AssignStmt(target=IndexExpr(Identifier("x"), Literal("0")), value=Literal("1"))
-        with self.assertRaises(TypeError):
-            self.tc.check_assign_stmt(stmt)
+    def test_assign_stmt_list_int_set(self):
+        self.tc.env["arr_int"] = "list[int]"
+        # Simulate: arr_int[0] = 1
+        stmt = AssignStmt(target=IndexExpr(Identifier("arr_int", inferred_type='list[int]'), Literal("0")), value=Literal("1"))
+        self.tc.check_assign_stmt(stmt)
 
     def test_aug_assign_valid(self):
         self.tc.env["x"] = "int"
@@ -698,13 +697,12 @@ class TestTypeCheckerInternals(unittest.TestCase):
         call = CallExpr(func=Identifier("print"), args=[Literal("42")])
         self.assertEqual(self.tc.check_expr(call), "None")
 
-    def test_print_list_error(self):
+    def test_print_list(self):
         call = CallExpr(
             func=Identifier("print"),
             args=[ListExpr(elements=[Literal("1"), Literal("2")])]
         )
-        with self.assertRaises(TypeError):
-            self.tc.check_expr(call)
+        self.tc.check_expr(call)
 
     def test_binop_or_bool(self):
         expr = BinOp(Literal("True"), "or", Literal("False"))
@@ -2161,3 +2159,21 @@ class TestTypeCheckerProgramLevel(unittest.TestCase):
         assert "Mage" in checker.known_classes
         assert "Mage" in checker.methods
         assert "hp" in checker.instance_fields["Mage"]
+
+    def test_list_assignment_and_print_int_list(self):
+        """
+        arr: list[int] = [0, 0]
+        arr[0] = 42
+        print(arr)
+        """
+        prog = Program(body=[
+            VarDecl("arr", "list[int]", ListExpr(
+                elements=[Literal("0"), Literal("0")]
+            )),
+            AssignStmt(
+                target=IndexExpr(Identifier("arr"), Literal("0")),
+                value=Literal("42")
+            ),
+            ExprStmt(CallExpr(Identifier("print"), [Identifier("arr")]))
+        ])
+        TypeChecker().check(prog)

@@ -4,12 +4,14 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdarg.h>
+#include <inttypes.h>
 
 #include "pb_runtime.h"
 
 /* ------------ PRINT ------------- */
 
-void pb_print_int(int64_t x)   { printf("%lld\n", x); }
+// PRId64 is a format macro from the C standard header <inttypes.h>
+void pb_print_int(int64_t x)   { printf("%" PRId64 "\n", x); }
 void pb_print_double(double x) { printf("%f\n", x); }
 void pb_print_str(const char *s){ printf("%s\n", s); }
 void pb_print_bool(bool b)     { printf("%s\n", b ? "True" : "False"); }
@@ -42,6 +44,13 @@ void list_int_init(List_int *lst) {
     lst->data = NULL;
 }
 
+void list_int_set(List_int *lst, int64_t index, int64_t value) {
+    if (index < 0 || index >= lst->len) {
+        pb_fail("List[int] assignment index out of bounds");
+        abort();
+    }
+    lst->data[index] = value;
+}
 void list_int_append(List_int *lst, int64_t value) {
     list_int_grow_if_needed(lst);
     lst->data[lst->len++] = value;
@@ -78,6 +87,16 @@ void list_int_free(List_int *lst) {
     lst->capacity = 0;
 }
 
+void list_int_print(const List_int *lst) {
+    printf("[");
+    for (int64_t i = 0; i < lst->len; ++i) {
+        if (i > 0) printf(", ");
+        printf("%" PRId64, lst->data[i]);
+    }
+    printf("]\n");
+}
+
+
 void list_float_grow_if_needed(List_float *lst) {
     if (lst->len >= lst->capacity) {
         int64_t new_capacity = (lst->capacity == 0) ? INITIAL_LIST_CAPACITY : (lst->capacity * 2);
@@ -97,6 +116,13 @@ void list_float_init(List_float *lst) {
     lst->data = NULL;
 }
 
+void list_float_set(List_float *lst, int64_t index, double value) {
+    if (index < 0 || index >= lst->len) {
+        pb_fail("List[float] assignment index out of bounds");
+        abort();
+    }
+    lst->data[index] = value;
+}
 void list_float_append(List_float *lst, double value) {
     list_float_grow_if_needed(lst);
     lst->data[lst->len++] = value;
@@ -133,6 +159,16 @@ void list_float_free(List_float *lst) {
     lst->capacity = 0;
 }
 
+void list_float_print(const List_float *lst) {
+    printf("[");
+    for (int64_t i = 0; i < lst->len; ++i) {
+        if (i > 0) printf(", ");
+        printf("%g", lst->data[i]);
+    }
+    printf("]\n");
+}
+
+
 void list_bool_grow_if_needed(List_bool *lst) {
     if (lst->len >= lst->capacity) {
         int64_t new_capacity = (lst->capacity == 0) ? INITIAL_LIST_CAPACITY : (lst->capacity * 2);
@@ -152,6 +188,13 @@ void list_bool_init(List_bool *lst) {
     lst->data = NULL;
 }
 
+void list_bool_set(List_bool *lst, int64_t index, bool value) {
+    if (index < 0 || index >= lst->len) {
+        pb_fail("List[bool] assignment index out of bounds");
+        abort();
+    }
+    lst->data[index] = value;
+}
 void list_bool_append(List_bool *lst, bool value) {
     list_bool_grow_if_needed(lst);
     lst->data[lst->len++] = value;
@@ -188,6 +231,16 @@ void list_bool_free(List_bool *lst) {
     lst->capacity = 0;
 }
 
+void list_bool_print(const List_bool *lst) {
+    printf("[");
+    for (int64_t i = 0; i < lst->len; ++i) {
+        if (i > 0) printf(", ");
+        printf(lst->data[i] ? "true" : "false");
+    }
+    printf("]\n");
+}
+
+
 void list_str_grow_if_needed(List_str *lst) {
     if (lst->len >= lst->capacity) {
         int64_t new_capacity = (lst->capacity == 0) ? INITIAL_LIST_CAPACITY : (lst->capacity * 2);
@@ -207,6 +260,13 @@ void list_str_init(List_str *lst) {
     lst->data = NULL;
 }
 
+void list_str_set(List_str *lst, int64_t index, const char *value) {
+    if (index < 0 || index >= lst->len) {
+        pb_fail("List[str] assignment index out of bounds");
+        abort();
+    }
+    lst->data[index] = value;  // assumes value is valid for the lifetime of lst
+}
 void list_str_append(List_str *lst, const char *value) {
     list_str_grow_if_needed(lst);
     lst->data[lst->len++] = value;
@@ -241,6 +301,15 @@ void list_str_free(List_str *lst) {
     }
     lst->len = 0;
     lst->capacity = 0;
+}
+
+void list_str_print(const List_str *lst) {
+    printf("[");
+    for (int64_t i = 0; i < lst->len; ++i) {
+        if (i > 0) printf(", ");
+        printf("\"%s\"", lst->data[i]);
+    }
+    printf("]\n");
 }
 
 /* ------------ DICT ------------- */

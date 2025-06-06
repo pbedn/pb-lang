@@ -399,8 +399,6 @@ class TypeChecker:
                 if fname == "print":
                     for arg in expr.args:
                         t = self.check_expr(arg)
-                        if t.startswith("list["):
-                            raise TypeError("Cannot print a list directly")
                     expr.inferred_type = "function"
                     return "None"
                 if fname not in self.functions:
@@ -796,6 +794,13 @@ class TypeChecker:
                     raise TypeError(f"Type mismatch for instance attribute '{field_name}': expected {expected}, got {value_type}")
 
             stmt.inferred_type = value_type
+            return
+
+        # list indexing support
+        elif isinstance(stmt.target, IndexExpr):
+            if getattr(stmt.target.base, "name") in self.env:
+                stmt.inferred_type = self.env[stmt.target.base.name]
+                stmt.target.base.inferred_type = self.env[stmt.target.base.name]
             return
 
         else:

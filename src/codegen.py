@@ -410,6 +410,10 @@ class CodeGen:
                 "str": "pb_print_str",
                 "bool": "pb_print_bool",
                 "float": "pb_print_double",
+                "list[int]": "list_int_print",
+                "list[float]": "list_float_print",
+                "list[bool]": "list_bool_print",
+                "list[str]": "list_str_print",
             }.get(t, "pb_print_int")  # default to int
 
         def _extract_dict_value_type(type_str: str) -> str:
@@ -444,6 +448,9 @@ class CodeGen:
             if isinstance(arg, Identifier):
                 t = t or self._var_types.get(arg.name, "int")
 
+                if t.startswith("list["):
+                    print_arg = f"&{print_arg}"
+
             if isinstance(arg, IndexExpr):
                 base_type = self._get_expr_type(arg.base)
                 if base_type and base_type.startswith("dict["):
@@ -471,6 +478,16 @@ class CodeGen:
     def _generate_AssignStmt(self, st: AssignStmt) -> str:
         tgt = self._expr(st.target)
         val = self._expr(st.value)
+
+        if st.inferred_type == "list[int]":
+            return f"list_int_set(&{st.target.base.name}, {int(st.target.index.raw)}, {val});"
+        if st.inferred_type == "list[str]":
+            return f"list_str_set(&{st.target.base.name}, {int(st.target.index.raw)}, {val});"
+        if st.inferred_type == "list[float]":
+            return f"list_float_set(&{st.target.base.name}, {int(st.target.index.raw)}, {val});"
+        if st.inferred_type == "list[bool]":
+            return f"list_bool_set(&{st.target.base.name}, {int(st.target.index.raw)}, {val});"
+
         return f"{tgt} = {val};"
 
     def _generate_AugAssignStmt(self, st: AugAssignStmt) -> str:

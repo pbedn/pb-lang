@@ -91,10 +91,12 @@ def build(source_code: str, output_file: str, verbose: bool = False, debug: bool
     runtime_header = get_build_output_path("pb_runtime.h")
     runtime_lib = get_build_output_path("pb_runtime.a")
 
+    # -- Disabled while still prototyping
     # Check if runtime library exists
-    if not os.path.isfile(runtime_lib):
-        if verbose: print("Runtime library not found; building it now...")
-        build_runtime_library(verbose=verbose, debug=debug)    
+    # if not os.path.isfile(runtime_lib):
+        # if verbose: print("Runtime library not found; building it now...")
+        # build_runtime_library(verbose=verbose, debug=debug)    
+    build_runtime_library(verbose=verbose, debug=debug)    
 
     compile_cmd = [
         "gcc", "-std=c99", "-W", c_path,
