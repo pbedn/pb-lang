@@ -154,43 +154,45 @@ def main() -> int:
         print(k)
     
     # List literal and indexing
+    # List must not be empty current limitation for indexing set operation
     print("=== List and Indexing ===")
-    numbers: list[int] = [100, 200, 300]  # ListExpr
-    first_number: int = numbers[0]  # IndexExpr
-    second_number: int = numbers[1]
+    numbers: list[int] = [100, 200, 300]
+    first_number: int = numbers[0]
     print(first_number)
-    print(second_number)
+    print(numbers[0])
+    print(numbers)
 
-    # Boolean list and indexing
-    print("=== Boolean List and Indexing ===")
-    flags: list[bool] = [True, False, True]
-    first_flag: bool = flags[0]
-    second_flag: bool = flags[1]
-    print(first_flag)
-    print(second_flag)
-
-    print("=== List Operations ===")
     # Init empty list
     arr_int_empty: list[int] = []
     arr_str_empty: list[str] = []
     arr_bool_empty: list[bool] = []
 
-    # Init list ust not be empty -> current limitation for indexing set operation
-    arr_int_init: list[int] = [1, 2, 3]
+    # other list types
+    arr_float_init: list[float] = [1.1, 2.2, 3.3]
     arr_str_init: list[str] = ["abc", "def"]
     arr_bool_init: list[bool] = [True, False]
-    # Can print list and list elements
-    print(arr_int_init)
+    print(arr_float_init[0])
+    print(arr_float_init)
+    print(arr_str_init[0])
     print(arr_str_init)
+    print(arr_bool_init[0])
     print(arr_bool_init)
-    print(arr_str_init[1])
 
-    arr_int_init[0] = 100
+    # Can modify list using indexing
+    arr_float_init[0] = 100.101
     arr_str_init[0] = "some string"
     arr_bool_init[0] = False
-    print(arr_int_init)
+    print(arr_float_init)
     print(arr_str_init)
     print(arr_bool_init)
+
+    print("=== List Operations ===")
+    # append
+    # remove ?
+    # pop
+    # insert
+    # sort
+    # ..
 
     print("=== Dict Literal and Access ===")
     settings: dict[str, int] = {"volume": 10, "brightness": 75}
@@ -201,6 +203,7 @@ def main() -> int:
     print(map_str["a"])
     print(map_str["b"])
 
+    # Not supported yet - Currently it just skips try except
     print("=== Try / Except / Raise ===")
     try:
         result: int = divide(10, 0)

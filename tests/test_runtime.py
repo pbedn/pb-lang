@@ -120,6 +120,8 @@ class TestPipelineRuntime(unittest.TestCase):
             "    arr_int: list[int] = [100]\n"
             "    print(arr_int[0])\n"
             "    arr_int[0] = 1\n"
+            "    x: int = arr_int[0]\n"
+            "    print(x)\n"
             "    print(arr_int[0])\n"
             "    print(arr_int)\n"
             "\n"
@@ -127,10 +129,6 @@ class TestPipelineRuntime(unittest.TestCase):
             "    print(arr_str[0])\n"
             "    arr_str[0] = \"C\"\n"
             "    arr_str[1] = \"C\"\n"
-            "    try:\n"
-            "        arr_str[2] = \"C\"\n"
-            "    except:\n"
-            "        pass\n"
             "    print(arr_str[0])\n"
             "    print(arr_str)\n"
             "\n"
@@ -145,15 +143,16 @@ class TestPipelineRuntime(unittest.TestCase):
         # Assertions for arr_int
         self.assertEqual(lines[0], "100")              # arr_int[0] before assignment
         self.assertEqual(lines[1], "1")                # arr_int[0] after assignment
-        self.assertEqual(lines[2], "[1]")              # arr_int list contents
+        self.assertEqual(lines[2], "1")                # arr_int[0] after assignment
+        self.assertEqual(lines[3], "[1]")              # arr_int list contents
 
         # Assertions for arr_str
-        self.assertEqual(lines[3], "a")                # arr_str[0] before assignment
-        self.assertEqual(lines[4], "C")                # arr_str[0] after assignment
-        self.assertEqual(lines[5], '["C", "C"]')           # arr_str list contents
+        self.assertEqual(lines[4], "a")                # arr_str[0] before assignment
+        self.assertEqual(lines[5], "C")                # arr_str[0] after assignment
+        self.assertEqual(lines[6], '["C", "C"]')           # arr_str list contents
 
         # Assertions for arr_bool
-        self.assertEqual(lines[6], "[false]")          # arr_bool after assignment
+        self.assertEqual(lines[7], "[false]")          # arr_bool after assignment
 
 
 if __name__ == "__main__":

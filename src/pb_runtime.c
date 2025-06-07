@@ -51,6 +51,15 @@ void list_int_set(List_int *lst, int64_t index, int64_t value) {
     }
     lst->data[index] = value;
 }
+
+int64_t list_int_get(List_int *lst, int64_t index) {
+    if (index < 0 || index >= lst->len) {
+        pb_fail("List[int] index out of bounds");
+        abort();
+    }
+    return lst->data[index];
+}
+
 void list_int_append(List_int *lst, int64_t value) {
     list_int_grow_if_needed(lst);
     lst->data[lst->len++] = value;
@@ -123,6 +132,15 @@ void list_float_set(List_float *lst, int64_t index, double value) {
     }
     lst->data[index] = value;
 }
+
+double list_float_get(List_float *lst, int64_t index) {
+    if (index < 0 || index >= lst->len) {
+        pb_fail("List[float] index out of bounds");
+        abort();
+    }
+    return lst->data[index];
+}
+
 void list_float_append(List_float *lst, double value) {
     list_float_grow_if_needed(lst);
     lst->data[lst->len++] = value;
@@ -195,6 +213,15 @@ void list_bool_set(List_bool *lst, int64_t index, bool value) {
     }
     lst->data[index] = value;
 }
+
+bool list_bool_get(List_bool *lst, int64_t index) {
+    if (index < 0 || index >= lst->len) {
+        pb_fail("List[bool] index out of bounds");
+        abort();
+    }
+    return lst->data[index];
+}
+
 void list_bool_append(List_bool *lst, bool value) {
     list_bool_grow_if_needed(lst);
     lst->data[lst->len++] = value;
@@ -267,6 +294,15 @@ void list_str_set(List_str *lst, int64_t index, const char *value) {
     }
     lst->data[index] = value;  // assumes value is valid for the lifetime of lst
 }
+
+const char* list_str_get(List_str *lst, int64_t index) {
+    if (index < 0 || index >= lst->len) {
+        pb_fail("List[str] index out of bounds");
+        abort();
+    }
+    return lst->data[index];
+}
+
 void list_str_append(List_str *lst, const char *value) {
     list_str_grow_if_needed(lst);
     lst->data[lst->len++] = value;

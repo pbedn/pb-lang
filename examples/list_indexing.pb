@@ -3,6 +3,8 @@ def main() -> None:
     arr_int: list[int] = [100]
     print(arr_int[0])
     arr_int[0] = 1
+    x: int = arr_int[0]
+    print(x)
     print(arr_int[0])
     print(arr_int)
 

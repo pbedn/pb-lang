@@ -387,7 +387,7 @@ class TestCodeGen(unittest.TestCase):
         assert_contains_all(self, output, [
             "int64_t __tmp_list_1[] = {10, 20, 30}",
             "List_int nums = (List_int){ .len=3, .data=__tmp_list_1 };",
-            "int64_t first = nums.data[0];",
+            "int64_t first = list_int_get(&nums, 0);",
             "pb_print_int(first);",
             "return 0;"
         ])
@@ -438,8 +438,8 @@ class TestCodeGen(unittest.TestCase):
             "List_int arr3 = (List_int){ .len=0, .data=__tmp_list_3 };",
             "const char * __tmp_list_4[1] = {0};",
             "List_str arr4 = (List_str){ .len=0, .data=__tmp_list_4 };",
-            "pb_print_bool(arr.data[0]);",
-            "pb_print_str(arr2.data[1]);",
+            "pb_print_bool(list_bool_get(&arr, 0));",
+            "pb_print_str(list_str_get(&arr2, 1));",
             "return 0;"
         ])
 
@@ -959,27 +959,65 @@ class TestCodeGen(unittest.TestCase):
             "return 0;",
         ])
 
-    def test_codegen_list_assignment_and_print(self):
+    def test_codegen_list_int_operations(self):
+        """
+        * List element access by index.
+        * Reassignment to indexed elements.
+        * Printing values at an index.
+        * Assigning indexed value to a local variable.
+        * Printing both the variable and the list.
+        """
         prog = Program(body=[
             FunctionDef(
                 name="main",
                 params=[],
                 return_type="int",
                 body=[
-                    #INT
                     VarDecl("arr", "list[int]", ListExpr(
-                        elements=[Literal("0"), Literal("0")],
+                        elements=[Literal("100")],
                         elem_type="int",
                         inferred_type="list[int]"
                     )),
+                    ExprStmt(CallExpr(Identifier("print"), [
+                        IndexExpr(Identifier("arr", inferred_type="list[int]"), Literal("0"), elem_type="int")
+                    ])),
                     AssignStmt(
                         target=IndexExpr(Identifier("arr", inferred_type="list[int]"), Literal("0")),
-                        value=Literal("42"),
+                        value=Literal("1"),
                         inferred_type="int"
                     ),
-                    ExprStmt(CallExpr(Identifier("print"), [Identifier("arr")])),
+                    VarDecl("x", "int",
+                        value=IndexExpr(Identifier("arr", inferred_type="list[int]"), Literal("0"), elem_type="int"),
+                        inferred_type="int"
+                    ),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("x", inferred_type="int")])),
+                    ExprStmt(CallExpr(Identifier("print"), [
+                        IndexExpr(Identifier("arr", inferred_type="list[int]"), Literal("0"), elem_type="int")
+                    ])),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("arr", inferred_type="list[int]")])),
+                    ReturnStmt(Literal("0"))
+                ]
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "int64_t __tmp_list_1[] = {100};",
+            "List_int arr = (List_int){ .len=1, .data=__tmp_list_1 };",
+            "pb_print_int(list_int_get(&arr, 0));",
+            "list_int_set(&arr, 0, 1);",
+            "int64_t x = list_int_get(&arr, 0);",
+            "pb_print_int(x);",
+            "pb_print_int(list_int_get(&arr, 0));",
+            "list_int_print(&arr);"
+        ])
 
-                    # FLOAT
+    def test_codegen_list_float_operations(self):
+        prog = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
                     VarDecl("arr", "list[float]", ListExpr(
                         elements=[Literal("0.1"), Literal("0.2")],
                         elem_type="float",
@@ -990,9 +1028,26 @@ class TestCodeGen(unittest.TestCase):
                         value=Literal("0.125"),
                         inferred_type="float"
                     ),
-                    ExprStmt(CallExpr(Identifier("print"), [Identifier("arr")])),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("arr", inferred_type="list[float]")])),
+                    ReturnStmt(Literal("0"))
+                ]
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "double __tmp_list_1[] = {0.1, 0.2};",
+            "List_float arr = (List_float){ .len=2, .data=__tmp_list_1 };",
+            "list_float_set(&arr, 0, 0.125);",
+            "list_float_print(&arr);"
+        ])
 
-                    # BOOL
+    def test_codegen_list_bool_operations(self):
+        prog = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
                     VarDecl("arr", "list[bool]", ListExpr(
                         elements=[Literal("True"), Literal("True")],
                         elem_type="bool",
@@ -1003,9 +1058,26 @@ class TestCodeGen(unittest.TestCase):
                         value=Literal("False"),
                         inferred_type="bool"
                     ),
-                    ExprStmt(CallExpr(Identifier("print"), [Identifier("arr")])),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("arr", inferred_type="list[bool]")])),
+                    ReturnStmt(Literal("0"))
+                ]
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "bool __tmp_list_1[] = {true, true};",
+            "List_bool arr = (List_bool){ .len=2, .data=__tmp_list_1 };",
+            "list_bool_set(&arr, 0, false);",
+            "list_bool_print(&arr);"
+        ])
 
-                    # STRING
+    def test_codegen_list_str_operations(self):
+        prog = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
                     VarDecl("arr", "list[str]", ListExpr(
                         elements=[StringLiteral("a"), StringLiteral("b")],
                         elem_type="str",
@@ -1016,32 +1088,19 @@ class TestCodeGen(unittest.TestCase):
                         value=Literal("c"),
                         inferred_type="str"
                     ),
-                    ExprStmt(CallExpr(Identifier("print"), [Identifier("arr")])),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("arr", inferred_type="list[str]")])),
                     ReturnStmt(Literal("0"))
-                ],
-                globals_declared=None
+                ]
             )
         ])
         output = codegen_output(prog)
-        print(output)
         assert_contains_all(self, output, [
-            "int64_t __tmp_list_1[] = {0, 0};",
-            "List_int arr = (List_int){ .len=2, .data=__tmp_list_1 };",
-            "list_int_set(&arr, 0, 42);",
-            "list_int_print(&arr);",
-            "double __tmp_list_2[] = {0.1, 0.2};",
-            "List_float arr = (List_float){ .len=2, .data=__tmp_list_2 };",
-            "list_float_set(&arr, 0, 0.125);",
-            "list_float_print(&arr);",
-            "bool __tmp_list_3[] = {true, true};",
-            "List_bool arr = (List_bool){ .len=2, .data=__tmp_list_3 };",
-            "list_bool_set(&arr, 0, false);",
-            "list_bool_print(&arr);",
-            "const char * __tmp_list_4[] = {\"a\", \"b\"};",
-            "List_str arr = (List_str){ .len=2, .data=__tmp_list_4 };",
+            'const char * __tmp_list_1[] = {"a", "b"};',
+            "List_str arr = (List_str){ .len=2, .data=__tmp_list_1 };",
             "list_str_set(&arr, 0, c);",
-            "list_str_print(&arr);",
+            "list_str_print(&arr);"
         ])
+
 
 
 if __name__ == "__main__":

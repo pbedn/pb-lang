@@ -461,11 +461,7 @@ class CodeGen:
                     print_arg = f"{func}({base}, {key})"
                     t = value_type
                 elif base_type and base_type.startswith("list["):
-                    elem_type = base_type[5:-1]
-                    base = self._expr(arg.base)
-                    index = self._expr(arg.index)
-                    print_arg = f"{base}.data[{index}]"
-                    t = elem_type
+                    t = arg.elem_type
 
             if not t:
                 raise RuntimeError(f"No inferred type for: {arg}")
@@ -773,6 +769,20 @@ class CodeGen:
     def _generate_IndexExpr(self, e: IndexExpr) -> str:
         base = self._expr(e.base)
         idx  = self._expr(e.index)
+
+        t = self._get_expr_type(e)
+        if t and t.startswith("list[") and t.endswith("]"):
+            etype = e.elem_type or t[5:-1]
+            func = {
+                'int': 'list_int_get',
+                'float': 'list_float_get',
+                'bool': 'list_bool_get',
+                'str': 'list_str_get',
+            }.get(etype)
+            if not func:
+                raise RuntimeError(f"Unsupported list element type: {etype}")
+            return f"{func}(&{base}, {idx})"
+
         return f"{base}.data[{idx}]"
     
     def _generate_ListExpr(self, e: ListExpr) -> str:

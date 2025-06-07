@@ -226,7 +226,7 @@ class TestCodeGenFromSource(unittest.TestCase):
         )
         c = self.compile_pipeline(code)
         self.assertIn("List_int nums =", c)
-        self.assertIn("int64_t first = nums.data[0];", c)
+        self.assertIn("int64_t first = list_int_get(&nums, 0);", c)
 
     def test_list_of_bools(self):
         code = (
@@ -239,8 +239,28 @@ class TestCodeGenFromSource(unittest.TestCase):
         c_code = self.compile_pipeline(code)
         self.assertIn('bool __tmp_list_1[] = {true, false, true};', c_code)
         self.assertIn('List_bool flags = (List_bool){ .len=3, .data=__tmp_list_1 };', c_code)
-        self.assertIn('bool x = flags.data[0];', c_code)
+        self.assertIn('bool x = list_bool_get(&flags, 0);', c_code)
         self.assertIn('pb_print_bool(x);', c_code)
+
+    def test_list_index_get_set(self):
+        code = (
+            "def main() -> int:\n"
+            "    nums: list[int] = [10, 20, 30]\n"
+            "    first: int = nums[0]\n"
+            "    print(first)\n"
+            "    print(nums[0])\n"
+            "    print(nums)\n"
+            "    nums[0] = 123\n"
+            "    return 0\n"
+        )
+        c = self.compile_pipeline(code)
+        self.assertIn("List_int nums = (List_int){ .len=3, .data=__tmp_list_1 };", c)
+        self.assertIn("int64_t first = list_int_get(&nums, 0);", c)
+        self.assertIn("pb_print_int(first);", c)
+        self.assertIn("pb_print_int(list_int_get(&nums, 0));", c)
+        self.assertIn("list_int_print(&nums);", c)
+        self.assertIn("list_int_set(&nums, 0, 123);", c)
+        self.assertIn("int64_t first = list_int_get(&nums, 0);", c)
 
     @unittest.skip("Not supported yet")
     def test_list_mixed_types_error(self):
