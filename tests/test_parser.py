@@ -571,6 +571,40 @@ class TestParseStatements(ParserTestCase):
         self.assertIsInstance(body[0], BreakStmt)
         self.assertIsInstance(body[1], ContinueStmt)
 
+    def test_parse_function_None_return_type(self):
+        code = (
+            "def add_in_place(x: int, y: int) -> None:\n"
+            "    x += y\n"
+        )
+        parser = self.parse_tokens(code)
+        stmt = parser.parse_function_def()
+
+        # Expected: FunctionDef("add_in_place", [x:int, y:int], "None", [...])
+        self.assertIsInstance(stmt, FunctionDef)
+        self.assertEqual(stmt.name, "add_in_place")
+        self.assertEqual(len(stmt.params), 2)
+        self.assertEqual(stmt.params[0].name, "x")
+        self.assertEqual(stmt.params[0].type, "int")
+        self.assertEqual(stmt.return_type, "None")
+        self.assertIsInstance(stmt.body[0], AugAssignStmt)
+
+    def test_parse_function_no_return_type(self):
+        code = (
+            "def add_in_place(x: int, y: int):\n"
+            "    x += y\n"
+        )
+        parser = self.parse_tokens(code)
+        stmt = parser.parse_function_def()
+
+        # Expected: FunctionDef("add_in_place", [x:int, y:int], "None", [...])
+        self.assertIsInstance(stmt, FunctionDef)
+        self.assertEqual(stmt.name, "add_in_place")
+        self.assertEqual(len(stmt.params), 2)
+        self.assertEqual(stmt.params[0].name, "x")
+        self.assertEqual(stmt.params[0].type, "int")
+        self.assertEqual(stmt.return_type, "None")
+        self.assertIsInstance(stmt.body[0], AugAssignStmt)
+
     def test_parse_function_def(self):
         code = (
             "def add(x: int, y: int) -> int:\n"

@@ -1,5 +1,5 @@
 
-def main() -> None:
+def main():
     arr_int: list[int] = [100]
     print(arr_int[0])
     arr_int[0] = 1

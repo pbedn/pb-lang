@@ -13,13 +13,13 @@ class Player:
     hp: int = 100
     species: str = "Human"  # class attribute shared by all instances
 
-    def __init__(self, hp: int, mp: int=150) -> None:
+    def __init__(self, hp: int, mp: int=150):
         self.hp = hp  # instance attribute with same name as class attribute
         self.mp = mp
         self.score = 0
         self.name = "Hero"
 
-    def heal(self, amount: int) -> None:
+    def heal(self, amount: int):
         self.hp += amount  # Augmented assignment on attribute
 
     def get_name(self) -> str:
@@ -28,7 +28,7 @@ class Player:
     def get_species_one(self) -> str:
         return Player.species
 
-    def add_to_counter(self) -> None:
+    def add_to_counter(self):
         global counter
         counter += self.hp
 
@@ -36,18 +36,18 @@ class Player:
 class Mage(Player):
     power: str = "fire"
 
-    def __init__(self, hp: int) -> None:
+    def __init__(self, hp: int):
         Player.__init__(self, hp)
         self.mp = 200
 
-    def cast_spell(self, spell_cost: int) -> None:
+    def cast_spell(self, spell_cost: int):
         if self.mp >= spell_cost:
             print("Spell cast!")
             self.mp -= spell_cost
         else:
             print("Not enough mana")
 
-    def heal(self, amount: int) -> None:
+    def heal(self, amount: int):
         self.hp += amount
         self.mp += amount // 2
 

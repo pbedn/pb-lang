@@ -1372,6 +1372,43 @@ class TestTypeCheckerProgramLevel(unittest.TestCase):
         ])
         TypeChecker().check(prog)
 
+    def test_function_with_None_return_type(self):
+        """
+        def add_in_place(x: int, y: int) -> None:
+            x += y
+        """
+        prog = Program(body=[
+            FunctionDef(
+                name="add_in_place",
+                params=[Parameter("x", "int"), Parameter("y", "int")],
+                return_type="None",
+                body=[
+                    AugAssignStmt(Identifier("x"), "+=", Identifier("y"))
+                ]
+            ),
+        ])
+        TypeChecker().check(prog)
+
+    def test_function_returns_int_but_expected_None_type(self):
+        """
+        def add_in_place(x: int, y: int) -> None:
+            x += y
+        """
+        prog = Program(body=[
+            FunctionDef(
+                name="add_in_place",
+                params=[Parameter("x", "int"), Parameter("y", "int")],
+                return_type="None",
+                body=[
+                    AugAssignStmt(Identifier("x"), "+=", Identifier("y")),
+                    ReturnStmt(value=Identifier(name='x', inferred_type=None), inferred_type=None)
+                ]
+            ),
+        ])
+        with self.assertRaises(TypeError) as ctx:
+            TypeChecker().check(prog)
+        self.assertIn("Return type mismatch: expected `None`, got `int` in function `add_in_place`", str(ctx.exception))
+
     def test_for_loop_with_range(self):
         """
         Program:

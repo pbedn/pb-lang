@@ -696,7 +696,7 @@ class TypeChecker:
             else:
                 saw_default = True
 
-        ret_type = fn.return_type or "None"
+        ret_type = fn.return_type
         fn.inferred_return_type = ret_type
         self.functions[fname] = (param_types, ret_type, num_required)
 

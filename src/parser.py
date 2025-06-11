@@ -772,8 +772,15 @@ class Parser:
             names_seen.add(p.name)
 
         self.expect(TokenType.RPAREN)
-        self.expect(TokenType.ARROW)
-        return_type = self.expect_type_name()
+
+        # If type not specified, it defaults to None
+        return_type = "None"
+        if self.match(TokenType.ARROW):
+            if self.check(TokenType.COLON):
+                raise ParserError("Return type annotation must not be followed by ':' "
+                                  f"at line: {self.current().line}, col: {self.current().column}")
+            return_type = self.expect_type_name()
+
         self.expect(TokenType.COLON)
         self.expect(TokenType.NEWLINE)
         self.expect(TokenType.INDENT)

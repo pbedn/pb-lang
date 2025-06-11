@@ -109,7 +109,7 @@ class TestCodeGenFromSource(unittest.TestCase):
 
     def test_pass_stmt_from_source(self):
         code = (
-            "def noop() -> None:\n"
+            "def noop():\n"
             "    pass\n"
         )
         c_code = self.compile_pipeline(code)
@@ -142,7 +142,7 @@ class TestCodeGenFromSource(unittest.TestCase):
 
     def test_expr_stmt_call_from_source(self):
         code = (
-            "def f(x: int) -> None:\n"
+            "def f(x: int):\n"
             "    pass\n"
             "\n"
             "def main() -> int:\n"
@@ -357,7 +357,7 @@ class TestCodeGenFromSource(unittest.TestCase):
     def test_class_instantiation_and_method_call(self):
         code = (
             "class Player:\n"
-            "    def __init__(self) -> None:\n"
+            "    def __init__(self):\n"
             "        self.hp = 100\n"
             "    def get_hp(self) -> int:\n"
             "        return self.hp\n"
@@ -377,7 +377,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "class Player:\n"
             "    mp: int = 100\n"
             "\n"
-            "    def __init__(self) -> None:\n"
+            "    def __init__(self):\n"
             "        self.hp = 150\n"
             "\n"
             "    def get_hp(self) -> int:\n"
@@ -412,14 +412,14 @@ class TestCodeGenFromSource(unittest.TestCase):
             "class Player:\n"
             "    name: str = \"P\"\n"
             "\n"
-            "    def __init__(self) -> None:\n"
+            "    def __init__(self):\n"
             "        self.hp = 150\n"
             "\n"
             "    def get_hp(self) -> int:\n"
             "        return self.hp\n"
             "\n"
             "class Mage(Player):\n"
-            "    def __init__(self) -> None:\n"
+            "    def __init__(self):\n"
             "        Player.__init__(self)\n"
             "        self.mana = 200\n"
             "\n"
@@ -458,12 +458,12 @@ class TestCodeGenFromSource(unittest.TestCase):
         unless __init__ is defined on that class directly."""
         code = (
             "class Base:\n"
-            "    def greet(self) -> None:\n"
+            "    def greet(self):\n"
             "        print(\"base\")\n"
             "class Child(Base):\n"
-            "    def __init__(self) -> None:\n"
+            "    def __init__(self):\n"
             "        pass\n"
-            "    def greet(self) -> None:\n"
+            "    def greet(self):\n"
             "        print(\"child\")\n"
             "def main() -> int:\n"
             "    c: Child = Child()\n"
@@ -480,7 +480,7 @@ class TestCodeGenFromSource(unittest.TestCase):
         code = (
             "counter: int = 0\n"
             "class A:\n"
-            "    def bump(self) -> None:\n"
+            "    def bump(self):\n"
             "        global counter\n"
             "        counter += 1\n"
         )

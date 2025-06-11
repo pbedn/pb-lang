@@ -1,5 +1,4 @@
 hello: str = "Hello World"
 
-def main() -> int:
+def main():
     print(hello)
-    return 0
