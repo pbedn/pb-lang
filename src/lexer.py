@@ -9,8 +9,7 @@ from typing import List, NamedTuple
 class TokenType(Enum):
     # Keywords
     DEF = auto(); RETURN = auto(); IF = auto(); ELSE = auto(); ELIF = auto()
-    WHILE = auto(); FOR = auto(); IN = auto(); IS = auto()
-    INT = auto(); FLOAT = auto(); BOOL = auto(); STR = auto(); NOT = auto()
+    WHILE = auto(); FOR = auto(); IN = auto(); IS = auto(); NOT = auto()
     AND = auto(); OR = auto(); BREAK = auto(); CONTINUE = auto(); PASS = auto()
     GLOBAL = auto(); IMPORT = auto(); CLASS = auto(); ASSERT = auto()
     TRUE = auto(); FALSE = auto(); NONE = auto()
@@ -105,10 +104,6 @@ KEYWORDS = {
     "pass": TokenType.PASS,
     "in": TokenType.IN,
     "is": TokenType.IS,
-    "int": TokenType.INT,
-    "float": TokenType.FLOAT,
-    "bool": TokenType.BOOL,
-    "str": TokenType.STR,
     "not": TokenType.NOT,
     "and": TokenType.AND,
     "or": TokenType.OR,

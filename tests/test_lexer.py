@@ -106,7 +106,7 @@ class TestLexer(unittest.TestCase):
         self.assertIn("DEF", types)
         self.assertIn("IDENTIFIER", types)
         self.assertIn("COLON", types)
-        self.assertIn("INT", types)
+        self.assertIn("IDENTIFIER", types)
         self.assertIn("STRING_LIT", types)
 
     def test_class_inheritance(self):
@@ -218,7 +218,7 @@ class TestLexer(unittest.TestCase):
         self.assertIn("RPAREN", types)
         self.assertIn("ARROW", types)
         self.assertIn("COLON", types)
-        self.assertIn("INT", types)
+        self.assertIn("IDENTIFIER", types)
 
     def test_function_parameter_type_multi_arg(self):
         code = (
@@ -234,7 +234,7 @@ class TestLexer(unittest.TestCase):
         self.assertIn("COMMA", types)
         self.assertIn("ARROW", types)
         self.assertIn("COLON", types)
-        self.assertIn("INT", types)
+        self.assertIn("IDENTIFIER", types)
 
     def test_class_as_function_parameter(self):
         code = (
@@ -252,7 +252,7 @@ class TestLexer(unittest.TestCase):
         self.assertIn("DEF", types)
         self.assertIn("IDENTIFIER", types)
         self.assertIn("COLON", types)
-        self.assertIn("INT", types)
+        self.assertIn("IDENTIFIER", types)
         self.assertIn("DOT", types)
 
     def test_import_keyword(self):

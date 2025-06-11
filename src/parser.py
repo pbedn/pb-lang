@@ -830,8 +830,7 @@ class Parser:
         """
         tok = self.current()
         if tok.type not in (
-            TokenType.IDENTIFIER, TokenType.INT, TokenType.FLOAT,
-            TokenType.BOOL, TokenType.STR, TokenType.NONE
+            TokenType.IDENTIFIER, TokenType.NONE
         ):
             raise ParserError(
                 f"Expected type name, got {tok.type.name} "
