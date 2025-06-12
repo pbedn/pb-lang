@@ -69,16 +69,7 @@ def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = F
 
 
 def build(source_code: str, output_file: str, verbose: bool = False, debug: bool = False) -> bool:
-    try:
-        subprocess.run(['gcc', '--version'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if verbose: print("GCC is available")
-    except FileNotFoundError:
-        print("GCC is not installed or not in the system PATH.")
-        print("If not installed then run `sudo apt install gcc`")
-        return False
-    except subprocess.CalledProcessError:
-        if verbose: print("GCC is available, but an error occurred while running it.")
-        return False
+    if not debug: check_gcc_installed(verbose)
 
     success = compile_to_c(source_code, f"{output_file}.c", verbose=verbose, debug=debug)
     if not success:
@@ -99,11 +90,17 @@ def build(source_code: str, output_file: str, verbose: bool = False, debug: bool
     build_runtime_library(verbose=verbose, debug=debug)    
 
     compile_cmd = [
-        "gcc", "-std=c99", "-W", c_path,
+        "gcc", "-std=c99",
+        "-Wall",        # common warnings
+        "-Wextra",      # extra warnings
+        "-Wconversion", # warns about implicit type conversions
+        "-Wpedantic",   # enforces ISO C standard
+        c_path,
         "-o", exe_file,
         "-I", runtime_header,
         runtime_lib
     ]
+    if verbose: print("Compile command:", " ".join(compile_cmd))
 
     result = subprocess.run(compile_cmd, capture_output=True, text=True)
     if result.returncode == 0:
@@ -156,7 +153,7 @@ def build_runtime_library(verbose: bool = False, debug: bool = False):
     # Compile to object file
     obj_path = os.path.join(build_dir, "pb_runtime.o")
     compile_cmd = ["gcc", "-std=c99", "-c", src_c, "-o", obj_path]
-    if debug: print("Compile command:", " ".join(compile_cmd))
+    if verbose: print("PB Runtime compile command:", " ".join(compile_cmd))
 
     result = subprocess.run(compile_cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -166,7 +163,7 @@ def build_runtime_library(verbose: bool = False, debug: bool = False):
     # Archive into static library
     # lib_path = os.path.join(build_dir, "libpbruntime.a")
     ar_cmd = ["ar", "rcs", lib_path, obj_path]
-    if debug: print("Archive command:", " ".join(ar_cmd))
+    if verbose: print("Archive command:", " ".join(ar_cmd))
 
     result = subprocess.run(ar_cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -180,6 +177,22 @@ def build_runtime_library(verbose: bool = False, debug: bool = False):
     shutil.copy2(src_h, header_dest)
     if verbose:
         print(f"Copied pb_runtime.h to: {header_dest}")
+
+def check_gcc_installed(verbose):
+    """
+    Check if GCC is installed by running 'gcc --version'.
+    If not installed, print an error message and exit.
+    """
+    try:
+        subprocess.run(['gcc', '--version'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if verbose: print("GCC is available")
+    except FileNotFoundError:
+        print("GCC is not installed or not in the system PATH.")
+        print("If not installed then run `sudo apt install gcc`")
+        return False
+    except subprocess.CalledProcessError:
+        if verbose: print("GCC is available, but an error occurred while running it.")
+        return False
 
 
 def main():

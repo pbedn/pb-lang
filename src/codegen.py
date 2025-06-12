@@ -421,7 +421,7 @@ class CodeGen:
             try:
                 key_type, val_type = map(str.strip, type_str[5:-1].split(",", 1))
                 if key_type != "str":
-                    ("Only dicts with string keys are supported")
+                    raise RuntimeError("Only dicts with string keys are supported")
                 return val_type
             except Exception:
                 RuntimeError(f"Invalid dict type: {type_str}")
@@ -577,7 +577,7 @@ class CodeGen:
         c_ty = self._c_type(st.declared_type)
         val = self._expr(st.value)
         # remember every variable’s PB type for later printf logic
-        if st.declared_type:
+        if st.declared_type: # fixme: this whole section is probably not needed since enriched ast
             self._var_types[st.name] = st.declared_type
         if isinstance(st.declared_type, str):
             if st.declared_type in self._structs_emitted:

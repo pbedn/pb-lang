@@ -138,7 +138,6 @@ class TypeChecker:
 
         # for range(start, stop) in future:
         self.functions["range"] = (["int", "int"], "list[int]", 1)
-        self.functions["range"] = (["int", "int"], "list[int]", 1)
 
         # to track the expected return type while checking a function body
         self.current_return_type: Optional[str] = None
