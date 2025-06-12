@@ -154,6 +154,50 @@ class TestPipelineRuntime(unittest.TestCase):
         # Assertions for arr_bool
         self.assertEqual(lines[7], "[false]")          # arr_bool after assignment
 
+    def test_type_conversions_and_printing(self):
+        code = (
+            "def main() -> int:\n"
+            "    x: int = 10\n"
+            "    y: float = 1.0\n"
+            "    z: float = 0.0\n"
+            "    a: str = '1'\n"
+            "    b: str = '1.0'\n"
+            "\n"
+            "    x_float: float = float(x)\n"
+            "    print(f'x: {x}, x_float: {x_float}')\n"
+            "\n"
+            "    b_float: float = float(b)\n"
+            "    print(f'b: {b}, b_float: {b_float}')\n"
+            "\n"
+            "    y_int: int = int(y)\n"
+            "    print(f'y: {y}, y_int: {y_int}')\n"
+            "\n"
+            "    a_int: int = int(a)\n"
+            "    print(f'a: {a}, a_int: {a_int}')\n"
+            "\n"
+            "    x_bool: bool = bool(x)\n"
+            "    print(f'x: {x}, x_bool: {x_bool}')\n"
+            "\n"
+            "    y_bool: bool = bool(y)\n"
+            "    print(f'y: {y}, y_bool: {y_bool}')\n"
+            "\n"
+            "    z_bool: bool = bool(z)\n"
+            "    print(f'z: {z}, z_bool: {z_bool}')\n"
+            "\n"
+            "    return 0\n"
+        )
+        output = self.compile_and_run(code)
+        lines = output.strip().splitlines()
+
+        # Assertions for type conversions
+        self.assertEqual(lines[0], "x: 10, x_float: 10.000000")  # x to float
+        self.assertEqual(lines[1], "b: 1.0, b_float: 1.000000")  # b to float
+        self.assertEqual(lines[2], "y: 1.000000, y_int: 1")        # y to int
+        self.assertEqual(lines[3], "a: 1, a_int: 1")        # a to int
+        self.assertEqual(lines[4], "x: 10, x_bool: True")     # x to bool
+        self.assertEqual(lines[5], "y: 1.000000, y_bool: True")    # y to bool
+        self.assertEqual(lines[6], "z: 0.000000, z_bool: False")    # z to bool
+
 
 if __name__ == "__main__":
     unittest.main()

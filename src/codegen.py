@@ -613,15 +613,18 @@ class CodeGen:
         return f"\"{e.value}\""
 
     def _generate_FStringLiteral(self, e: FStringLiteral) -> str:
-        buf  = "__fbuf"
-        fmt  = e.raw
+        buf = "__fbuf"
+        fmt = e.raw
         specs = {"int": "%lld", "float": "%f", "str": "%s", "bool": "%s"}
         
         arg_list: list[str] = []
         for var in e.vars:
-            pb_t   = self._var_types.get(var, "int")
-            fmt    = fmt.replace(f"{{{var}}}", specs.get(pb_t, "%lld"))
-            arg_list.append(var)
+            pb_t = self._var_types.get(var, "int")
+            fmt = fmt.replace(f"{{{var}}}", specs.get(pb_t, "%s"))
+            if pb_t == "bool":
+                arg_list.append(f"(({var}) ? \"True\" : \"False\")")
+            else:
+                arg_list.append(var)
         
         joined = ", ".join(arg_list) or "0"           # keep GCC happy if empty
         return f'(snprintf({buf}, 256, "{fmt}", {joined}), {buf})'
@@ -724,6 +727,27 @@ class CodeGen:
                         actual_args.append("0")
                 args = ", ".join(actual_args)
                 return f"{fn_name}({args})"
+            if fn_name == "int":
+                if e.args[0].inferred_type == "float":
+                    return f"(int64_t)({e.args[0].name})"
+                elif e.args[0].inferred_type == "str":
+                    return f"(strtoll)({e.args[0].name}, NULL, 10)"
+                else:
+                    raise RuntimeError(f"`{fn_name}` conversion to `{e.args[0].inferred_type}` not supported yet!")
+            if fn_name == "float":
+                if e.args[0].inferred_type == "int":
+                    return f"(double)({e.args[0].name})"
+                elif e.args[0].inferred_type == "str":
+                    return f"(strtod)({e.args[0].name}, NULL)"
+                else:
+                    raise RuntimeError(f"`{fn_name}` conversion to `{e.args[0].inferred_type}` not supported yet!")
+            if fn_name == "bool":
+                if e.args[0].inferred_type == "int":
+                    return f"({e.args[0].name} != 0)"
+                elif e.args[0].inferred_type == "float":
+                    return f"({e.args[0].name} != 0.0)"
+                else:
+                    raise RuntimeError(f"`{fn_name}` conversion to `{e.args[0].inferred_type}` not supported yet!")
 
         # Method call: player.get_name() → Player__get_name(player)
         if isinstance(e.func, AttributeExpr):

@@ -398,9 +398,41 @@ class TypeChecker:
 
                 if fname == "print":
                     for arg in expr.args:
-                        t = self.check_expr(arg)
+                        self.check_expr(arg)
                     expr.inferred_type = "function"
                     return "None"
+                if fname == "int":
+                    if len(expr.args) != 1:
+                        raise TypeError("Function 'int' expects exactly one argument")
+                    arg_type = self.check_expr(expr.args[0])
+                    if arg_type not in {"int", "float", "str"}:
+                        raise TypeError(f"Function 'int' expects int, float, or str, got {arg_type}")
+                    expr.inferred_type = "int"
+                    return "int"
+                if fname == "float":
+                    if len(expr.args) != 1:
+                        raise TypeError("Function 'float' expects exactly one argument")
+                    arg_type = self.check_expr(expr.args[0])
+                    if arg_type not in {"int", "float", "str"}:
+                        raise TypeError(f"Function 'float' expects int, float, or str, got {arg_type}")
+                    expr.inferred_type = "float"
+                    return "float"
+                if fname == "bool":
+                    if len(expr.args) != 1:
+                        raise TypeError("Function 'bool' expects exactly one argument")
+                    arg_type = self.check_expr(expr.args[0])
+                    if arg_type not in {"int", "float", "str", "bool"}:
+                        raise TypeError(f"Function 'bool' expects int, float, str, or bool, got {arg_type}")
+                    expr.inferred_type = "bool"
+                    return "bool"
+                if fname == "str":
+                    if len(expr.args) != 1:
+                        raise TypeError("Function 'str' expects exactly one argument")
+                    arg_type = self.check_expr(expr.args[0])
+                    if arg_type not in {"int", "float", "str"}:
+                        raise TypeError(f"Function 'str' expects int, float, or str, got {arg_type}")
+                    expr.inferred_type = "str"
+                    return "str"
                 if fname not in self.functions:
                     raise TypeError(f"Call to undefined function '{fname}'")
                 param_types, return_type, num_required = self.functions[fname]

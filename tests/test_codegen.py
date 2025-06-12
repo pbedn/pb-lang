@@ -734,7 +734,7 @@ class TestCodeGen(unittest.TestCase):
             "pb_print_int(Player_mp);"
         ])
 
-    def test_codegen_class_inheritance_with_fields(self):
+    def test_class_inheritance_with_fields(self):
         program = Program(body=[
             ClassDef(
                 name="Player",
@@ -959,7 +959,7 @@ class TestCodeGen(unittest.TestCase):
             "return 0;",
         ])
 
-    def test_codegen_list_int_operations(self):
+    def test_list_int_operations(self):
         """
         * List element access by index.
         * Reassignment to indexed elements.
@@ -1011,7 +1011,7 @@ class TestCodeGen(unittest.TestCase):
             "list_int_print(&arr);"
         ])
 
-    def test_codegen_list_float_operations(self):
+    def test_list_float_operations(self):
         prog = Program(body=[
             FunctionDef(
                 name="main",
@@ -1041,7 +1041,7 @@ class TestCodeGen(unittest.TestCase):
             "list_float_print(&arr);"
         ])
 
-    def test_codegen_list_bool_operations(self):
+    def test_list_bool_operations(self):
         prog = Program(body=[
             FunctionDef(
                 name="main",
@@ -1071,7 +1071,7 @@ class TestCodeGen(unittest.TestCase):
             "list_bool_print(&arr);"
         ])
 
-    def test_codegen_list_str_operations(self):
+    def test_list_str_operations(self):
         prog = Program(body=[
             FunctionDef(
                 name="main",
@@ -1101,6 +1101,161 @@ class TestCodeGen(unittest.TestCase):
             "list_str_print(&arr);"
         ])
 
+    def test_int_to_float_conversion(self):
+        prog = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("x", "int", Literal("10")),
+                    VarDecl("x_float", "float", CallExpr(Identifier("float"), [Identifier("x")])),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("x_float")])),
+                    ReturnStmt(Literal("0"))
+                ]
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "int64_t x = 10;",
+            "double x_float = (double)(x);",
+            "pb_print_double(x_float);"
+        ])
+
+    def test_float_to_int_conversion(self):
+        prog = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("y", "float", Literal("1.5")),
+                    VarDecl("y_int", "int", CallExpr(Identifier("int"), [Identifier("y")])),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("y_int")])),
+                    ReturnStmt(Literal("0"))
+                ]
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "double y = 1.5;",
+            "int64_t y_int = (int64_t)(y);",
+            "pb_print_int(y_int);"
+        ])
+
+    def test_string_to_int_conversion(self):
+        prog = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("a", "str", StringLiteral("123")),
+                    VarDecl("a_int", "int", CallExpr(Identifier("int"), [Identifier("a")])),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("a_int")])),
+                    ReturnStmt(Literal("0"))
+                ]
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "const char * a = \"123\";",
+            "int64_t a_int = (strtoll)(a, NULL, 10);",
+            "pb_print_int(a_int);"
+        ])
+
+    def test_string_to_float_conversion(self):
+        prog = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("b", "str", StringLiteral("1.23")),
+                    VarDecl("b_float", "float", CallExpr(Identifier("float"), [Identifier("b")])),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("b_float")])),
+                    ReturnStmt(Literal("0"))
+                ]
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "const char * b = \"1.23\";",
+            "double b_float = (strtod)(b, NULL);",
+            "pb_print_double(b_float);"
+        ])
+
+    def test_int_to_bool_conversion(self):
+        prog = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("x", "int", Literal("0")),
+                    VarDecl("x_bool", "bool", CallExpr(Identifier("bool"), [Identifier("x")])),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("x_bool")])),
+                    ReturnStmt(Literal("0"))
+                ]
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "int64_t x = 0;",
+            "bool x_bool = (x != 0);",
+            "pb_print_bool(x_bool);"
+        ])
+
+    def test_float_to_bool_conversion(self):
+        prog = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("y", "float", Literal("0.0")),
+                    VarDecl("y_bool", "bool", CallExpr(Identifier("bool"), [Identifier("y")])),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("y_bool")])),
+                    ReturnStmt(Literal("0"))
+                ]
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "double y = 0.0;",
+            "bool y_bool = (y != 0.0);",
+            "pb_print_bool(y_bool);"
+        ])
+
+    # def test_list_float_conversion(self):
+    #     prog = Program(body=[
+    #         FunctionDef(
+    #             name="main",
+    #             params=[],
+    #             return_type="int",
+    #             body=[
+    #                 VarDecl("arr", "list[float]", ListExpr(
+    #                     elements=[Literal("1.1"), Literal("2.2"), Literal("3.3")],
+    #                     elem_type="float",
+    #                     inferred_type="list[float]"
+    #                 )),
+    #                 AssignStmt(
+    #                     target=IndexExpr(Identifier("arr", inferred_type="list[float]"), Literal("0")),
+    #                     value=CallExpr(Identifier("float"), [Literal("4")]),
+    #                     inferred_type="float"
+    #                 ),
+    #                 ExprStmt(CallExpr(Identifier("print"), [Identifier("arr", inferred_type="list[float]")])),
+    #                 ReturnStmt(Literal("0"))
+    #             ]
+    #         )
+    #     ])
+    #     output = codegen_output(prog)
+    #     assert_contains_all(self, output, [
+    #         "double __tmp_list_1[] = {1.1, 2.2, 3.3};",
+    #         "List_float arr = (List_float){ .len=3, .data=__tmp_list_1 };",
+    #         "list_float_set(&arr, 0, (float)(4));",
+    #         "list_float_print(&arr);"
+    #     ])
 
 
 if __name__ == "__main__":

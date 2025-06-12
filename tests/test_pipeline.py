@@ -601,5 +601,40 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn("continue;", c)
         self.assertIn("break;", c)
 
+    def test_type_check_pipeline(self):
+        code = (
+            "def main() -> int:\n"
+            "    x: int = 10\n"
+            "    y: float = 1.0\n"
+            "    z: float = 0.0\n"
+            "    a: str = '1'\n"
+            "    b: str = '1.0'\n"
+            "\n"
+            "    x_float: float = float(x)\n"
+            "    b_float: float = float(b)\n"
+            "    y_int: int = int(y)\n"
+            "    a_int: int = int(a)\n"
+            "    x_bool: bool = bool(x)\n"
+            "    y_bool: bool = bool(y)\n"
+            "    z_bool: bool = bool(z)\n"
+            "    return 0\n"
+        )
+        c = self.compile_pipeline(code)
+        
+        # Check for type declarations and conversions in the generated C code
+        self.assertIn("int64_t x = 10;", c)                # x as int
+        self.assertIn("double y = 1.0;", c)                 # y as float
+        self.assertIn("double z = 0.0;", c)                 # z as float
+        self.assertIn("const char * a = \"1\";", c)        # a as string
+        self.assertIn("const char * b = \"1.0\";", c)      # b as string
+        self.assertIn("double x_float = (double)(x);", c)  # x to float conversion
+        self.assertIn("double b_float = (strtod)(b, NULL);", c)  # b to float conversion
+        self.assertIn("int64_t y_int = (int64_t)(y);", c)  # y to int conversion
+        self.assertIn("int64_t a_int = (strtoll)(a, NULL, 10);", c)  # a to int conversion
+        self.assertIn("bool x_bool = (x != 0);", c)        # x to bool conversion
+        self.assertIn("bool y_bool = (y != 0.0);", c)      # y to bool conversion
+        self.assertIn("bool z_bool = (z != 0.0);", c)      # z to bool conversion
+
+
 if __name__ == "__main__":
     unittest.main()

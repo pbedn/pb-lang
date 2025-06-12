@@ -306,6 +306,12 @@ int main(void)
     double mm = 5.0;
     mm /= 2;
     pb_print_double(mm);
+    int64_t i = 10;
+    double f = (double)(i);
+    pb_print_double(f);
+    double f2 = 3.5;
+    int64_t i2 = (int64_t)(f2);
+    pb_print_int(i2);
     pb_print_str("=== Class Instantiation and Methods ===");
     struct Player __tmp_player_1;
     Player____init__(&__tmp_player_1, 110, 150);

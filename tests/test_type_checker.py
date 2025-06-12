@@ -2214,3 +2214,159 @@ class TestTypeCheckerProgramLevel(unittest.TestCase):
             ExprStmt(CallExpr(Identifier("print"), [Identifier("arr")]))
         ])
         TypeChecker().check(prog)
+
+    def test_int_to_float_conversion(self):
+        """
+        x: int = 10
+        x_float: float = float(x)
+        print(x_float)
+        """
+        prog = Program(body=[
+            VarDecl("x", "int", Literal("10")),
+            VarDecl("x_float", "float", CallExpr(Identifier("float"), [Identifier("x")])),
+            ExprStmt(CallExpr(Identifier("print"), [Identifier("x_float")]))
+        ])
+        checker = TypeChecker().check(prog)
+        self.assertEqual(checker.body[0].inferred_type, "int")
+        self.assertEqual(checker.body[1].inferred_type, "float")
+        self.assertEqual(checker.body[1].value.inferred_type, "float")
+
+    def test_float_to_int_conversion(self):
+        """
+        y: float = 1.5
+        y_int: int = int(y)
+        print(y_int)
+        """
+        prog = Program(body=[
+            VarDecl("y", "float", Literal("1.5")),
+            VarDecl("y_int", "int", CallExpr(Identifier("int"), [Identifier("y")])),
+            ExprStmt(CallExpr(Identifier("print"), [Identifier("y_int")]))
+        ])
+        checker = TypeChecker().check(prog)
+        self.assertEqual(checker.body[0].inferred_type, "float")
+        self.assertEqual(checker.body[1].inferred_type, "int")
+        self.assertEqual(checker.body[1].value.inferred_type, "int")
+
+    def test_string_to_int_conversion(self):
+        """
+        a: str = "123"
+        a_int: int = int(a)
+        print(a_int)
+        """
+        prog = Program(body=[
+            VarDecl("a", "str", StringLiteral("123")),
+            VarDecl("a_int", "int", CallExpr(Identifier("int"), [Identifier("a")])),
+            ExprStmt(CallExpr(Identifier("print"), [Identifier("a_int")]))
+        ])
+        checker = TypeChecker().check(prog)
+        self.assertEqual(checker.body[0].inferred_type, "str")
+        self.assertEqual(checker.body[1].inferred_type, "int")
+        self.assertEqual(checker.body[1].value.inferred_type, "int")
+
+    def test_string_to_float_conversion(self):
+        """
+        b: str = "1.23"
+        b_float: float = float(b)
+        print(b_float)
+        """
+        prog = Program(body=[
+            VarDecl("b", "str", StringLiteral("1.23")),
+            VarDecl("b_float", "float", CallExpr(Identifier("float"), [Identifier("b")])),
+            ExprStmt(CallExpr(Identifier("print"), [Identifier("b_float")]))
+        ])
+        checker = TypeChecker().check(prog)
+        self.assertEqual(checker.body[0].inferred_type, "str")
+        self.assertEqual(checker.body[1].inferred_type, "float")
+        self.assertEqual(checker.body[1].value.inferred_type, "float")
+
+    def test_int_to_bool_conversion(self):
+        """
+        x: int = 0
+        x_bool: bool = bool(x)
+        print(x_bool)
+        """
+        prog = Program(body=[
+            VarDecl("x", "int", Literal("0")),
+            VarDecl("x_bool", "bool", CallExpr(Identifier("bool"), [Identifier("x")])),
+            ExprStmt(CallExpr(Identifier("print"), [Identifier("x_bool")]))
+        ])
+        checker = TypeChecker().check(prog)
+        self.assertEqual(checker.body[0].inferred_type, "int")
+        self.assertEqual(checker.body[1].inferred_type, "bool")
+        self.assertEqual(checker.body[1].value.inferred_type, "bool")
+
+    def test_float_to_bool_conversion(self):
+        """
+        y: float = 0.0
+        y_bool: bool = bool(y)
+        print(y_bool)
+        """
+        prog = Program(body=[
+            VarDecl("y", "float", Literal("0.0")),
+            VarDecl("y_bool", "bool", CallExpr(Identifier("bool"), [Identifier("y")])),
+            ExprStmt(CallExpr(Identifier("print"), [Identifier("y_bool")]))
+        ])
+        checker = TypeChecker().check(prog)
+        self.assertEqual(checker.body[0].inferred_type, "float")
+        self.assertEqual(checker.body[1].inferred_type, "bool")
+        self.assertEqual(checker.body[1].value.inferred_type, "bool")
+
+    def test_list_int_conversion(self):
+        """
+        arr: list[int] = [1, 2, 3]
+        arr[0] = int(4.5)
+        print(arr)
+        """
+        prog = Program(body=[
+            VarDecl("arr", "list[int]", ListExpr(elements=[Literal("1"), Literal("2"), Literal("3")])),
+            AssignStmt(target=IndexExpr(Identifier("arr"), Literal("0")), value=CallExpr(Identifier("int"), [Literal("4.5")])),
+            ExprStmt(CallExpr(Identifier("print"), [Identifier("arr")]))
+        ])
+        checker = TypeChecker().check(prog)
+        self.assertEqual(checker.body[0].inferred_type, "list[int]")
+        self.assertEqual(checker.body[1].inferred_type, "list[int]")
+
+    def test_list_str_conversion(self):
+        """
+        arr: list[str] = ["1", "2", "3"]
+        arr[0] = str(4)
+        print(arr)
+        """
+        prog = Program(body=[
+            VarDecl("arr", "list[str]", ListExpr(elements=[StringLiteral("1"), StringLiteral("2"), StringLiteral("3")])),
+            AssignStmt(target=IndexExpr(Identifier("arr"), Literal("0")), value=CallExpr(Identifier("str"), [Literal("4")])),
+            ExprStmt(CallExpr(Identifier("print"), [Identifier("arr")]))
+        ])
+        checker = TypeChecker().check(prog)
+        self.assertEqual(checker.body[0].inferred_type, "list[str]")
+        self.assertEqual(checker.body[1].inferred_type, "list[str]")
+
+    def test_list_float_conversion(self):
+        """
+        arr: list[float] = [1.1, 2.2, 3.3]
+        arr[0] = float(4)
+        print(arr)
+        """
+        prog = Program(body=[
+            VarDecl("arr", "list[float]", ListExpr(elements=[Literal("1.1"), Literal("2.2"), Literal("3.3")])),
+            AssignStmt(target=IndexExpr(Identifier("arr"), Literal("0")), value=CallExpr(Identifier("float"), [Literal("4")])),
+            ExprStmt(CallExpr(Identifier("print"), [Identifier("arr")]))
+        ])
+        checker = TypeChecker().check(prog)
+        self.assertEqual(checker.body[0].inferred_type, "list[float]")
+        self.assertEqual(checker.body[1].inferred_type, "list[float]")
+
+    def test_list_bool_conversion(self):
+        """
+        arr: list[bool] = [True, False]
+        arr[0] = bool(1)
+        print(arr)
+        """
+        prog = Program(body=[
+            VarDecl("arr", "list[bool]", ListExpr(elements=[Literal("True"), Literal("False")])),
+            AssignStmt(target=IndexExpr(Identifier("arr"), Literal("0")), value=CallExpr(Identifier("bool"), [Literal("1")])),
+            ExprStmt(CallExpr(Identifier("print"), [Identifier("arr")]))
+        ])
+        checker = TypeChecker().check(prog)
+        self.assertEqual(checker.body[0].inferred_type, "list[bool]")
+        self.assertEqual(checker.body[1].inferred_type, "list[bool]")

@@ -263,13 +263,13 @@ def main() -> int:
 
     # NOT SUPPORTED YET
     # print("=== Explicit Type Conversion ===")
-    # i: int = 10
-    # f: float = float(i)
-    # print(f)
+    i: int = 10
+    f: float = float(i)
+    print(f)
 
-    # f2: float = 3.5
-    # i2: int = int(f2)
-    # print(i2)
+    f2: float = 3.5
+    i2: int = int(f2)
+    print(i2)
 
     # === Class instantiation and method calls ===
     print("=== Class Instantiation and Methods ===")
