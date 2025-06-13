@@ -261,8 +261,7 @@ def main() -> int:
     mm /= 2
     print(mm)
 
-    # NOT SUPPORTED YET
-    # print("=== Explicit Type Conversion ===")
+    print("=== Explicit Type Conversion ===")
     i: int = 10
     f: float = float(i)
     print(f)
