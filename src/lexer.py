@@ -67,26 +67,48 @@ class Token(NamedTuple):
 # ───────────────────────── misc helpers ─────────────────────────
 class LexerError(Exception):
     def __init__(self, message, line, column):
-        super().__init__(f"LexerError at line {line}, column {column}: {message}")
+        super().__init__(f"Lexer error at line {line}, column {column}: {message}")
 
 
-# recognise {simple_identifier} inside f-strings
-FVAR = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
+FVAR = re.compile(
+    r"""
+    \{                      # opening brace
+        (                   #  group 1: the whole expression
+            [A-Za-z_]\w*        # identifier
+            (?:\.[A-Za-z_]\w*)* # optional .attr .attr …
+            (?:\(\))?           # optional empty parentheses
+        )
+    \}                      # closing brace
+    """,
+    re.VERBOSE,
+)
 
 def _extract_fvars(inner: str) -> List[str]:
+    # Return the contents of each {…}, e.g. ["foo", "bar.baz()"]
     return FVAR.findall(inner)
 
-def _validate_simple_fstring(inner: str) -> None:
-    """
-    Allows only `{identifier}` placeholders.
-    Raises LexerError if anything more complex appears.
-    """
-    for match in re.finditer(r"\{([^}]*)\}", inner):
-        content = match.group(1)
-        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", content):
-            raise ValueError
+_FSTRING_CONTENT = re.compile(
+    r"""
+    ^                       # start of string
+    [A-Za-z_]\w*            # identifier
+    (?:\.[A-Za-z_]\w*)*     # optional .attr .attr …
+    (?:\(\))?               # optional ()
+    $                       # end of string
+    """,
+    re.VERBOSE,
+)
 
+def _validate_fstring(inner: str) -> None:
+    """
+    Ensure that every {...} inside an f-string conforms to the very
+    restricted grammar described above.  Anything else raises ValueError.
+    """
+    for m in re.finditer(r"\{([^}]*)\}", inner):
+        content = m.group(1)
+        if not _FSTRING_CONTENT.fullmatch(content):
+            raise ValueError(f"invalid f-string expression: {{{content}}}")
 
+# ───────────────────────── keywords ──────────────────────────
 KEYWORDS = {
     "def": TokenType.DEF,
     "class": TokenType.CLASS,
@@ -270,9 +292,9 @@ class Lexer:
                 elif ttype == TokenType.FSTRING_LIT:
                     inner = value[2:-1]            # strip leading f"  …  "
                     try:
-                        _validate_simple_fstring(inner)
-                    except ValueError:
-                        raise LexerError("Only simple {identifier} allowed in f-strings", self.line_num, pos + 1)
+                        _validate_fstring(inner)
+                    except ValueError as exc:
+                        raise LexerError(exc, self.line_num, pos + 1)
                     decoded = bytes(inner, "utf-8").decode("unicode_escape")
                     value   = (decoded, _extract_fvars(inner))  # tuple: (raw_text, [vars])
 

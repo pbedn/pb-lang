@@ -292,6 +292,29 @@ class TestLexer(unittest.TestCase):
         self.assertEqual(raw,  "hello {name}")
         self.assertEqual(vars_, ["name"])
 
+    def test_f_string_literal_attr_method_call(self):
+        # Test with a class attribute
+        code_method = 'b = f"Attribute: {obj.attribute}"\n'
+        tokens_method = Lexer(code_method).tokenize()
+
+        fstr_method = [t for t in tokens_method if t.type.name == "FSTRING_LIT"]
+        self.assertEqual(len(fstr_method), 1)
+
+        raw_method, vars_method = fstr_method[0].value
+        self.assertEqual(raw_method, "Attribute: {obj.attribute}")
+        self.assertEqual(vars_method, ["obj.attribute"])
+
+        # Test with a method call
+        code_function = 'c = f"Method: {obj.method()}"\n'
+        tokens_function = Lexer(code_function).tokenize()
+
+        fstr_function = [t for t in tokens_function if t.type.name == "FSTRING_LIT"]
+        self.assertEqual(len(fstr_function), 1)
+
+        raw_function, vars_function = fstr_function[0].value
+        self.assertEqual(raw_function, "Method: {obj.method()}")
+        self.assertEqual(vars_function, ["obj.method()"])
+
     def test_hash_inside_string(self):
         code = 's = "#notcomment"\n'
         tokens = Lexer(code).tokenize()
