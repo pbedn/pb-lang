@@ -93,7 +93,10 @@ CallExpr         ::= Identifier "(" [ ArgList ] ")" ;
 ArgList          ::= Expression { "," Expression } ;
 
 (* Parameters’ types *)
-Type             ::= "int" | "float" | "bool" | "str" ;
+Type             ::= BaseType | GenericType ;
+BaseType         ::= "int" | "float" | "bool" | "str" | Identifier ;
+GenericType      ::= Identifier "[" TypeList "]" ;
+TypeList         ::= Type { "," Type } ;
 
 (* Terminals *)
 
@@ -110,7 +113,9 @@ String           ::= ?
   | '\'' ( '\\' . | [^'\\] )* '\'' )
 ? ;
 
-FString          ::= ? 'f' String ? ;
+FString          ::= FSTRING_START { FStringPart } FSTRING_END ;
+FStringPart      ::= FSTRING_MIDDLE | FStringExpr ;
+FStringExpr      ::= LBRACE Expression RBRACE ;
 
 Bool             ::= "True" | "False" ;
 

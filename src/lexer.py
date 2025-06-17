@@ -33,7 +33,8 @@ class TokenType(Enum):
 
     # Literals & Identifiers
     IDENTIFIER = auto(); INT_LIT = auto(); FLOAT_LIT = auto()
-    STRING_LIT = auto(); FSTRING_LIT = auto()
+    STRING_LIT = auto();
+    FSTRING_START = auto(); FSTRING_MIDDLE = auto(); FSTRING_END   = auto()
 
 
 # ───────────────────────── token object ─────────────────────────
@@ -68,45 +69,6 @@ class Token(NamedTuple):
 class LexerError(Exception):
     def __init__(self, message, line, column):
         super().__init__(f"Lexer error at line {line}, column {column}: {message}")
-
-
-FVAR = re.compile(
-    r"""
-    \{                      # opening brace
-        (                   #  group 1: the whole expression
-            [A-Za-z_]\w*        # identifier
-            (?:\.[A-Za-z_]\w*)* # optional .attr .attr …
-            (?:\(\))?           # optional empty parentheses
-        )
-    \}                      # closing brace
-    """,
-    re.VERBOSE,
-)
-
-def _extract_fvars(inner: str) -> List[str]:
-    # Return the contents of each {…}, e.g. ["foo", "bar.baz()"]
-    return FVAR.findall(inner)
-
-_FSTRING_CONTENT = re.compile(
-    r"""
-    ^                       # start of string
-    [A-Za-z_]\w*            # identifier
-    (?:\.[A-Za-z_]\w*)*     # optional .attr .attr …
-    (?:\(\))?               # optional ()
-    $                       # end of string
-    """,
-    re.VERBOSE,
-)
-
-def _validate_fstring(inner: str) -> None:
-    """
-    Ensure that every {...} inside an f-string conforms to the very
-    restricted grammar described above.  Anything else raises ValueError.
-    """
-    for m in re.finditer(r"\{([^}]*)\}", inner):
-        content = m.group(1)
-        if not _FSTRING_CONTENT.fullmatch(content):
-            raise ValueError(f"invalid f-string expression: {{{content}}}")
 
 # ───────────────────────── keywords ──────────────────────────
 KEYWORDS = {
@@ -173,10 +135,6 @@ TOKEN_REGEX = [
     (re.compile(r'<'), TokenType.LT),
     (re.compile(r'>'), TokenType.GT),
     (re.compile(r'\.'), TokenType.DOT),
-
-    # f-strings
-    (re.compile(r'f"(?:\\.|[^"\\])*"'), TokenType.FSTRING_LIT),
-    (re.compile(r"f'(?:\\.|[^'\\])*'"), TokenType.FSTRING_LIT),
     
     # numeric literals (underscore allowed)
     (re.compile(r'\d[\d_]*\.\d[\d_]*[eE][+-]?\d[\d_]*'), TokenType.FLOAT_LIT),  # Fraction + Exponent; 12.34e5, 6.02_2e+23
@@ -265,8 +223,14 @@ class Lexer:
         # scan the rest of the line
         pos, length = indent_width, len(line)
         while pos < length:
-            if line[pos] in " \t":
+            ch = line[pos]
+
+            if ch in " \t":
                 pos += 1; continue
+
+            if (ch in 'fF') and pos + 1 < length and line[pos+1] in ('"', "'"):
+                    pos = self._scan_fstring(line, pos)
+                    continue
 
             for regex, ttype in TOKEN_REGEX:
                 m = regex.match(line, pos)
@@ -288,25 +252,52 @@ class Lexer:
                     inner = value[1:-1]
                     value = bytes(inner, "utf-8").decode("unicode_escape")
 
-                # f-strings – validate / decode & attach var list
-                elif ttype == TokenType.FSTRING_LIT:
-                    inner = value[2:-1]            # strip leading f"  …  "
-                    try:
-                        _validate_fstring(inner)
-                    except ValueError as exc:
-                        raise LexerError(exc, self.line_num, pos + 1)
-                    decoded = bytes(inner, "utf-8").decode("unicode_escape")
-                    value   = (decoded, _extract_fvars(inner))  # tuple: (raw_text, [vars])
-
                 # emit
                 self.tokens.append(Token(ttype, value, self.line_num, pos + 1))
                 pos = m.end()
                 break
             else:
-                bad = line[pos:pos + 10]
-                raise LexerError(f"Unknown token {bad!r}", self.line_num, pos + 1)
+                snippet = line[pos:pos + 10]
+                raise LexerError(f"Unknown token {snippet!r}", self.line_num, pos + 1)
 
         self.tokens.append(Token(TokenType.NEWLINE, "", self.line_num, len(line)))
+
+    def _tokenize_expr(self, expr: str, base_line: int, base_col: int) -> None:
+        """
+        Tokenize the expression string inside f-string braces as normal code.
+        base_line and base_col specify where this expression starts in the source for accurate token positions.
+        """
+        pos = 0
+        length = len(expr)
+
+        while pos < length:
+            ch = expr[pos]
+
+            if ch in ' \t\r\n':
+                pos += 1
+                continue
+
+            for regex, ttype in TOKEN_REGEX:
+                m = regex.match(expr, pos)
+                if not m:
+                    continue
+                text = m.group(0)
+                value = text
+                # promote keywords
+                if ttype == TokenType.IDENTIFIER and value in KEYWORDS:
+                    ttype = KEYWORDS[value]
+                elif ttype in (TokenType.INT_LIT, TokenType.FLOAT_LIT):
+                    value = value.replace("_", "")
+                elif ttype == TokenType.STRING_LIT:
+                    inner = value[1:-1]
+                    value = bytes(inner, "utf-8").decode("unicode_escape")
+
+                self.tokens.append(Token(ttype, value, base_line, base_col + pos + 1))
+                pos = m.end()
+                break
+            else:
+                snippet = expr[pos:pos + 10]
+                raise LexerError(f"Unknown token in f-string expression: {snippet!r}", base_line, base_col + pos + 1)
 
     # helpers -----------------------------------------------------
     def _emit_indentation(self, width: int):
@@ -320,6 +311,87 @@ class Lexer:
                 self.tokens.append(Token(TokenType.DEDENT, "", self.line_num, 1))
             if width != self.indents[-1]:
                 raise LexerError("Inconsistent indentation", self.line_num, 1)
+
+    def _scan_fstring(self, line: str, start_pos: int) -> int:
+        """Scan an f-string from the starting quote. Returns the position after closing quote."""
+        prefix = line[start_pos]           # 'f' or 'F'
+        quote_char = line[start_pos + 1]   # '"' or "'"
+        delim = prefix + quote_char
+        pos = start_pos + 2                # skip f and the quote
+        col = start_pos + 1
+
+        self._emit_token(TokenType.FSTRING_START, delim, col)
+
+        buf: list[str] = []
+        while pos < len(line):
+            ch = line[pos]
+
+            # handle escaped braces {{ or }}
+            if ch == '{' and self._peek(line, pos+1) == '{':
+                buf.append('{')
+                pos += 2; continue
+            if ch == '}' and self._peek(line, pos+1) == '}':
+                buf.append('}')
+                pos += 2; continue
+
+            # enter expression
+            if ch == '{':
+                if buf:
+                    self._emit_literal(buf, col)
+                expr_end, expr = self._extract_braced_expression(line, pos)
+                # Tokenize expr inside braces normally with _tokenize_expr
+                self._emit_token(TokenType.LBRACE, '{', pos + 1)  # emit opening brace as operator
+                self._tokenize_expr(expr, self.line_num, pos + 2)
+                self._emit_token(TokenType.RBRACE, '}', expr_end)  # emit closing brace as operator
+                pos = expr_end
+                col = pos + 1
+                continue
+
+            # closing quote?
+            if ch == quote_char:
+                if buf:
+                    self._emit_literal(buf, col)
+                self._emit_token(TokenType.FSTRING_END, quote_char, pos + 1)
+                return pos + 1
+
+            buf.append(ch)
+            pos += 1
+
+        raise self._syntax_error("Unterminated f-string", pos)
+
+
+    def _emit_literal(self, buf: list[str], col: int) -> None:
+        """Emit FSTRING_MIDDLE token from accumulated literal text."""
+        text = ''.join(buf)
+        self._emit_token(TokenType.FSTRING_MIDDLE, text, col)
+        buf.clear()
+
+    def _extract_braced_expression(self, line: str, start_pos: int) -> tuple[int, str]:
+        """Extract a balanced {expression}, return (end_pos, expr_text)."""
+        pos = start_pos + 1  # Skip initial '{'
+        depth = 1
+        expr_start = pos
+        while pos < len(line):
+            ch = line[pos]
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    return pos + 1, line[expr_start:pos]
+            pos += 1
+        raise self._syntax_error("Unterminated expression in f-string", start_pos + 1)
+
+    def _peek(self, line: str, pos: int) -> str:
+        """Return character at pos if in bounds, else empty string."""
+        return line[pos] if pos < len(line) else ''
+
+    def _emit_token(self, kind: TokenType, text: str, col: int) -> None:
+        self.tokens.append(Token(kind, text, self.line_num, col))
+
+    def _syntax_error(self, msg: str, col: int) -> SyntaxError:
+        return SyntaxError(f"{msg} at line {self.line_num}, column {col}")
+
 
 if __name__ == "__main__":
     import sys

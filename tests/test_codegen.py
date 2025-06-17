@@ -172,25 +172,37 @@ class TestCodeGen(unittest.TestCase):
                     VarDecl("value", "int", Literal("42")),
                     VarDecl("name", "str", StringLiteral("Alice")),
                     ExprStmt(CallExpr(Identifier("print"), [
-                        FStringLiteral(raw="Value is {value}", vars=["value"])
+                        FStringLiteral(parts=[
+                            FStringText("Value is "),
+                            FStringExpr(expr=Identifier("value"))
+                        ])
                     ])),
                     ExprStmt(CallExpr(Identifier("print"), [
-                        FStringLiteral(raw="Hello, {name}!", vars=["name"])
+                        FStringLiteral(parts=[
+                            FStringText("Hello, "),
+                            FStringExpr(expr=Identifier("name")),
+                            FStringText("!")
+                        ])
                     ])),
                     ReturnStmt(Literal("0"))
                 ],
                 globals_declared=None
             )
         ])
+
         output = codegen_output(prog)
-        assert_contains_all(self, output, [
-            'int main(void)',
-            'int64_t value = 42;',
-            'const char * name = "Alice";',
-            'pb_print_str((snprintf(__fbuf, 256, "Value is %lld", value), __fbuf));',
-            'pb_print_str((snprintf(__fbuf, 256, "Hello, %s!", name), __fbuf));',
-            "return 0;"
-        ])
+
+        # Expected generated code contains:
+        # int64_t value = 42;
+        # const char * name = "Alice";
+        # pb_print_str((snprintf(__fbuf, 256, "Value is %lld", value), __fbuf));
+        # pb_print_str((snprintf(__fbuf, 256, "Hello, %s!", name), __fbuf));
+        self.assertIn('int main(void)', output)
+        self.assertIn('int64_t value = 42;', output)
+        self.assertIn('const char * name = "Alice";', output)
+        self.assertIn('pb_print_str((snprintf(__fbuf, 256, "Value is %lld", value), __fbuf));', output)
+        self.assertIn('pb_print_str((snprintf(__fbuf, 256, "Hello, %s!", name), __fbuf));', output)
+        self.assertIn('return 0;', output)
 
     def test_if_else_chain(self):
         prog = Program(body=[

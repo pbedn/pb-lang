@@ -33,6 +33,8 @@ from lang_ast import (
     Literal,
     StringLiteral,
     FStringLiteral,
+    FStringText,
+    FStringExpr,
     BinOp,
     UnaryOp,
     CallExpr,
@@ -132,10 +134,28 @@ class TestParseExpressions(ParserTestCase):
         parser = self.parse_tokens("f'hello {x}'")
         lit = parser.parse_literal()
 
-        # Expected: FStringLiteral(raw='hello {x}', vars=['x'])
+        # Expected:
+        # FStringLiteral(
+        #     parts=[
+        #         FStringText(text="hello "),
+        #         FStringExpr(
+        #             expr=Identifier(name="x"),
+        #             conversion=None,
+        #             format_spec=None
+        #         )
+        #     ]
+        # )
         self.assertIsInstance(lit, FStringLiteral)
-        self.assertEqual(lit.raw, "hello {x}")
-        self.assertEqual(lit.vars, ["x"])
+        self.assertEqual(len(lit.parts), 2)
+
+        self.assertIsInstance(lit.parts[0], FStringText)
+        self.assertEqual(lit.parts[0].text, "hello ")
+
+        self.assertIsInstance(lit.parts[1], FStringExpr)
+        self.assertIsInstance(lit.parts[1].expr, Identifier)
+        self.assertEqual(lit.parts[1].expr.name, "x")
+        self.assertIsNone(lit.parts[1].format_spec)
+
 
     def test_parse_literal_constants(self):
         parser = self.parse_tokens("None\nTrue\nFalse")
@@ -1057,8 +1077,26 @@ class TestParserEdgeCases(unittest.TestCase):
 
     def test_fstring_vars_list(self):
         lit = Parser(self.lex('f"{a}{b}{c}"\n')).parse_literal()
+
+        # Expected:
+        # FStringLiteral(
+        #     parts=[
+        #         FStringExpr(expr=Identifier(name="a")),
+        #         FStringExpr(expr=Identifier(name="b")),
+        #         FStringExpr(expr=Identifier(name="c"))
+        #     ]
+        # )
+
         self.assertIsInstance(lit, FStringLiteral)
-        self.assertEqual(lit.vars, ["a", "b", "c"])
+
+        # Extract variable names from expressions
+        names = []
+        for part in lit.parts:
+            self.assertIsInstance(part, FStringExpr)
+            self.assertIsInstance(part.expr, Identifier)
+            names.append(part.expr.name)
+
+        self.assertEqual(names, ["a", "b", "c"])
 
     def test_break_error(self):
         with self.assertRaises(ParserError):

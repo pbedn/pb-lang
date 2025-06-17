@@ -635,6 +635,44 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn("bool y_bool = (y != 0.0);", c)      # y to bool conversion
         self.assertIn("bool z_bool = (z != 0.0);", c)      # z to bool conversion
 
+    def test_fstring_expression_codegen(self):
+        code = (
+            "class Player:\n"
+            "    species: str = \"Human\"\n"
+            "\n"
+            "    def __init__(self, hp: int):\n"
+            "        self.hp = hp\n"
+            "        self.name = \"Hero\"\n"
+            "\n"
+            "    def get_name(self) -> str:\n"
+            "        return self.name\n"
+            "\n"
+            "def main() -> int:\n"
+            "    x: int = 5\n"
+            "    print(f\"Simple fstring: x={x}\")\n"
+            "    print(f\"x + 1: {x + 1}\")\n"
+            "    print(f\"Float conversion: {float(2)}\")\n"
+            "    print(\"--------------------------------\")\n"
+            "\n"
+            "    p: Player = Player(100)\n"
+            "    print(f\"player.hp: {p.hp}\")\n"
+            "    print(f\"player get_name: {p.get_name()}\")\n"
+            "    print(f\"Player.species: {Player.species}\")\n"
+            "    return 0\n"
+        )
+        c = self.compile_pipeline(code)
+
+        # f-string expansions
+        self.assertIn('pb_print_str((snprintf(__fbuf, 256, "Simple fstring: x=%lld", x), __fbuf));', c)
+        self.assertIn('pb_print_str((snprintf(__fbuf, 256, "x + 1: %lld", (x + 1)), __fbuf));', c)
+        self.assertIn('pb_print_str((snprintf(__fbuf, 256, "Float conversion: %f", (double)(2)), __fbuf));', c)
+        self.assertIn('pb_print_str("-----', c)
+
+        # player expressions
+        self.assertIn('pb_print_str((snprintf(__fbuf, 256, "player.hp: %lld", p->hp), __fbuf));', c)
+        self.assertIn('pb_print_str((snprintf(__fbuf, 256, "player get_name: %s", Player__get_name(p)), __fbuf));', c)
+        self.assertIn('pb_print_str((snprintf(__fbuf, 256, "Player.species: %s", Player_species), __fbuf));', c)
+
 
 if __name__ == "__main__":
     unittest.main()

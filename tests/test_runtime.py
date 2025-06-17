@@ -198,6 +198,43 @@ class TestPipelineRuntime(unittest.TestCase):
         self.assertEqual(lines[5], "y: 1.000000, y_bool: True")    # y to bool
         self.assertEqual(lines[6], "z: 0.000000, z_bool: False")    # z to bool
 
+    def test_fstring_expression_variants(self):
+        code = (
+            "class Player:\n"
+            "    species: str = \"Human\"\n"
+            "\n"
+            "    def __init__(self, hp: int):\n"
+            "        self.hp = hp\n"
+            "        self.name = \"Hero\"\n"
+            "\n"
+            "    def get_name(self) -> str:\n"
+            "        return self.name\n"
+            "\n"
+            "def main() -> int:\n"
+            "    x: int = 5\n"
+            "    print(f\"Simple fstring: x={x}\")\n"
+            "    print(f\"x + 1: {x + 1}\")\n"
+            "    print(f\"Float conversion: {float(2)}\")\n"
+            "    print(\"--------------------------------\")\n"
+            "\n"
+            "    p: Player = Player(100)\n"
+            "    print(f\"player.hp: {p.hp}\")\n"
+            "    print(f\"player get_name: {p.get_name()}\")\n"
+            "    print(f\"Player.species: {Player.species}\")\n"
+            "    return 0\n"
+        )
+        output = self.compile_and_run(code)
+        lines = output.strip().splitlines()
+
+        # Assertions for correctness of f-string interpolation
+        self.assertEqual(lines[0], "Simple fstring: x=5")
+        self.assertEqual(lines[1], "x + 1: 6")
+        self.assertEqual(lines[2], "Float conversion: 2.000000")
+        self.assertEqual(lines[3], "--------------------------------")
+        self.assertEqual(lines[4], "player.hp: 100")
+        self.assertEqual(lines[5], "player get_name: Hero")
+        self.assertEqual(lines[6], "Player.species: Human")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -86,6 +86,8 @@ from lang_ast import (
     Literal,
     StringLiteral,
     FStringLiteral,
+    FStringText,
+    FStringExpr,
     Identifier,
     BinOp,
     UnaryOp,
@@ -296,6 +298,9 @@ class TypeChecker:
             return "str"
 
         elif isinstance(expr, FStringLiteral):
+            for part in expr.parts:
+                if isinstance(part, FStringExpr):
+                    self.check_expr(part.expr)
             expr.inferred_type = "str"
             return "str"
 

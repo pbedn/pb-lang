@@ -284,36 +284,23 @@ class TestLexer(unittest.TestCase):
     def test_f_string_literal(self):
         code = 'a = f"hello {name}"\n'
         tokens = Lexer(code).tokenize()
+        types = [t.type.name for t in tokens]
 
-        fstr = [t for t in tokens if t.type.name == "FSTRING_LIT"]
-        self.assertEqual(len(fstr), 1)
+        self.assertIn("FSTRING_START", types)
+        self.assertIn("FSTRING_MIDDLE", types)
+        self.assertIn("FSTRING_END", types)
+        self.assertIn("IDENTIFIER", types)
 
-        raw, vars_ = fstr[0].value      # token.value is now a tuple
-        self.assertEqual(raw,  "hello {name}")
-        self.assertEqual(vars_, ["name"])
+        name_tokens = [t for t in tokens if t.type.name == "IDENTIFIER" and t.value == "name"]
+        self.assertEqual(len(name_tokens), 1)
 
-    def test_f_string_literal_attr_method_call(self):
-        # Test with a class attribute
-        code_method = 'b = f"Attribute: {obj.attribute}"\n'
-        tokens_method = Lexer(code_method).tokenize()
-
-        fstr_method = [t for t in tokens_method if t.type.name == "FSTRING_LIT"]
-        self.assertEqual(len(fstr_method), 1)
-
-        raw_method, vars_method = fstr_method[0].value
-        self.assertEqual(raw_method, "Attribute: {obj.attribute}")
-        self.assertEqual(vars_method, ["obj.attribute"])
-
-        # Test with a method call
-        code_function = 'c = f"Method: {obj.method()}"\n'
-        tokens_function = Lexer(code_function).tokenize()
-
-        fstr_function = [t for t in tokens_function if t.type.name == "FSTRING_LIT"]
-        self.assertEqual(len(fstr_function), 1)
-
-        raw_function, vars_function = fstr_function[0].value
-        self.assertEqual(raw_function, "Method: {obj.method()}")
-        self.assertEqual(vars_function, ["obj.method()"])
+        parts = [(t.type.name, t.value) for t in tokens if t.type.name.startswith("FSTRING")]
+        expected = [
+            ("FSTRING_START", 'f"'),
+            ("FSTRING_MIDDLE", 'hello '),
+            ("FSTRING_END", '"'),
+        ]
+        self.assertEqual(parts, expected)
 
     def test_hash_inside_string(self):
         code = 's = "#notcomment"\n'
@@ -362,16 +349,16 @@ class TestLexerEdgeCases(unittest.TestCase):
             self.lex('"oops\n')
 
     # f-strings --------------------------------------------------------
-    def test_invalid_fstring_placeholders(self):
-        bad_sources = [
-            'f"{x + 1}"\n',   # expression
-            'f"{123}"\n',     # numeric
-            'f"{x!r}"\n',     # conversion flag
-        ]
-        for src in bad_sources:
-            with self.subTest(src=src):
-                with self.assertRaises(LexerError):
-                    self.lex(src)
+    # def test_invalid_fstring_placeholders(self):
+    #     bad_sources = [
+    #         'f"{x + 1}"\n',   # expression
+    #         'f"{123}"\n',     # numeric
+    #         'f"{x!r}"\n',     # conversion flag
+    #     ]
+    #     for src in bad_sources:
+    #         with self.subTest(src=src):
+    #             with self.assertRaises(LexerError):
+    #                 self.lex(src)
 
     # numeric literals -------------------------------------------------
     def test_numeric_underscores(self):
@@ -395,6 +382,124 @@ class TestLexerEdgeCases(unittest.TestCase):
             kinds,
             ["IDENTIFIER", "IS", "NOT", "IDENTIFIER"],
         )
+
+class TestFStringLexing(unittest.TestCase):
+
+    def assertTokenSequence(self, tokens, expected):
+        actual = [(t.type.name, t.value) for t in tokens if t.type.name in {e[0] for e in expected}]
+        for expected_type, expected_val in expected:
+            self.assertIn((expected_type, expected_val), actual)
+
+    def test_basic_f_string(self):
+        code = 'a = f"Hello {name}"\n'
+        tokens = Lexer(code).tokenize()
+        types = [t.type.name for t in tokens]
+
+        self.assertIn("FSTRING_START", types)
+        self.assertIn("FSTRING_MIDDLE", types)
+        self.assertIn("FSTRING_END", types)
+        self.assertIn("IDENTIFIER", types)
+
+        self.assertTokenSequence(tokens, [
+            ("FSTRING_START", 'f"'),
+            ("FSTRING_MIDDLE", "Hello "),
+            ("IDENTIFIER", "name"),
+            ("FSTRING_END", '"')
+        ])
+
+    def test_f_string_with_attribute(self):
+        code = 'b = f"{user.name}"\n'
+        tokens = Lexer(code).tokenize()
+
+        self.assertTokenSequence(tokens, [
+            ("FSTRING_START", 'f"'),
+            ("IDENTIFIER", "user"),
+            ("DOT", "."),
+            ("IDENTIFIER", "name"),
+            ("FSTRING_END", '"')
+        ])
+
+    def test_f_string_with_method_call(self):
+        code = 'f = f"{obj.method()}"\n'
+        tokens = Lexer(code).tokenize()
+
+        self.assertTokenSequence(tokens, [
+            ("FSTRING_START", 'f"'),
+            ("IDENTIFIER", "obj"),
+            ("DOT", "."),
+            ("IDENTIFIER", "method"),
+            ("LPAREN", "("),
+            ("RPAREN", ")"),
+            ("FSTRING_END", '"')
+        ])
+
+    # NOT SUPPORTED YET
+    # def test_f_string_with_conversion(self):
+    #     code = 'g = f"{value!r}"\n'
+    #     tokens = Lexer(code).tokenize()
+
+    #     self.assertTokenSequence(tokens, [
+    #         ("FSTRING_START", 'f"'),
+    #         ("IDENTIFIER", "value"),
+    #         ("EXCLAMATION", "!"),
+    #         ("IDENTIFIER", "r"),
+    #         ("FSTRING_END", '"')
+    #     ])
+
+    # def test_f_string_with_format_spec(self):
+    #     code = 'h = f"{price:.2f}"\n'
+    #     tokens = Lexer(code).tokenize()
+
+    #     self.assertTokenSequence(tokens, [
+    #         ("FSTRING_START", 'f"'),
+    #         ("IDENTIFIER", "price"),
+    #         ("COLON", ":"),
+    #         ("FLOAT_LIT", ".2f"),
+    #         ("FSTRING_END", '"')
+    #     ])
+
+    # def test_f_string_with_conversion_and_format_spec(self):
+    #     code = 'i = f"{value!s:.2f}"\n'
+    #     tokens = Lexer(code).tokenize()
+
+    #     self.assertTokenSequence(tokens, [
+    #         ("FSTRING_START", 'f"'),
+    #         ("IDENTIFIER", "value"),
+    #         ("EXCLAMATION", "!"),
+    #         ("IDENTIFIER", "s"),
+    #         ("COLON", ":"),
+    #         ("FLOAT_LIT", ".2f"),
+    #         ("FSTRING_END", '"')
+    #     ])
+
+    def test_f_string_with_escaped_braces(self):
+        code = 'j = f"{{escaped}} {var}}}"\n'
+        tokens = Lexer(code).tokenize()
+
+        # Should produce a middle literal with '{escaped}'
+        self.assertTokenSequence(tokens, [
+            ("FSTRING_START", 'f"'),
+            ("FSTRING_MIDDLE", "{escaped} "),
+            ("IDENTIFIER", "var"),
+            ("FSTRING_END", '"')
+        ])
+
+    def test_f_string_with_multiple_expressions(self):
+        code = 'k = f"{a} + {b} = {a + b}"\n'
+        tokens = Lexer(code).tokenize()
+
+        self.assertIn("PLUS", [t.type.name for t in tokens])
+        self.assertTokenSequence(tokens, [
+            ("FSTRING_START", 'f"'),
+            ("IDENTIFIER", "a"),
+            ("FSTRING_MIDDLE", " + "),
+            ("IDENTIFIER", "b"),
+            ("FSTRING_MIDDLE", " = "),
+            ("IDENTIFIER", "a"),
+            ("PLUS", "+"),
+            ("IDENTIFIER", "b"),
+            ("FSTRING_END", '"')
+        ])
 
 if __name__ == "__main__":
     unittest.main()

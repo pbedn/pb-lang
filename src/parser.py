@@ -7,6 +7,8 @@ from lang_ast import (
     Stmt,
     StringLiteral,
     FStringLiteral,
+    FStringText,
+    FStringExpr,
     UnaryOp,
     Expr,
     BinOp,
@@ -145,11 +147,47 @@ class Parser:
         if tok.type == TokenType.STRING_LIT:
             self.advance()
             return StringLiteral(value=tok.value)
-        if tok.type == TokenType.FSTRING_LIT:
-            self.advance()
-            raw, vars_ = tok.value
-            return FStringLiteral(raw=raw, vars=vars_)
+        if tok.type == TokenType.FSTRING_START:
+            return self.parse_fstring_literal()
         raise ParserError(f"Expected literal, got {tok.type.name} at {tok.line},{tok.column}")
+
+    def parse_fstring_literal(self) -> FStringLiteral:
+        """Parse an f-string with parts like:
+        - f"static text"
+        - f"prefix {expr}"
+        - f"value: {score:.2f}"
+        Supports literal chunks and embedded expressions with optional format spec.
+        """
+        self.expect(TokenType.FSTRING_START)
+        parts: list[FStringText | FStringExpr] = []
+
+        while not self.check(TokenType.FSTRING_END):
+            if self.match(TokenType.FSTRING_MIDDLE):
+                tok = self.tokens[self.pos - 1]
+                parts.append(FStringText(text=tok.value))
+
+            elif self.match(TokenType.LBRACE):
+                expr = self.parse_expr()
+                fmt = None
+
+                if self.match(TokenType.COLON):
+                    if self.check(TokenType.STRING_LIT, TokenType.FLOAT_LIT):
+                        fmt_token = self.current()
+                        self.advance()
+                        fmt = fmt_token.value
+                    else:
+                        tok = self.current()
+                        raise ParserError(f"Expected format specifier after ':', got {tok.type.name} at {tok.line},{tok.column}")
+
+                self.expect(TokenType.RBRACE)
+                parts.append(FStringExpr(expr=expr, format_spec=fmt))
+
+            else:
+                tok = self.current()
+                raise ParserError(f"Unexpected token `{tok.type.name}` inside f-string at line {tok.line}, col {tok.column}")
+
+        self.expect(TokenType.FSTRING_END)
+        return FStringLiteral(parts=parts)
 
     def parse_unary(self) -> Expr:
         """Handle unary operators like: -x, not x
@@ -230,7 +268,7 @@ class Parser:
 
         if tok.type == TokenType.IDENTIFIER:
             return self.parse_identifier()
-        elif tok.type in (TokenType.INT_LIT, TokenType.FLOAT_LIT, TokenType.STRING_LIT, TokenType.FSTRING_LIT, TokenType.TRUE, TokenType.FALSE, TokenType.NONE):
+        elif tok.type in (TokenType.INT_LIT, TokenType.FLOAT_LIT, TokenType.STRING_LIT, TokenType.FSTRING_START, TokenType.TRUE, TokenType.FALSE, TokenType.NONE):
             return self.parse_literal()
         elif tok.type == TokenType.LPAREN:
             self.advance()

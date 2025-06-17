@@ -264,16 +264,16 @@ def main() -> int:
     print("=== Explicit Type Conversion ===")
     i: int = 10
     f: float = float(i)
-    print(f)
+    print(f"i: {i}, f: {f}")
 
     f2: float = 3.5
     i2: int = int(f2)
-    print(i2)
+    print(f"f2: {f2}, i2: {i2}")
 
     # === Class instantiation and method calls ===
     print("=== Class Instantiation and Methods ===")
     player: Player = Player(110)
-    print(player.hp)
+    print(f"player.hp: {player.hp}")
     print("Healing player by 50...")
     player.heal(50)
     print(player.hp)
@@ -287,28 +287,21 @@ def main() -> int:
     player1: Player = Player(1234)
     player2: Player = Player(5678)
     player1.score = 100
-    print("Player1 score:")
-    print(player1.score)
-    print("Player2 score (should be default):")
-    print(player2.score)
+    print(f"Player1 score: {player1.score}")
+    print(f"Player2 score (should be default): {player2.score}")
 
     # Access class attribute via class and instances
-    print("Player class species:")
-    print(Player.species)
+    print(f"Player class species: {Player.species}")
 
-    print("Species from player1 (via class attribute):")
-    print(player1.get_species_one())
+    print(f"Species from player1 (via class attribute): {player1.get_species_one()}")
 
     # Shadow class variable via instance
     player1.hp = 777
-    print("Player1.hp (instance attribute):")
-    print(player1.hp)
+    print(f"Player1.hp (instance attribute): {player1.hp}")
 
-    print("Player2.hp (instance attribute):")
-    print(player2.hp)
+    print(f"Player2.hp (instance attribute): {player2.hp}")
 
-    print("Player.hp (class attribute):")
-    print(Player.hp)
+    print(f"Player.hp (class attribute): {Player.hp}")
 
     # === Attribute access and assignment ===
     print("Directly setting player.hp to 999")
@@ -318,25 +311,24 @@ def main() -> int:
     # === Inheritance: Using Mage subclass ===
     print("=== Inheritance: Mage Subclass ===")
     mage: Mage = Mage(120)
-    print("Mage name:")
-    print(mage.get_name())  # inherited from Player
+    print(f"Mage name: {mage.get_name()}")  # inherited from Player
 
-    print("Mage HP:", mage.hp)
-    print("Mage MP:", mage.mp)
+    print(f"Mage HP: {mage.hp}")
+    print(f"Mage MP: {mage.mp}")
 
     print("Mage casts a spell costing 20 mana...")
     mage.cast_spell(20)
-    print("Remaining MP:", mage.mp)
+    print(f"Remaining MP: {mage.mp}")
 
     print("Mage takes damage and heals...")
     mage.hp -= 30
     mage.mp -= 10
-    print("HP after damage:", mage.hp)
-    print("MP after damage:", mage.mp)
+    print(f"HP after damage: {mage.hp}")
+    print(f"MP after damage: {mage.mp}")
 
     mage.heal(40)  # uses overridden heal
-    print("HP after healing:", mage.hp)
-    print("MP after healing:", mage.mp)
+    print(f"HP after healing: {mage.hp}")
+    print(f"MP after healing: {mage.mp}")
 
     # Return statement to indicate success
     return 0

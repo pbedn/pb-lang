@@ -184,9 +184,21 @@ class StringLiteral:
 
 @dataclass
 class FStringLiteral:
-    raw: str                     # text between the quotes (without the leading f)
-    vars: List[str] = field(default_factory=list)       # names found between {…} - filled by lexer
+    parts: List[Union[FStringText, FStringExpr]]
     inferred_type: Optional[str] = None
+
+
+@dataclass
+class FStringText:
+    text: str
+    inferred_type: Optional[str] = None
+
+
+@dataclass
+class FStringExpr:
+    expr: Expr
+    inferred_type: Optional[str] = None
+    format_spec: Optional[str] = None
 
 
 @dataclass
@@ -222,14 +234,15 @@ class AttributeExpr:
 class IndexExpr:
     base: Expr
     index: Expr
+    inferred_type: Optional[str] = None
     elem_type: Optional[str] = None     # For value type
 
 
 @dataclass
 class ListExpr:
     elements: List[Expr]
-    elem_type: Optional[str] = None     # For value type
-    inferred_type: Optional[str] = None
+    elem_type: Optional[TypeNode] = None
+    inferred_type: Optional[TypeNode] = None
 
 
 @dataclass
@@ -272,6 +285,8 @@ Expr = Union[
     Literal,
     StringLiteral,
     FStringLiteral,
+    FStringText,
+    FStringExpr,
     BinOp,
     UnaryOp,
     CallExpr,

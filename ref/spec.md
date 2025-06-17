@@ -40,7 +40,17 @@ raise, return, True, try, while
     - At least one digit before and after the dot; no leading-dot (`.5`) or trailing-dot (`5.`) forms are allowed.
 * String literals: single- or double-quoted, single-line only (e.g., `"Hello"`, `'world'`). Escape sequences (`\n`, `\\`, etc.) are decoded; invalid escapes raise a `LexerError` with the raw lexeme.
 * F-string literals: `f"..."` or `f'...'`, single-line only.
-    - FString `f"val {v}"` (*only* `{identifier}` placeholders)
+    - Placeholders use `{expr}` syntax where `expr` is a full expression (e.g., `x`, `a + b`, `obj.attr`, `call()`).
+    - Internally, an f-string is parsed into a sequence of static text and embedded expressions:
+      ```pb
+      f"Hello {name}, your score is {player.get_score()}"
+      ```
+      is compiled as:
+      ```c
+      snprintf(__fbuf, 256, "Hello %s, your score is %lld", name, Player__get_score(player));
+      ```
+    - No support for `!conversion` (`!r`, `!s`) or `:format_spec` yet.
+
 * Boolean literals: `True`, `False` (keywords)
 
 ### Comments
@@ -82,7 +92,7 @@ settings: dict[str, int] = {"volume": 10}
 ### Type Conversion
 
 * No implicit coercion.
-* Explicit conversion via built-ins: `int(x)`, `float(x)`, `str(x)`. (NOT SUPPORTED YET)
+* Explicit conversion via built-ins: `int(x)`, `float(x)`, `str(x)`.
 
 ---
 
@@ -175,12 +185,15 @@ settings["volume"]
 
 ### String Interpolation
 
-F-string syntax supports variables and attributes only:
+F-string syntax supports full expressions inside `{}`:
+- Literals: `f"pi ≈ {3.14}"`
+- Arithmetic: `f"Total: {price * qty}"`
+- Function calls: `f"Score: {get_score()}"`
+- Method calls: `f"HP: {self.hp}"`
+- Attribute access: `f"User: {player.name}"`
 
-```python
-f"HP: {self.hp}"
-f"Hello, {name}!"
-```
+Resulting C code uses `snprintf` for efficient formatting at compile-time.
+
 
 ### Expression Postfixes
 

@@ -7,7 +7,7 @@ from lang_ast import (
     IfStmt, WhileStmt, ForStmt, ReturnStmt, ExprStmt, GlobalStmt,
     TryExceptStmt, RaiseStmt, AssertStmt, BreakStmt, ContinueStmt,
     ImportStmt,
-    Expr, Identifier, Literal, StringLiteral, FStringLiteral,
+    Expr, Identifier, Literal, StringLiteral, FStringLiteral, FStringText, FStringExpr,
     BinOp, UnaryOp, CallExpr, AttributeExpr, IndexExpr,
     ListExpr, DictExpr,
     Parameter, FunctionDef, PassStmt,
@@ -613,21 +613,44 @@ class CodeGen:
         return f"\"{e.value}\""
 
     def _generate_FStringLiteral(self, e: FStringLiteral) -> str:
+        """
+        Generate C code for an f-string using snprintf and a shared buffer.
+        It builds a format string and argument list based on inferred types.
+        """
         buf = "__fbuf"
-        fmt = e.raw
-        specs = {"int": "%lld", "float": "%f", "str": "%s", "bool": "%s"}
-        
-        arg_list: list[str] = []
-        for var in e.vars:
-            pb_t = self._var_types.get(var, "int")
-            fmt = fmt.replace(f"{{{var}}}", specs.get(pb_t, "%s"))
-            if pb_t == "bool":
-                arg_list.append(f"(({var}) ? \"True\" : \"False\")")
-            else:
-                arg_list.append(var)
-        
-        joined = ", ".join(arg_list) or "0"           # keep GCC happy if empty
-        return f'(snprintf({buf}, 256, "{fmt}", {joined}), {buf})'
+        fmt_parts = []
+        args = []
+
+        specs = {
+            "int": "%lld",
+            "float": "%f",
+            "str": "%s",
+            "bool": "%s"
+        }
+
+        for part in e.parts:
+            if isinstance(part, FStringText):
+                escaped = part.text.replace("%", "%%").replace('"', '\\"')
+                fmt_parts.append(escaped)
+            elif isinstance(part, FStringExpr):
+                inner = self._expr(part.expr)
+                ty = self._get_expr_type(part.expr)
+
+                if ty == "bool":
+                    fmt_parts.append(specs["bool"])
+                    args.append(f"(({inner}) ? \"True\" : \"False\")")
+                elif ty in specs:
+                    fmt_parts.append(specs[ty])
+                    args.append(inner)
+                else:
+                    fmt_parts.append("<?>")
+                    args.append("/* unsupported */")
+
+        fmt = "".join(fmt_parts)
+        fmt_str = f'"{fmt}"'
+        arg_str = ", ".join(args) or "0"
+
+        return f'(snprintf({buf}, 256, {fmt_str}, {arg_str}), {buf})'
 
     def _generate_Identifier(self, e: Identifier) -> str:
         return e.name
@@ -729,23 +752,23 @@ class CodeGen:
                 return f"{fn_name}({args})"
             if fn_name == "int":
                 if e.args[0].inferred_type == "float":
-                    return f"(int64_t)({e.args[0].name})"
+                    return f"(int64_t)({self._expr(e.args[0])})"
                 elif e.args[0].inferred_type == "str":
-                    return f"(strtoll)({e.args[0].name}, NULL, 10)"
+                    return f"(strtoll)({self._expr(e.args[0])}, NULL, 10)"
                 else:
                     raise RuntimeError(f"`{fn_name}` conversion to `{e.args[0].inferred_type}` not supported yet!")
             if fn_name == "float":
                 if e.args[0].inferred_type == "int":
-                    return f"(double)({e.args[0].name})"
+                    return f"(double)({self._expr(e.args[0])})"
                 elif e.args[0].inferred_type == "str":
-                    return f"(strtod)({e.args[0].name}, NULL)"
+                    return f"(strtod)({self._expr(e.args[0])}, NULL)"
                 else:
                     raise RuntimeError(f"`{fn_name}` conversion to `{e.args[0].inferred_type}` not supported yet!")
             if fn_name == "bool":
                 if e.args[0].inferred_type == "int":
-                    return f"({e.args[0].name} != 0)"
+                    return f"({self._expr(e.args[0])} != 0)"
                 elif e.args[0].inferred_type == "float":
-                    return f"({e.args[0].name} != 0.0)"
+                    return f"({self._expr(e.args[0])} != 0.0)"
                 else:
                     raise RuntimeError(f"`{fn_name}` conversion to `{e.args[0].inferred_type}` not supported yet!")
 

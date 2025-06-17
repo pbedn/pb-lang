@@ -8,6 +8,8 @@ from lang_ast import (
     Literal,
     StringLiteral,
     FStringLiteral,
+    FStringText,
+    FStringExpr,
     Identifier,
     BinOp,
     UnaryOp,
@@ -689,9 +691,17 @@ class TestTypeCheckerInternals(unittest.TestCase):
         self.assertFalse(self.tc.is_subclass("Mage", "Wizard"))
 
     def test_check_expr_fstring_literal(self):
-        lit = FStringLiteral(raw="Value is {42}")
+        lit = FStringLiteral(parts=[
+            FStringText("Value is "),
+            FStringExpr(expr=Literal("42"))
+        ])
         typ = self.tc.check_expr(lit)
+
+        # Expected: inferred type is always "str"
         self.assertEqual(typ, "str")
+
+        # Additionally: ensure sub-expression is type-checked
+        self.assertEqual(lit.parts[1].expr.inferred_type, "int")
 
     def test_print_int(self):
         call = CallExpr(func=Identifier("print"), args=[Literal("42")])
