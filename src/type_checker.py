@@ -116,6 +116,41 @@ from lang_ast import (
     ExprStmt,
 )
 
+# ─── Type precedence for numeric promotions (higher wins) ───
+# Higher index means higher precision/priority.
+PROMOTION_ORDER = ["bool", "int", "float"]
+
+def is_numeric_type(pb_type: str) -> bool:
+    """Return True if the PB type is a numeric type allowed in arithmetic."""
+    return pb_type in PROMOTION_ORDER
+
+def promote_numeric_types(left: str, right: str) -> str:
+    """Determine result PB type of an arithmetic operation between left and right types."""
+    if not is_numeric_type(left) or not is_numeric_type(right):
+        raise TypeError(f"Cannot perform arithmetic on non-numeric types: {left}, {right}")
+
+    # Use the higher-ranked type in PROMOTION_ORDER
+    left_index = PROMOTION_ORDER.index(left)
+    right_index = PROMOTION_ORDER.index(right)
+    return PROMOTION_ORDER[max(left_index, right_index)]
+
+def is_assignable(from_type: str, to_type: str) -> bool:
+    """
+    Returns True if a value of from_type can be assigned to a variable of to_type.
+
+    Supports:
+    - Exact match
+    - Numeric widening (bool → int → float)
+    - Subclass compatibility (to be handled elsewhere if needed)
+    """
+    if from_type == to_type:
+        return True
+
+    if is_numeric_type(from_type) and is_numeric_type(to_type):
+        promoted = promote_numeric_types(from_type, to_type)
+        return promoted == to_type  # only allow widening, not narrowing
+
+    return False  # no coercion allowed for str → int, class A → B, etc. here
 
 class TypeError(Exception):
     """Raised when a type mismatch or type-related error occurs during type checking."""
@@ -245,6 +280,33 @@ class TypeChecker:
 
         decl.inferred_type = actual
 
+    def check_arg_compatibility(self, actual: str, expected: str, index: int, context: str):
+        """
+        Validate whether `actual` type can be passed to a parameter of type `expected`.
+        Raises TypeError if incompatible.
+
+        Parameters:
+        - actual: type of the expression (e.g., "int")
+        - expected: required type in the function signature
+        - index: argument position (1-based) for error reporting
+        - context: name of function, method, or constructor for error messages
+        """
+        if actual == expected:
+            return
+
+        if expected in self.known_classes and actual in self.known_classes:
+            if self.is_subclass(actual, expected):
+                return
+            raise TypeError(f"Argument {index} to '{context}' expected {expected}, got {actual}")
+
+        if is_numeric_type(actual) and is_numeric_type(expected):
+            if promote_numeric_types(actual, expected) == expected:
+                return
+            raise TypeError(f"Argument {index} to '{context}' expected {expected}, got {actual}")
+
+        raise TypeError(f"Argument {index} to '{context}' expected {expected}, got {actual}")
+
+
     def check_expr(self, expr: Expr, expected_type: Optional[str] = None) -> str:
         """
         Type-checks an expression node and returns its type as a string.
@@ -319,12 +381,11 @@ class TypeChecker:
 
             # Arithmetic
             if op in {"+", "-", "*", "/", "//", "%"}:
-                if left_type != right_type:
-                    raise TypeError(f"Type mismatch in {op}: {left_type} vs {right_type}")
-                if left_type not in {"int", "float"}:
-                    raise TypeError(f"Operator {op} not supported for type '{left_type}'")
-                expr.inferred_type = left_type
-                return left_type  # same as operands
+                if not is_numeric_type(left_type) or not is_numeric_type(right_type):
+                    raise TypeError(f"Operator {op} not supported for types: {left_type} and {right_type}")
+                result_type = promote_numeric_types(left_type, right_type)
+                expr.inferred_type = result_type
+                return result_type
 
             # Comparison
             elif op in {"==", "!=", "<", "<=", ">", ">=", "is", "is not"}:
@@ -390,12 +451,7 @@ class TypeChecker:
 
                     for i, (arg, expected) in enumerate(zip(expr.args, param_types)):
                         actual = self.check_expr(arg)
-                        if actual != expected:
-                            if expected in self.known_classes and actual in self.known_classes:
-                                if not self.is_subclass(actual, expected):
-                                    raise TypeError(f"Argument {i+1} to '{fname}' expected {expected}, got {actual}")
-                            else:
-                                raise TypeError(f"Argument {i+1} to '{fname}' expected {expected}, got {actual}")
+                        self.check_arg_compatibility(actual, expected, i + 1, fname)
 
                     expr.inferred_type = fname
                     return fname  # The constructed class becomes the expression's type
@@ -484,20 +540,7 @@ class TypeChecker:
                 # and your existing per-arg type loop (with subclass logic)
                 for i, (arg, expected) in enumerate(zip(expr.args, param_types)):
                     actual = self.check_expr(arg)
-                    if actual != expected:
-                        if expected in self.known_classes and actual in self.known_classes:
-                            if not self.is_subclass(actual, expected):
-                                raise TypeError(
-                                    f"Argument {i+1} to '{method_name}' expected {expected}, got {actual}"
-                                )
-                        else:
-                            raise TypeError(
-                                f"Argument {i+1} to '{method_name}' expected {expected}, got {actual}"
-                            )
-
-                expr.inferred_type = return_type
-                return return_type
-
+                    self.check_arg_compatibility(actual, expected, i + 1, method_name)
 
             else:
                 raise TypeError("Only direct or static method calls are supported")
@@ -794,8 +837,7 @@ class TypeChecker:
                 raise TypeError(f"Variable '{name}' not defined before assignment")
             expected_type = self.env[name]
             actual_type = self.check_expr(stmt.value)
-            if expected_type != actual_type:
-                raise TypeError(f"Type mismatch: cannot assign {actual_type} to {expected_type}")
+            self.check_arg_compatibility(actual_type, expected_type, 1, f"assignment to '{name}'")
             stmt.inferred_type = actual_type
             return
 
@@ -910,13 +952,12 @@ class TypeChecker:
         if stmt.op not in {"+=", "-=", "*=", "/=", "//=", "%="}:
             raise TypeError(f"Unsupported augmented operator '{stmt.op}'")
 
-        # Allow int → float promotion
-        if expected_type == actual_type:
-            return
-        elif expected_type == "float" and actual_type == "int":
-            return  # allow widening
-        raise TypeError(f"AugAssign type mismatch: expected {expected_type}, got {actual_type}")
+        if not is_numeric_type(expected_type) or not is_numeric_type(actual_type):
+            raise TypeError("...")
 
+        result_type = promote_numeric_types(expected_type, actual_type)
+        if result_type != expected_type:
+            raise TypeError(f"AugAssign type mismatch: expected {expected_type}, got {actual_type}")
 
     def check_if_stmt(self, stmt: IfStmt):
         """Type-check if / elif / else branches.

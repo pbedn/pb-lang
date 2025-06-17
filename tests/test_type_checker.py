@@ -100,8 +100,20 @@ class TestTypeCheckerInternals(unittest.TestCase):
         expr = BinOp(Literal("1.0"), "+", Literal("2.0"))
         self.assertEqual(self.tc.check_expr(expr), "float")
 
-    def test_binop_add_mismatch(self):
+    def test_binop_add_int_and_float(self):
         expr = BinOp(Literal("1"), "+", Literal("2.0"))
+        self.assertEqual(self.tc.check_expr(expr), "float")
+
+    def test_binop_add_bool_and_int(self):
+        expr = BinOp(Literal("True"), "+", Literal("7"))
+        self.assertEqual(self.tc.check_expr(expr), "int")
+
+    def test_binop_add_bool_and_float(self):
+        expr = BinOp(Literal("False"), "+", Literal("1.0"))
+        self.assertEqual(self.tc.check_expr(expr), "float")
+
+    def test_binop_add_incompatible_types_raises(self):
+        expr = BinOp(Literal('"hello"'), "+", Literal("3"))
         with self.assertRaises(TypeError):
             self.tc.check_expr(expr)
 
@@ -690,6 +702,32 @@ class TestTypeCheckerInternals(unittest.TestCase):
         self.assertFalse(self.tc.is_subclass("object", "Player"))
         self.assertFalse(self.tc.is_subclass("Mage", "Wizard"))
 
+    def test_attribute_expr_static_method_call_superclass_invalid(self):
+        self.tc.known_classes.update({"A", "B", "C"})
+        self.tc.class_bases["B"] = "A"
+        self.tc.methods["C"] = {
+            "do": (["B"], "None", 1)
+        }
+        self.tc.env["A"] = ClassDef("A", "", fields={}, methods={})
+        expr = CallExpr(
+            func=AttributeExpr(obj=Identifier("C"), attr="do"),
+            args=[CallExpr(func=Identifier("A"), args=[])]
+        )
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+    def test_attribute_expr_static_method_call_with_incompatible_type(self):
+        self.tc.env["Player"] = "Player"
+        self.tc.methods["Player"] = {
+            "heal": (["int"], "None", 1)
+        }
+        expr = CallExpr(
+            func=AttributeExpr(obj=Identifier("Player"), attr="heal"),
+            args=[Literal('"abc"')]
+        )
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
     def test_check_expr_fstring_literal(self):
         lit = FStringLiteral(parts=[
             FStringText("Value is "),
@@ -848,6 +886,18 @@ class TestTypeCheckerInternals(unittest.TestCase):
         stmt = GlobalStmt(names=["missing"])
         with self.assertRaises(TypeError):
             self.tc.check_global_stmt(stmt)
+
+    def test_assignment_with_numeric_promotion(self):
+        stmt1 = VarDecl(name="x", declared_type="float", value=Literal(raw="1.0"))
+        stmt2 = VarDecl(name="y", declared_type="int", value=Literal(raw="1"))
+        self.tc.check_var_decl(stmt1)
+        self.tc.check_var_decl(stmt2)
+
+    def test_assignment_with_invalid_numeric_narrowing(self):
+        stmt = VarDecl(name="x", declared_type="int", value=Literal(raw="3.14"))
+        with self.assertRaises(TypeError):
+            self.tc.check_var_decl(stmt)
+
 
 
 # ────────────────────────────────────────────────────────────────
