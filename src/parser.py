@@ -126,7 +126,7 @@ class Parser:
         """Parse a single identifier like: x, foo, my_var
         
         Grammar fragment: Identifier ::= <IDENTIFIER>
-        AST target: Indentifier(name)
+        AST target: Identifier(name)
         """
         tok = self.expect(TokenType.IDENTIFIER)
         return Identifier(name=tok.value)
