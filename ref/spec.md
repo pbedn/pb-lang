@@ -91,8 +91,13 @@ settings: dict[str, int] = {"volume": 10}
 ```
 ### Type Conversion
 
-* No implicit coercion.
-* Explicit conversion via built-ins: `int(x)`, `float(x)`, `str(x)`.
+* **Implicit coercion is allowed** in the following cases:
+  - **Numeric widening**: `bool → int → float` (e.g., a `bool` can be passed to a function expecting an `int`).
+  - **Subclass compatibility**: Instances of a subclass can be used where a superclass is expected.
+
+* **No implicit coercion** is performed between unrelated types (e.g., `str → int`, or unrelated classes).
+
+* **Explicit conversion** is still available using built-in constructors: `int(x)`, `float(x)`, `str(x)`, `bool(x)`.
 
 ---
 
