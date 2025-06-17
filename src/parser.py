@@ -123,7 +123,7 @@ class Parser:
     # ───────────────────────── expressions ─────────────────────────
 
     def parse_identifier(self) -> Expr:
-        """Parse a single indentifier like: x, foo, my_var
+        """Parse a single identifier like: x, foo, my_var
         
         Grammar fragment: Identifier ::= <IDENTIFIER>
         AST target: Indentifier(name)
