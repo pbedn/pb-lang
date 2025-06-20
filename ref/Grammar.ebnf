@@ -29,7 +29,7 @@ Param            ::= Identifier ":" Type ;
 ClassDef         ::= "class" Identifier [ "(" Identifier ")" ]
                      ":" NEWLINE INDENT { Statement } DEDENT ;
 
-ImportStmt       ::= "import" Identifier { "." Identifier } NEWLINE ;
+ImportStmt       ::= "import" Identifier { "." Identifier } [ "as" Identifier ] NEWLINE ;
 GlobalStmt       ::= "global" Identifier { "," Identifier } NEWLINE ;
 
 VarDecl          ::= Identifier ":" Type "=" Expression NEWLINE ;

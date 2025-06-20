@@ -75,6 +75,7 @@ Testing:
 """
 
 
+from ntpath import expanduser
 from typing import Dict, Tuple, Optional, List, Set
 
 from lang_ast import (
@@ -114,6 +115,7 @@ from lang_ast import (
     TryExceptStmt,
     ExceptBlock,
     ExprStmt,
+    ImportStmt,
 )
 
 # ─── Type precedence for numeric promotions (higher wins) ───
@@ -152,6 +154,15 @@ def is_assignable(from_type: str, to_type: str) -> bool:
 
     return False  # no coercion allowed for str → int, class A → B, etc. here
 
+
+class ModuleSymbol:
+    """Represents an imported PB module in the module table."""
+    def __init__(self, name: str, path: str = None, exports: dict = None):
+        self.name = name
+        self.path = path  # Optional: absolute path to module file
+        self.exports = exports if exports is not None else {}
+
+
 class TypeError(Exception):
     """Raised when a type mismatch or type-related error occurs during type checking."""
     pass
@@ -165,6 +176,8 @@ class TypeChecker:
         checker.check(program)  # where `program` is a Program node
     """
     def __init__(self):
+        self.modules: Dict[str, ModuleSymbol] = {}  # import alias/module name → ModuleSymbol
+
         # Symbol table: variable/function names → declared type
         self.env: Dict[str, str] = {}
 
@@ -248,6 +261,8 @@ class TypeChecker:
             self.check_try_except_stmt(stmt)
         elif isinstance(stmt, PassStmt):
             pass  # nothing to check
+        elif isinstance(stmt, ImportStmt):
+            pass  # handled by main orchestrator
         elif isinstance(stmt, BreakStmt):
             if self.in_loop == 0:
                 raise TypeError("'break' outside of loop")
@@ -499,7 +514,20 @@ class TypeChecker:
 
             elif isinstance(expr.func, AttributeExpr):
                 # determine if this is an instance call (e.g. obj.method())
-                obj = expr.func.obj
+                base = expr.func.obj
+                attr = expr.func.attr
+
+                # --- MODULE FUNCTION CALL (mathlib.add(...)) ---
+                if isinstance(base, Identifier) and base.name in self.modules:
+                    mod = self.modules[base.name]
+                    if attr not in mod.exports:
+                        raise TypeError(f"Error in call '{attr}' from module '{base.name}'. No export '{attr}'")
+                    # Optionally: type-check arity if you store signatures
+                    expr.inferred_type = mod.exports[attr]
+                    return mod.exports[attr]
+
+                # --- INSTANCE OR STATIC CLASS METHOD CALL ---
+                obj = base
                 if isinstance(obj, Identifier) and obj.name in self.env:
                     class_name = self.env[obj.name]
                     strip_self = True
@@ -586,6 +614,14 @@ class TypeChecker:
 
             obj_name = expr.obj.name
 
+            # import
+            if obj_name in self.modules:
+                # Accessing an attribute from an imported module
+                mod = self.modules[obj_name]
+                if expr.attr not in mod.exports:
+                    raise TypeError(f"Module '{obj_name}' has no export '{expr.attr}'")
+                return mod.exports[expr.attr]
+
             # --- instance-field on any variable (including self) ---
             if obj_name in self.env:
                 class_type = self.env[obj_name]
@@ -614,7 +650,7 @@ class TypeChecker:
                 return expr.inferred_type
 
             # neither a variable nor a class
-            raise TypeError(f"Variable or class '{obj_name}' is not defined")
+            raise TypeError(f"Variable, module or class '{obj_name}' is not defined")
 
 
         # In PB, only two patterns are valid:
@@ -846,6 +882,10 @@ class TypeChecker:
             obj = stmt.target.obj
             field_name = stmt.target.attr
 
+            # disallow assignment to module attributes ---
+            if isinstance(obj, Identifier) and obj.name in self.modules:
+                raise TypeError(f"Cannot assign to attribute '{field_name}' of imported module '{obj.name}'")
+
             # figure out what class this instance is
             if isinstance(obj, Identifier) and obj.name in self.env:
                 class_type = self.env[obj.name]
@@ -903,6 +943,10 @@ class TypeChecker:
             expected_type = self.env[name]
 
         elif isinstance(target, AttributeExpr):
+            # --- disallow assignment to module attributes ---
+            if isinstance(target.obj, Identifier) and target.obj.name in self.modules:
+                raise TypeError(f"Cannot assign to attribute '{target.attr}' of imported module '{target.obj.name}'")
+
             if isinstance(target.obj, Identifier) and target.obj.name == "self":
                 # self.field → valid only if inside method
                 if not self.inside_method:

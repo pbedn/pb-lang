@@ -1,7 +1,7 @@
 from sys import exception
 import unittest
 
-from type_checker import TypeChecker, TypeError
+from type_checker import TypeChecker, TypeError, ModuleSymbol
 from lang_ast import (
     Program,
     VarDecl,
@@ -38,6 +38,7 @@ from lang_ast import (
     TryExceptStmt,
     ExceptBlock,
     ExprStmt,
+    ImportStmt,
 )
 
 
@@ -898,6 +899,47 @@ class TestTypeCheckerInternals(unittest.TestCase):
         with self.assertRaises(TypeError):
             self.tc.check_var_decl(stmt)
 
+    def test_attribute_access_on_module(self):
+        # Simulate: import foo as bar
+        import_stmt = ImportStmt(module=["foo"], alias="bar")
+        self.tc.check_stmt(import_stmt)
+
+        # Simulate: bar.some_func
+        self.tc.modules["bar"] = ModuleSymbol("bar", exports={"some_func": "function"})
+        expr = AttributeExpr(obj=Identifier("bar"), attr="some_func")
+        result_type = self.tc.check_expr(expr)
+
+        # fixme: remove placeholder
+        # Expected: 'function' as a placeholder
+        self.assertEqual(result_type, "function")
+
+    def test_attribute_access_on_unknown_module(self):
+        # Case 1: No import of "baz" — should raise TypeError for unknown identifier
+        expr = AttributeExpr(obj=Identifier("baz"), attr="missing_func")
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr)
+
+        # Case 2: "baz" imported as a module, but export does not exist — should raise TypeError for missing export
+        self.tc.modules["baz"] = ModuleSymbol("baz", exports={"exists": "function"})
+        expr_missing = AttributeExpr(obj=Identifier("baz"), attr="not_exported")
+        with self.assertRaises(TypeError):
+            self.tc.check_expr(expr_missing)
+
+    def test_assign_to_module_attribute_raises(self):
+        # Simulate imported module 'mathlib'
+        self.tc.modules["mathlib"] = ModuleSymbol("mathlib", exports={"add": "function"})
+        stmt = AssignStmt(AttributeExpr(Identifier("mathlib"), "x"), Literal("42"))
+        # Expected: assigning to mathlib.x should raise TypeError
+        with self.assertRaises(TypeError):
+            self.tc.check_assign_stmt(stmt)
+
+    def test_aug_assign_to_module_attribute_raises(self):
+        # Simulate imported module 'mathlib'
+        self.tc.modules["mathlib"] = ModuleSymbol("mathlib", exports={"add": "function"})
+        stmt = AugAssignStmt(AttributeExpr(Identifier("mathlib"), "x"), "+=", Literal("1"))
+        # Expected: augmented assignment to mathlib.x should raise TypeError
+        with self.assertRaises(TypeError):
+            self.tc.check_aug_assign_stmt(stmt)
 
 
 # ────────────────────────────────────────────────────────────────

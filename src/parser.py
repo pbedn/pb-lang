@@ -1026,7 +1026,7 @@ class Parser:
         """Parse an import statement
 
         Grammar:
-        ImportStmt ::= "import" Identifier { "." Identifier } NEWLINE
+        ImportStmt ::= "import" Identifier { "." Identifier } [ "as" Identifier ] NEWLINE ;
         AST: ImportStmt(module)
         """
         self.expect(TokenType.IMPORT)
@@ -1035,8 +1035,14 @@ class Parser:
         while self.match(TokenType.DOT):
             names.append(self.expect(TokenType.IDENTIFIER).value)
 
+        alias = None
+        if self.match(TokenType.AS):
+            alias = self.expect(TokenType.IDENTIFIER).value
+
         self.expect(TokenType.NEWLINE)
-        return ImportStmt(names)
+
+        loc = (self.tokens[self.pos-1].line, self.tokens[self.pos-1].column)
+        return ImportStmt(module=names, alias=alias, loc=loc)
 
 
 if __name__ == "__main__":

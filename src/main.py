@@ -5,8 +5,10 @@ import shutil
 from pprint import pprint
 
 from lexer import Lexer, LexerError
+from lang_ast import ImportStmt
 from parser import Parser, ParserError
 from codegen import CodeGen
+from module_loader import load_module
 from type_checker import TypeChecker, TypeError
 
 RICH_PRINT = False
@@ -29,7 +31,7 @@ def enable_rich():
     globals()['pprint'] = rich_pprint
     RICH_PRINT = True
 
-def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = False, debug: bool = False):
+def compile_to_c(source_code: str, pb_path: str, output_file: str = "out.c", verbose: bool = False, debug: bool = False):
     lexer = Lexer(source_code)
     try:
         tokens = lexer.tokenize()
@@ -46,9 +48,20 @@ def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = F
         print(f"Parser error: {e}")
         return False
 
+    checker = TypeChecker()
+    loaded_modules = {}
+
+    entry_dir = os.path.dirname(os.path.abspath(pb_path))
+    search_paths = [entry_dir] # add other paths like stdlib, etc.
+    for stmt in getattr(ast, 'body', []):
+        if isinstance(stmt, ImportStmt):
+            mod_symbol = load_module(stmt.module, search_paths, loaded_modules, verbose)
+            alias = stmt.alias if stmt.alias else stmt.module[0]
+            if verbose: print(f"Registering module '{alias}' with exports: {mod_symbol.exports}")
+            checker.modules[alias] = mod_symbol
+
     # Run type checker
     try:
-        checker = TypeChecker()
         checker.check(ast)
         if debug: print("TYPED ENRICHED AST:\n"); pprint(ast); print(f"{'-'*80}\n")
     except TypeError as e:
@@ -68,10 +81,10 @@ def compile_to_c(source_code: str, output_file: str = "out.c", verbose: bool = F
     return True
 
 
-def build(source_code: str, output_file: str, verbose: bool = False, debug: bool = False) -> bool:
+def build(source_code: str, pb_path: str, output_file: str, verbose: bool = False, debug: bool = False) -> bool:
     if not debug: check_gcc_installed(verbose)
 
-    success = compile_to_c(source_code, f"{output_file}.c", verbose=verbose, debug=debug)
+    success = compile_to_c(source_code, pb_path, f"{output_file}.c", verbose=verbose, debug=debug)
     if not success:
         print("Skipping GCC build because type checking failed.")
         return False
@@ -112,8 +125,8 @@ def build(source_code: str, output_file: str, verbose: bool = False, debug: bool
         return False
 
 
-def run(source_code: str, output_file: str, verbose: bool = False, debug: bool = False):
-    success = build(source_code, output_file, verbose=verbose, debug=debug)
+def run(source_code: str, pb_path: str, output_file: str, verbose: bool = False, debug: bool = False):
+    success = build(source_code, pb_path, output_file, verbose=verbose, debug=debug)
     if not success:
         print("Skipping run because compilation failed.")
         return
@@ -227,11 +240,11 @@ def main():
     output_filename = os.path.basename(output_path)
 
     if args.command == "toc":
-        compile_to_c(code, f"{output_filename}.c", verbose=args.verbose, debug=args.debug)
+        compile_to_c(code, pb_path, f"{output_filename}.c", verbose=args.verbose, debug=args.debug)
     elif args.command == "build":
-        build(code, output_filename, verbose=args.verbose, debug=args.debug)
+        build(code, pb_path, output_filename, verbose=args.verbose, debug=args.debug)
     elif args.command == "run":
-        run(code, output_filename, verbose=args.verbose, debug=args.debug)
+        run(code, pb_path, output_filename, verbose=args.verbose, debug=args.debug)
 
 if __name__ == "__main__":
     main()

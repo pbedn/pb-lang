@@ -153,10 +153,11 @@ class ExprStmt:
     expr: Expr                  # an expression used as a statement
 
 
-# --- Imports (planned feature) ---------------------------------------------
 @dataclass
 class ImportStmt:
     module: List[str]
+    alias: Optional[str] = None
+    loc: Optional[tuple] = None
 
 
 # ---------------------------------------------------------------------------
