@@ -940,6 +940,7 @@ class TypeChecker:
             # figure out what class this instance is
             if isinstance(obj, Identifier) and obj.name in self.env:
                 class_type = self.env[obj.name]
+                stmt.target.obj.inferred_type = class_type
             else:
                 raise TypeError(f"Cannot assign attribute '{field_name}' on non-instance '{getattr(obj, 'name', obj)}'")
 
@@ -1007,6 +1008,7 @@ class TypeChecker:
                     raise TypeError("'self' is not defined in current scope")
 
                 self_type = self.env["self"]
+                target.obj.inferred_type = self_type
                 if self_type not in self.instance_fields:
                     raise TypeError(f"'self' is of unknown class type '{self_type}'")
 
@@ -1018,27 +1020,9 @@ class TypeChecker:
 
                 expected_type = fields[field_name]
             else:
-                # allow any other obj.field (e.g. mage.hp) — outside methods only
-                # expected_type = "int"  # <- this is a placeholder, ideally you'd resolve it
-
-                """
-                In code like:
-
-                mage.hp -= 30
-                We are not:
-
-                checking whether mage is of a known class,
-
-                checking if hp is a valid field on that class,
-
-                checking whether the value assigned matches the declared type.
-
-                That means bugs like these would go undetected:
-
-                mage.hp += "oops"              # string into int
-                mage.unknown_field += 10       # nonexistent field
-                some_random += 1               # invalid variable
-                """
+                # attribute on some other instance variable; best effort
+                if isinstance(target.obj, Identifier) and target.obj.name in self.env:
+                    target.obj.inferred_type = self.env[target.obj.name]
                 return
 
         else:
