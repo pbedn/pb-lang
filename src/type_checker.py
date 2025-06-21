@@ -806,7 +806,7 @@ class TypeChecker:
             if actual_type != self.current_return_type:
                 value = stmt.value.raw if stmt.value is Literal else stmt
                 raise TypeError(f"Return type mismatch: expected `{self.current_return_type}`, got `{actual_type}` "
-                                f"in function `{getattr(parent, "name", "Unknown Func")}`")
+                                f"in function `{getattr(parent, 'name', 'Unknown Func')}`")
             stmt.inferred_type = actual_type
 
     def check_function_def(self, fn: FunctionDef):
