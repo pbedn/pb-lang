@@ -578,6 +578,7 @@ class TypeChecker:
                 obj = base
                 if isinstance(obj, Identifier) and obj.name in self.env:
                     class_name = self.env[obj.name]
+                    obj.inferred_type = class_name
                     strip_self = True
                 else:
                     class_name = obj.name
@@ -673,6 +674,7 @@ class TypeChecker:
             # --- instance-field on any variable (including self) ---
             if obj_name in self.env:
                 class_type = self.env[obj_name]
+                expr.obj.inferred_type = class_type
                 if class_type not in self.instance_fields:
                     raise TypeError(f"'{obj_name}' has unknown type '{class_type}'")
                 fields = self.instance_fields[class_type]
@@ -692,6 +694,7 @@ class TypeChecker:
             # --- static class-attribute (e.g. Player.species) ---
             if obj_name in self.class_attrs:
                 fields = self.class_attrs[obj_name]
+                expr.obj.inferred_type = obj_name
                 if expr.attr not in fields:
                     raise TypeError(f"Class '{obj_name}' has no class attribute '{expr.attr}'")
                 expr.inferred_type = fields[expr.attr]

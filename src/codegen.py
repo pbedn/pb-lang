@@ -69,15 +69,17 @@ class CodeGen:
         self._structs_emitted: Set[str] = set()
         self._func_protos: List[str] = []
         self._globals_emitted: bool = False
-        self._var_types: dict[str, str] = {}  # variable name → class name
         self._function_params: dict[str, list[str]] = {}
         self._function_defaults: dict[str, list[str|None]] = {}
         self._function_returns: dict[str, Optional[str]] = {}
         self._tmp_counter: int = 0
         self._tmp_list_counter: int = 0
         self._tmp_dict_counter: int = 0
-        self._fields: dict[str, set[str]] = {}   # class -> set(field names)
-        self._base:   dict[str, str|None] = {}   # class -> base name or None
+
+        # Instance field information from the type checker
+        self._instance_fields: dict[str, dict[str, str]] = {}
+        self._class_bases: dict[str, Optional[str]] = {}
+        self._direct_fields: dict[str, set[str]] = {}
 
     def generate(self, program: Program) -> str:
         """Generate the complete C source for `program`."""
@@ -85,6 +87,12 @@ class CodeGen:
         self._indent = 0
 
         self._classes = [d for d in program.body if isinstance(d, ClassDef)]
+        self._instance_fields = getattr(program, "inferred_instance_fields", {})
+        self._class_bases = {cls.name: cls.base for cls in self._classes}
+        self._direct_fields = {}
+        for cls in self._classes:
+            base_fields = set(self._instance_fields.get(cls.base, {})) if cls.base else set()
+            self._direct_fields[cls.name] = set(self._instance_fields.get(cls.name, {})) - base_fields
 
         self._emit_headers_and_runtime()
         self._emit_class_structs(program)
@@ -150,9 +158,8 @@ class CodeGen:
     def _emit_class_structs(self, program: Program) -> None:
         """Emit structs (with single inheritance) for each ClassDef in the program."""
         # inside _emit_class_structs
-        # declared      = {fld.name for fld in stmt.fields}         # explicit fields
-        # extra_fields  = self._collect_instance_fields(stmt)       # self.hp, self.mp, …
-        # inherited     = {f.name for f in base_cls.fields}         # only *explicit* base fields
+        # declared  = {fld.name for fld in stmt.fields}         # explicit fields
+        # inherited = fields from base classes (handled via _instance_fields)
 
 
         for stmt in program.body:
@@ -178,36 +185,31 @@ class CodeGen:
                 # logger.info(f"[struct] {stmt.name}: explicit field '{fld.name}' as '{c_ty}'")
                 self._emit(f"{c_ty} {fld.name};")
 
-            # Add any self.x assignments not in fields
             declared = {fld.name for fld in stmt.fields}
-            extra_fields = self._collect_instance_fields(stmt)
-            # logger.info(f"Extra fields for {stmt.name}: {extra_fields}")
-
-            # Names that are already present in the (direct) base class.
-            inherited = set()
+            instance_fields = self._instance_fields.get(stmt.name, {})
+            base_fields = set()
             if stmt.base:
-                base_cls = next((c for c in self._classes if c.name == stmt.base), None)
-                if base_cls:
-                    inherited = {f.name for f in base_cls.fields}
+                base_fields = set(self._instance_fields.get(stmt.base, {}))
+            assigned_here = self._assigned_fields_in_class(stmt)
 
-            actually_emitted: set[str] = set(declared)     # keep track
+            actually_emitted: set[str] = set(declared)
 
-            for field_name in sorted(extra_fields):
-                if field_name not in declared and field_name not in inherited:
-                    pb_type = extra_fields[field_name]
-                    c_type = self._c_type(pb_type)
-                    # logger.info(f"[struct] {stmt.name}: inferred field '{field_name}' as '{c_type}'")
-                    self._emit(f"{c_type} {field_name};")
-                    actually_emitted.add(field_name)       # now it *is* present
+            for field_name in sorted(instance_fields):
+                pb_type = instance_fields[field_name]
+                if field_name in base_fields and field_name not in assigned_here:
+                    continue
+                if field_name in declared:
+                    continue
+                c_type = self._c_type(pb_type)
+                self._emit(f"{c_type} {field_name};")
+                actually_emitted.add(field_name)
 
             self._indent -= 1
             self._emit(f"}} {name};")
             self._emit()
 
-            self._fields[stmt.name] = declared | set(extra_fields)
-            # store only the members that really exist in the struct
-            self._fields[stmt.name] = actually_emitted
-            self._base[stmt.name]   = stmt.base
+            self._direct_fields[name] = actually_emitted
+            self._class_bases[name] = stmt.base
 
 
     def _emit_global_decls(self, program: Program) -> None:
@@ -220,9 +222,6 @@ class CodeGen:
                 c_ty = self._c_type(stmt.declared_type)
                 # initializer expression will be a constant literal or simple expr
                 init = self._expr(stmt.value)
-                # remember the PB type for printf dispatch
-                if stmt.declared_type:
-                    self._var_types[stmt.name] = stmt.declared_type
                 self._emit(f"{c_ty} {stmt.name} = {init};")
         if self._globals_emitted:
             self._emit()
@@ -278,9 +277,6 @@ class CodeGen:
 
     def _emit_function(self, fn: FunctionDef) -> None:
         """Emit a standard (non-main) function definition."""
-        prev = getattr(self, "_current_class", None)
-        if fn.params and fn.params[0].name == "self":
-            self._current_class = fn.params[0].type   # 'Player', 'Mage', …
 
         self._emit(self._func_proto(fn))
 
@@ -315,7 +311,6 @@ class CodeGen:
         self._indent -= 1
         self._emit("}")
         self._emit()
-        self._current_class = prev                   # restore on exit
 
     def _emit_main(self, fn: FunctionDef) -> None:
         """Map PB `main()` → `int main(void)`."""
@@ -492,9 +487,7 @@ class CodeGen:
             # - IndexExpr       arr[0], d["x"]
             # - CallExpr        get_name()
             if isinstance(arg, Identifier):
-                t = t or self._var_types.get(arg.name, "int")
-
-                if t.startswith("list["):
+                if t and t.startswith("list["):
                     print_arg = f"&{print_arg}"
 
             if isinstance(arg, IndexExpr):
@@ -625,14 +618,6 @@ class CodeGen:
             return f"{c_ty} {st.name};"
     
         val = self._expr(st.value)
-        # remember every variable’s PB type for later printf logic
-        if st.declared_type: # fixme: this whole section is probably not needed since enriched ast
-            self._var_types[st.name] = st.declared_type
-        if isinstance(st.declared_type, str):
-            if st.declared_type in self._structs_emitted:
-                self._var_types[st.name] = st.declared_type
-            elif st.declared_type in ("int", "float", "bool", "str"):
-                self._var_types[st.name] = st.declared_type
         return f"{c_ty} {st.name} = {val};"
 
     def _expr(self, e: Expr) -> str:
@@ -779,7 +764,6 @@ class CodeGen:
 
                 args = ", ".join(actual_args)
                 self._emit(f"struct {class_name} {var};")
-                self._var_types[var] = class_name
                 if args:
                     self._emit(f"{init_func}(&{var}, {args});")
                 else:
@@ -826,8 +810,7 @@ class CodeGen:
             obj_expr = self._expr(e.func.obj)
             method_name = e.func.attr
 
-            obj_var = getattr(e.func.obj, "name", None)
-            class_type = self._var_types.get(obj_var)
+            class_type = self._get_expr_type(e.func.obj)
             if class_type:
                 mangled = f"{class_type}__{method_name}"
                 args = ", ".join([obj_expr] + [self._expr(arg) for arg in e.args])
@@ -843,22 +826,14 @@ class CodeGen:
         if isinstance(e.obj, Identifier) and e.obj.name in self._structs_emitted:
             #   Player.species   →   Player_species
             return f"{e.obj.name}_{e.attr}"
-        
+
         obj = self._expr(e.obj)
         attr = e.attr
 
-        # --- SECOND:  subclass instance --------------------------
         if isinstance(e.obj, Identifier):
-            # 1.  Which class does this identifier refer to?
-            if e.obj.name == "self" and hasattr(self, "_current_class"):
-                cls = self._current_class            # we are inside a method
-            else:
-                cls = self._var_types.get(e.obj.name)
-
-            # 2.  If we know the class and the field is NOT owned by it,
-            #     let C look one level down into the embedded base struct.
-            if cls and e.attr not in self._fields.get(cls, set()):
-                return f"{obj}->base.{e.attr}"
+            cls = self._get_expr_type(e.obj)
+            if cls in self._direct_fields and attr not in self._direct_fields[cls]:
+                return f"{obj}->base.{attr}"
 
         return f"{obj}->{attr}"
 
@@ -920,54 +895,26 @@ class CodeGen:
 
     # --- Helper Methods ---
 
-    def _collect_instance_fields(self, cls: ClassDef) -> dict[str, str]:
-        """Return a dict of 'self.x' → pb type ('int', 'str', ...) inferred from assignment or method param."""
-        field_types: dict[str, str] = {}
+    def _assigned_fields_in_class(self, cls: ClassDef) -> set[str]:
+        fields: set[str] = set()
 
-        def walk_stmt(stmt, param_map):
+        def walk(stmt):
             if isinstance(stmt, AssignStmt):
                 if isinstance(stmt.target, AttributeExpr):
                     if isinstance(stmt.target.obj, Identifier) and stmt.target.obj.name == "self":
-                        name = stmt.target.attr
-                        value = stmt.value
-                        # logger.debug(f"[collect] {cls.name}: found instance field '{name}' of type '{stmt.value}'")
-                        if isinstance(value, StringLiteral):
-                            field_types[name] = "str"
-                        elif isinstance(value, Literal):
-                            if value.raw in ("True", "False"):
-                                field_types[name] = "bool"
-                            elif value.raw.replace(".", "", 1).isdigit():
-                                field_types[name] = "float" if "." in value.raw else "int"
-                            else:
-                                field_types[name] = "int"  # fallback
-                        elif isinstance(value, Identifier):
-                            ref_name = value.name
-                            if ref_name in param_map:
-                                field_types[name] = param_map[ref_name]
-                                # logger.debug(f"[collect] {cls.name}: inferred field '{name}' from param '{ref_name}'")
-                            else:
-                                logger.warning(f"[collect] {cls.name}: unknown identifier '{ref_name}', defaulting '{name}' to int")
-                                field_types[name] = "int"  # fallback
-            elif isinstance(stmt, AugAssignStmt):
-                if isinstance(stmt.target, AttributeExpr):
-                    if isinstance(stmt.target.obj, Identifier) and stmt.target.obj.name == "self":
-                        name = stmt.target.attr
-                        field_types[name] = "int"  # conservative fallback
+                        fields.add(stmt.target.attr)
             elif hasattr(stmt, "body") and isinstance(stmt.body, list):
-                for sub in stmt.body:
-                    walk_stmt(sub, param_map)
+                for s in stmt.body:
+                    walk(s)
             elif hasattr(stmt, "branches"):
                 for br in stmt.branches:
-                    for sub in br.body:
-                        walk_stmt(sub, param_map)
+                    for s in br.body:
+                        walk(s)
 
-        for method in cls.methods:
-            param_map = {p.name: p.type for p in method.params if p.type}
-            for stmt in method.body:
-                walk_stmt(stmt, param_map)
-
-        return field_types
-
+        for m in cls.methods:
+            for st in m.body:
+                walk(st)
+        return fields
 
     def _emit_class_statics(self, program: Program) -> None:
         """Emit class-level variables like Player_species = ..."""
@@ -977,18 +924,14 @@ class CodeGen:
                     # Emit only class-level fields (not instance `self.x`)
                     if isinstance(field.value, StringLiteral):
                         self._emit(f'const char * {stmt.name}_{field.name} = "{field.value.value}";')
-                        self._var_types[f"{stmt.name}_{field.name}"] = "str"
                     elif isinstance(field.value, Literal):
                         raw = field.value.raw
                         if raw in ("True", "False"):
                             self._emit(f'bool {stmt.name}_{field.name} = {raw.lower()};')
-                            self._var_types[f"{stmt.name}_{field.name}"] = "bool"
                         elif "." in raw:
                             self._emit(f'double {stmt.name}_{field.name} = {raw};')
-                            self._var_types[f"{stmt.name}_{field.name}"] = "float"
                         else:
                             self._emit(f'int64_t {stmt.name}_{field.name} = {raw};')
-                            self._var_types[f"{stmt.name}_{field.name}"] = "int"
 
 
 if __name__ == "__main__":
