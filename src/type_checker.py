@@ -207,9 +207,17 @@ class TypeChecker:
         self.methods: Dict[str, Dict[str, Tuple[List[str], str, int]]] = {} 
 
         # Register built-in exceptions as class names
+        # fixme: Remove when stdlib is created
+        self.known_classes.add("Exception")
+        self.methods["Exception"] = {
+            "__init__": (["Exception", "str"], "None", 2)
+        }
+        self.class_bases["Exception"] = None
+        
         for exc in ["RuntimeError", "ValueError", "IndexError", "TypeError"]:
             self.known_classes.add(exc)
-            self.functions[exc] = (["str"], exc, 1)
+            self.methods[exc] = {}  # no own methods
+            self.class_bases[exc] = "Exception"
 
     # TODO
     # def assert_all_exprs_typed(node: Node):
@@ -284,10 +292,13 @@ class TypeChecker:
         """
         name = decl.name
         declared = decl.declared_type
-        actual = self.check_expr(decl.value, expected_type=declared)
+        if decl.value is None:
+            actual = declared
+        else:
+            actual = self.check_expr(decl.value, expected_type=declared)
 
-        if declared != actual:
-            raise TypeError(f"Type mismatch in variable '{name}': declared {declared}, got {actual}")
+            if declared != actual:
+                raise TypeError(f"Type mismatch in variable '{name}': declared {declared}, got {actual}")
 
         self.env[name] = declared
         if self.current_return_type is None:
@@ -320,6 +331,18 @@ class TypeChecker:
             raise TypeError(f"Argument {index} to '{context}' expected {expected}, got {actual}")
 
         raise TypeError(f"Argument {index} to '{context}' expected {expected}, got {actual}")
+
+    def find_init_signature(self, class_name):
+        """
+        Returns constructor signature (param_types, return_type, num_required)
+        for class_name or its ancestors. Returns None if no constructor found.
+        """
+        c = class_name
+        while c:
+            if c in self.methods and "__init__" in self.methods[c]:
+                return self.methods[c]["__init__"]
+            c = self.class_bases.get(c)
+        return None
 
 
     def check_expr(self, expr: Expr, expected_type: Optional[str] = None) -> str:
@@ -470,6 +493,31 @@ class TypeChecker:
 
                     expr.inferred_type = fname
                     return fname  # The constructed class becomes the expression's type
+
+                # Lookup constructor (__init__) in class hierarchy
+                if fname in self.known_classes:
+                    init_sig = self.find_init_signature(fname)
+                    if init_sig is not None:
+                        param_types, return_type, num_required = init_sig
+                        param_types = param_types[1:]  # skip self
+                        num_required = max(0, num_required - 1)
+
+                        if not (num_required <= len(expr.args) <= len(param_types)):
+                            raise TypeError(
+                                f"Constructor for class '{fname}' expects between {num_required} and {len(param_types)} arguments, got {len(expr.args)}"
+                            )
+
+                        for i, (arg, expected) in enumerate(zip(expr.args, param_types)):
+                            actual = self.check_expr(arg)
+                            self.check_arg_compatibility(actual, expected, i + 1, fname)
+
+                        expr.inferred_type = fname
+                        return fname
+                    else:
+                        if len(expr.args) != 0:
+                            raise TypeError(f"Class '{fname}' does not define __init__, cannot pass arguments")
+                        expr.inferred_type = fname
+                        return fname
 
                 if fname == "print":
                     for arg in expr.args:

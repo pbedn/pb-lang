@@ -53,9 +53,10 @@ class TestPipelineRuntime(unittest.TestCase):
 
         # Run & capture output
         run_result = subprocess.run([exe_path], capture_output=True, text=True)
+        output = run_result.stdout + run_result.stderr
         # print(f"[INFO] Program exited with {run_result.returncode}")
 
-        return run_result.stdout.strip()
+        return output.strip()
 
     def test_global_runtime_update(self):
         code = (
@@ -234,6 +235,24 @@ class TestPipelineRuntime(unittest.TestCase):
         self.assertEqual(lines[4], "player.hp: 100")
         self.assertEqual(lines[5], "player get_name: Hero")
         self.assertEqual(lines[6], "Player.species: Human")
+
+    def test_runtime_exception_is_raised(self):
+        code = (
+            "class Exception:\n"
+            "    def __init__(self, msg: str):\n"
+            "        self.msg = msg\n"
+            "\n"
+            "class RuntimeError(Exception):\n"
+            "    pass\n"
+            "\n"
+            "def crash():\n"
+            "    raise RuntimeError(\"division by zero\")\n"
+            "\n"
+            "def main():\n"
+            "    crash()\n"
+        )
+        output = self.compile_and_run(code)
+        self.assertIn("Exception raised", output)
 
 
 if __name__ == "__main__":

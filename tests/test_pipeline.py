@@ -474,6 +474,28 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn("struct Child __tmp_", c)
         self.assertIn("pb_print_str(\"child\");", c)
 
+    def test_pipeline_exception_raise(self):
+        pb_code = (
+            "class Exception:\n"
+            "    def __init__(self, msg: str):\n"
+            "        self.msg = msg\n"
+            "\n"
+            "class RuntimeError(Exception):\n"
+            "    pass\n"
+            "\n"
+            "def crash():\n"
+            "    raise RuntimeError(\"division by zero\")\n"
+            "\n"
+            "def main():\n"
+            "    crash()\n"
+        )
+        c_code = self.compile_pipeline(pb_code)
+        # Should emit the constructor forwarding and fail call
+        self.assertIn('Exception____init__((struct Exception *)self, msg);', c_code)
+        self.assertIn('pb_fail("Exception raised");', c_code)
+        # Should use the forwarded RuntimeError constructor
+        self.assertIn('void RuntimeError____init__(struct RuntimeError * self, const char * msg)', c_code)
+
     # global ------------------------------------------------------
 
     def test_global_variable_in_method(self):

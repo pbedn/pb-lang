@@ -1584,19 +1584,57 @@ class TestTypeCheckerProgramLevel(unittest.TestCase):
     def test_raise_runtime_error(self):
         """
         Program:
+            class Exception:
+                def __init__(self, msg: str) -> None:
+                    pass
+
+            class RuntimeError(Exception):
+                pass
+
             def crash() -> None:
                 raise RuntimeError("division by zero")
 
         Assumptions:
-            - RuntimeError is a built-in class with a constructor: (str) -> RuntimeError
+            - Exception is the base for all user exceptions.
+            - __init__ is inherited by RuntimeError.
         """
         prog = Program(body=[
+            # Base exception
+            ClassDef(
+                name="Exception",
+                base=None,
+                fields=[],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[
+                            Parameter("self", "Exception"),
+                            Parameter("msg", "str")
+                        ],
+                        return_type="None",
+                        body=[PassStmt()]
+                    )
+                ]
+            ),
+            # RuntimeError inherits from Exception, does not declare __init__
+            ClassDef(
+                name="RuntimeError",
+                base="Exception",
+                fields=[],
+                methods=[]
+            ),
+            # Function using raise
             FunctionDef(
                 name="crash",
                 params=[],
                 return_type="None",
                 body=[
-                    RaiseStmt(CallExpr(Identifier("RuntimeError"), [Literal('"division by zero"')]))
+                    RaiseStmt(
+                        CallExpr(
+                            Identifier("RuntimeError"),
+                            [Literal('"division by zero"')]
+                        )
+                    )
                 ]
             )
         ])
@@ -1606,6 +1644,25 @@ class TestTypeCheckerProgramLevel(unittest.TestCase):
         checker.class_attrs["RuntimeError"] = {}
         checker.functions["RuntimeError"] = (["str"], "RuntimeError", 1)
         checker.check(prog)
+
+    def test_class_method_no_init(self):
+        """
+        class Counter:
+            def __init__(self) -> None:
+                self.count = 0
+
+            def tick(self) -> None:
+                self.count += 1
+        """
+        prog = Program(body=[
+            ClassDef(
+                name="Counter",
+                base=None,
+                fields=[VarDecl("name", "str", StringLiteral("Name"))],
+                methods=[]
+            )
+        ])
+        TypeChecker().check(prog)
 
     def test_class_method_self_inferred(self):
         """

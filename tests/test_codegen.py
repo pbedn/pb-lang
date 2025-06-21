@@ -518,11 +518,26 @@ class TestCodeGen(unittest.TestCase):
             'Dict_str_bool d3 = (Dict_str_bool){ .len=2, .data=__tmp_dict_3 };',
             'pb_print_bool(pb_dict_get_str_bool(d3, "a"));',
             'return 0;'
-        ])
-        
+        ])     
 
     def test_try_except_raise(self):
         program = Program(body=[
+            ClassDef(
+                name="RuntimeError",
+                base=None,
+                fields=[],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[
+                            Parameter("self", "RuntimeError"),
+                            Parameter("msg", "str"),
+                        ],
+                        return_type="None",
+                        body=[]
+                    )
+                ]
+            ),
             FunctionDef(
                 name="main",
                 params=[],
@@ -848,6 +863,67 @@ class TestCodeGen(unittest.TestCase):
             "pb_print_int(m->base.hp);",
             "pb_print_int(m->mana);",
             "pb_print_int(Mage__get_hp(m));"
+        ])
+
+    def test_exception_inheritance_codegen(self):
+        prog = Program(body=[
+            ClassDef(
+                name="Exception",
+                base=None,
+                fields=[
+                    VarDecl(name="msg", declared_type="str", value=None)
+                ],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[
+                            Parameter("self", "Exception"),
+                            Parameter("msg", "str")
+                        ],
+                        return_type="None",
+                        body=[
+                            AssignStmt(
+                                target=AttributeExpr(Identifier("self"), "msg"),
+                                value=Identifier("msg")
+                            )
+                        ]
+                    )
+                ]
+            ),
+            ClassDef(
+                name="RuntimeError",
+                base="Exception",
+                fields=[],
+                methods=[]
+            ),
+            FunctionDef(
+                name="crash",
+                params=[],
+                return_type="None",
+                body=[
+                    RaiseStmt(CallExpr(Identifier("RuntimeError"), [StringLiteral("division by zero")]))
+                ]
+            ),
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="None",
+                body=[
+                    ExprStmt(CallExpr(Identifier("crash"), []))
+                ]
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "typedef struct Exception {",
+            "const char * msg;",
+            "} Exception;",
+            "typedef struct RuntimeError {",
+            "Exception base;",
+            "} RuntimeError;",
+            "void Exception____init__(struct Exception * self, const char * msg);",
+            "void RuntimeError____init__(struct RuntimeError * self, const char * msg);",
+            "Exception____init__((struct Exception *)self, msg);"
         ])
 
     def test_pass_statement(self):

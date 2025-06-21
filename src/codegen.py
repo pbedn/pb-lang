@@ -251,9 +251,17 @@ class CodeGen:
                 )
                 self._emit(self._func_proto(fake) + ";")
 
-            # stub prototype when the class (and its bases) define no __init__
-            if "__init__" not in own and not cls.base:
-                self._emit(f"void {cls.name}____init__(struct {cls.name} * self);")
+            if "__init__" not in own:
+                if cls.base:
+                    base_cls, base_init = self._find_base_init(cls)
+                    if base_init:
+                        params = [p for p in base_init.params if p.name != "self"]
+                        params_code = ", ".join(f"{self._c_type(p.type)} {p.name}" for p in params)
+                        self._emit(f"void {cls.name}____init__(struct {cls.name} * self{', ' if params_code else ''}{params_code});")
+                    else:
+                        self._emit(f"void {cls.name}____init__(struct {cls.name} * self);")
+                else:
+                    self._emit(f"void {cls.name}____init__(struct {cls.name} * self);")
 
         self._emit()
 
@@ -322,6 +330,22 @@ class CodeGen:
         self._emit("}")
         self._emit()
 
+    def _find_base_init(self, cls: ClassDef):
+        """
+        Search the inheritance chain for the nearest __init__ method.
+        Returns (base_class, init_method) or (None, None) if not found.
+        """
+        base_name = cls.base
+        while base_name:
+            base_cls = next((c for c in self._classes if c.name == base_name), None)
+            if base_cls is None:
+                return None, None
+            for m in base_cls.methods:
+                if m.name == "__init__":
+                    return base_cls, m
+            base_name = base_cls.base
+        return None, None
+
     def _emit_class_def(self, cls: ClassDef) -> None:
         """
         Emit each method of `cls` as a standalone function taking
@@ -343,16 +367,38 @@ class CodeGen:
             # logger.debug(f"Emitting method: {fn.name}({', '.join(p.name for p in fn.params)})")
             self._emit_function(fn)
 
-        # stub constructor if not defined & no base provides one
-        if "__init__" not in own and not cls.base:
-            self._emit(f"void {cls.name}____init__(struct {cls.name} * self) {{ /* no-op */ }}")
-            self._emit()
+        if "__init__" not in own:
+            # If the class has a base, look for an inherited __init__
+            if cls.base:
+                base_cls, base_init = self._find_base_init(cls)
+                if base_init:
+                    # Signature: same parameters as base __init__, except for self
+                    params = [p for p in base_init.params if p.name != "self"]
+                    params_code = ", ".join(f"{self._c_type(p.type)} {p.name}" for p in params)
+                    self._emit(f"void {cls.name}____init__(struct {cls.name} * self{', ' if params_code else ''}{params_code}) {{")
+                    self._indent += 1
+                    args_code = ", ".join(p.name for p in params)
+                    # Call the base class constructor, passing all arguments
+                    self._emit(f"{base_cls.name}____init__((struct {base_cls.name} *)self{', ' if args_code else ''}{args_code});")
+                    self._indent -= 1
+                    self._emit("}")
+                    self._emit()
+                else:
+                    # If base does not have __init__, emit a no-op constructor
+                    self._emit(f"void {cls.name}____init__(struct {cls.name} * self) {{ /* no-op */ }}")
+                    self._emit()
+            else:
+                # No base class: emit a no-op constructor
+                self._emit(f"void {cls.name}____init__(struct {cls.name} * self) {{ /* no-op */ }}")
+                self._emit()
 
         # wrappers for inherited methods – keep the types correct
         if cls.base:
             base = next((c for c in self._classes if c.name == cls.base), None)
             if base:
                 for m in sorted({m.name for m in base.methods} - own):
+                    if m == "__init__":
+                        continue  # skip generating a wrapper for inherited __init__
                     ret_c = self._c_type(
                         next(mm for mm in base.methods if mm.name == m).return_type
                     )
@@ -575,6 +621,9 @@ class CodeGen:
 
     def _generate_VarDecl(self, st: VarDecl) -> str:
         c_ty = self._c_type(st.declared_type)
+        if st.value is None:
+            return f"{c_ty} {st.name};"
+    
         val = self._expr(st.value)
         # remember every variable’s PB type for later printf logic
         if st.declared_type: # fixme: this whole section is probably not needed since enriched ast
