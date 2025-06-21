@@ -578,6 +578,7 @@ class TypeChecker:
                 obj = base
                 if isinstance(obj, Identifier) and obj.name in self.env:
                     class_name = self.env[obj.name]
+                    obj.inferred_type = class_name
                     strip_self = True
                 else:
                     class_name = obj.name
@@ -673,6 +674,7 @@ class TypeChecker:
             # --- instance-field on any variable (including self) ---
             if obj_name in self.env:
                 class_type = self.env[obj_name]
+                expr.obj.inferred_type = class_type
                 if class_type not in self.instance_fields:
                     raise TypeError(f"'{obj_name}' has unknown type '{class_type}'")
                 fields = self.instance_fields[class_type]
@@ -692,6 +694,7 @@ class TypeChecker:
             # --- static class-attribute (e.g. Player.species) ---
             if obj_name in self.class_attrs:
                 fields = self.class_attrs[obj_name]
+                expr.obj.inferred_type = obj_name
                 if expr.attr not in fields:
                     raise TypeError(f"Class '{obj_name}' has no class attribute '{expr.attr}'")
                 expr.inferred_type = fields[expr.attr]
@@ -937,6 +940,7 @@ class TypeChecker:
             # figure out what class this instance is
             if isinstance(obj, Identifier) and obj.name in self.env:
                 class_type = self.env[obj.name]
+                stmt.target.obj.inferred_type = class_type
             else:
                 raise TypeError(f"Cannot assign attribute '{field_name}' on non-instance '{getattr(obj, 'name', obj)}'")
 
@@ -1004,6 +1008,7 @@ class TypeChecker:
                     raise TypeError("'self' is not defined in current scope")
 
                 self_type = self.env["self"]
+                target.obj.inferred_type = self_type
                 if self_type not in self.instance_fields:
                     raise TypeError(f"'self' is of unknown class type '{self_type}'")
 
@@ -1015,27 +1020,9 @@ class TypeChecker:
 
                 expected_type = fields[field_name]
             else:
-                # allow any other obj.field (e.g. mage.hp) — outside methods only
-                # expected_type = "int"  # <- this is a placeholder, ideally you'd resolve it
-
-                """
-                In code like:
-
-                mage.hp -= 30
-                We are not:
-
-                checking whether mage is of a known class,
-
-                checking if hp is a valid field on that class,
-
-                checking whether the value assigned matches the declared type.
-
-                That means bugs like these would go undetected:
-
-                mage.hp += "oops"              # string into int
-                mage.unknown_field += 10       # nonexistent field
-                some_random += 1               # invalid variable
-                """
+                # attribute on some other instance variable; best effort
+                if isinstance(target.obj, Identifier) and target.obj.name in self.env:
+                    target.obj.inferred_type = self.env[target.obj.name]
                 return
 
         else:
