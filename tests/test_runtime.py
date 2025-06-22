@@ -9,50 +9,90 @@ from parser import Parser
 from codegen import CodeGen
 from type_checker import TypeChecker
 from pb_pipeline import compile_code_to_c_and_h
-
+from main import build_runtime_library
+from main import get_build_output_path
 from tests import build_dir
 
 
+def _compile_and_run_modules(modules: dict[str, str]) -> str:
+    """
+    Compiles and runs PB code from multiple in-memory modules.
+    Writes each to disk to support real module imports.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        c_files = []
+
+        # Step 1: Write all .pb files
+        for name, code in modules.items():
+            pb_file = os.path.join(tmpdir, f"{name}.pb")
+            with open(pb_file, "w", encoding="utf-8") as f:
+                f.write(code)
+
+        # Step 2: Compile each module using real pb_path
+        for name in modules:
+            pb_file = os.path.join(tmpdir, f"{name}.pb")
+            h_code, c_code, ast, _ = compile_code_to_c_and_h(
+                source_code=modules[name],
+                module_name=name,
+                debug=False,
+                verbose=False,
+                import_support=True,
+                pb_path=pb_file  # Now real path
+            )
+            if ast is None:
+                raise RuntimeError(f"Type-checking failed for module '{name}'")
+
+            h_path = os.path.join(tmpdir, f"{name}.h")
+            c_path = os.path.join(tmpdir, f"{name}.c")
+            with open(h_path, "w", encoding="utf-8") as f:
+                f.write(h_code)
+            with open(c_path, "w", encoding="utf-8") as f:
+                f.write(c_code)
+
+            c_files.append(c_path)
+
+        exe_path = os.path.join(tmpdir, "main")
+        if sys.platform == "win32":
+            exe_path += ".exe"
+
+        runtime_lib = get_build_output_path("pb_runtime.a")
+        if not os.path.isfile(runtime_lib):
+            build_runtime_library(verbose=False, debug=False)
+
+        compile_cmd = [
+            "gcc", "-std=c99", "-W",
+            *c_files,
+            "-o", exe_path,
+            "-I", get_build_output_path(""),
+            runtime_lib
+        ]
+
+        result = subprocess.run(compile_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"GCC build failed:\n{result.stderr}")
+
+        run_result = subprocess.run([exe_path], capture_output=True, text=True)
+        return (run_result.stdout + run_result.stderr).strip()
+
+
+def compile_and_run(code: str) -> str:
+    """
+    Compiles and runs a single-module PB program (as 'main').
+    """
+    return _compile_and_run_modules({"main": code})
+
+
+def compile_modules_and_run_main(modules: dict[str, str]) -> str:
+    """
+    Compiles and runs a PB program consisting of multiple modules.
+    The 'main' module must be included in `modules`.
+    """
+    if "main" not in modules:
+        raise ValueError("Expected a 'main' module in provided modules.")
+    return _compile_and_run_modules(modules)
+
+
 class TestPipelineRuntime(unittest.TestCase):
-    def compile_and_run(self, code: str) -> str:
-        h_code, c_code, *_ = compile_code_to_c_and_h(code, module_name="main")
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            h_file_path = os.path.join(tmpdir, "main.h")
-            c_file_path = os.path.join(tmpdir, "main.c")
-            exe_path = os.path.join(tmpdir, "main")
-            if sys.platform == "win32":
-                exe_path += ".exe"
-
-            # Write header and C files
-            with open(h_file_path, "w", encoding="utf-8") as h_file:
-                h_file.write(h_code)
-            with open(c_file_path, "w", encoding="utf-8") as c_file:
-                c_file.write(c_code)
-
-            # Runtime build once
-            # need to make sure pb_runtime.a is up to date
-            runtime_lib = os.path.join(build_dir, "pb_runtime.a")
-            if not os.path.isfile(runtime_lib):
-                print("Runtime library not found; building it now...")
-                subprocess.run(["python", "run.py", "buildlib"], check=True)
-
-            compile_cmd = [
-                "gcc", "-std=c99", "-W", c_file_path,
-                "-o", exe_path,
-                "-I", build_dir,
-                runtime_lib
-            ]
-
-            result = subprocess.run(compile_cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                raise RuntimeError(f"GCC build failed:\n{result.stderr}")
-
-            # Run & capture output
-            run_result = subprocess.run([exe_path], capture_output=True, text=True)
-            output = run_result.stdout + run_result.stderr
-
-            return output.strip()
 
     def test_global_runtime_update(self):
         code = (
@@ -64,7 +104,7 @@ class TestPipelineRuntime(unittest.TestCase):
             "    print(x)\n"
             "    return 0\n"
         )
-        output = self.compile_and_run(code)
+        output = compile_and_run(code)
         self.assertIn("20", output)
 
     def test_global_shadowing_runtime(self):
@@ -76,7 +116,7 @@ class TestPipelineRuntime(unittest.TestCase):
             "    print(x)\n"
             "    return x\n"
         )
-        output = self.compile_and_run(code)
+        output = compile_and_run(code)
         self.assertIn("5", output)
 
     def test_global_read_then_update(self):
@@ -90,7 +130,7 @@ class TestPipelineRuntime(unittest.TestCase):
             "    print(x)\n"
             "    return 0\n"
         )
-        output = self.compile_and_run(code)
+        output = compile_and_run(code)
         lines = output.splitlines()
         self.assertEqual(lines[0], "1")
         self.assertEqual(lines[1], "42")
@@ -106,7 +146,7 @@ class TestPipelineRuntime(unittest.TestCase):
             "    print(x)\n"
             "    return 0\n"
         )
-        output = self.compile_and_run(code)
+        output = compile_and_run(code)
         lines = output.strip().splitlines()
         self.assertEqual(lines[0], "1.500000")
         self.assertEqual(lines[1], "3.500000")
@@ -134,7 +174,7 @@ class TestPipelineRuntime(unittest.TestCase):
             "    print(arr_bool)\n"
             "    return 0\n"
         )
-        output = self.compile_and_run(code)
+        output = compile_and_run(code)
         lines = output.strip().splitlines()
 
         # Assertions for arr_int
@@ -183,7 +223,7 @@ class TestPipelineRuntime(unittest.TestCase):
             "\n"
             "    return 0\n"
         )
-        output = self.compile_and_run(code)
+        output = compile_and_run(code)
         lines = output.strip().splitlines()
 
         # Assertions for type conversions
@@ -220,7 +260,7 @@ class TestPipelineRuntime(unittest.TestCase):
             "    print(f\"Player.species: {Player.species}\")\n"
             "    return 0\n"
         )
-        output = self.compile_and_run(code)
+        output = compile_and_run(code)
         lines = output.strip().splitlines()
 
         # Assertions for correctness of f-string interpolation
@@ -247,7 +287,7 @@ class TestPipelineRuntime(unittest.TestCase):
             "def main():\n"
             "    crash()\n"
         )
-        output = self.compile_and_run(code)
+        output = compile_and_run(code)
         self.assertIn("Exception raised", output)
 
     def test_default_arguments(self):
@@ -261,7 +301,7 @@ class TestPipelineRuntime(unittest.TestCase):
             "    print(a)\n"
             "    print(b)\n"
         )
-        output = self.compile_and_run(code)
+        output = compile_and_run(code)
         lines = output.strip().splitlines()
         self.assertEqual(lines[0], "6")
         self.assertEqual(lines[1], "8")
@@ -306,7 +346,7 @@ class TestPipelineRuntime(unittest.TestCase):
             "    print(m.get_hp())\n"
             "    return 0\n"
         )
-        output = self.compile_and_run(code)
+        output = compile_and_run(code)
         lines = output.strip().splitlines()
         self.assertEqual(lines[0], "150")
         self.assertEqual(lines[1], "150")
@@ -314,6 +354,34 @@ class TestPipelineRuntime(unittest.TestCase):
         self.assertEqual(lines[3], "150")
         self.assertEqual(lines[4], "200")
         self.assertEqual(lines[5], "150")
+
+    def test_import_mathlib_add(self):
+        modules = {
+            "mathlib": (
+                "PI: float = 3.1415\n"
+                "\n"
+                "def add(a: int, b: int) -> int:\n"
+                "    return a + b\n"
+            ),
+            "main": (
+                "import mathlib\n"
+                "\n"
+                "def main() -> int:\n"
+                "    mathlib.add(5, 4)\n"
+                "    print(mathlib.add(5, 4))\n"
+                "    x: int = mathlib.add(5, 4)\n"
+                "    print(x)\n"
+                "    print(mathlib.PI)\n"
+                "    return 0\n"
+            )
+        }
+
+        output = compile_modules_and_run_main(modules)
+        lines = output.strip().splitlines()
+        self.assertEqual(lines[0], "9")
+        self.assertEqual(lines[1], "9")
+        self.assertEqual(lines[2], "3.141500")
+
 
 
 if __name__ == "__main__":

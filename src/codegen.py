@@ -145,10 +145,20 @@ class CodeGen:
             self._direct_fields[cls.name] = direct
 
         self._emit_headers_and_runtime(include_self=False, include_runtime=True)
+        self._emit_global_externs(program)
         self._emit_class_structs(program)
         self._emit_function_prototypes(program)
 
         return "\n".join(self._lines)
+
+    def _emit_global_externs(self, program: Program) -> None:
+        """Emit extern declarations for global variables."""
+        for stmt in program.body:
+            if isinstance(stmt, VarDecl):
+                c_ty = self._c_type(stmt.declared_type)
+                self._emit(f"extern {c_ty} {stmt.name};")
+        if any(isinstance(stmt, VarDecl) for stmt in program.body):
+            self._emit()
 
     def _get_module_name(self) -> str:
         name = getattr(self._program, "module_name", None)
@@ -916,6 +926,10 @@ class CodeGen:
         attr = e.attr
 
         if isinstance(e.obj, Identifier):
+            # module attribute access: mathlib.PI -> PI (global variable)
+            if e.obj.name in self._modules:
+                return attr
+
             cls = self._get_expr_type(e.obj)
             if cls in self._direct_fields and attr not in self._direct_fields[cls]:
                 return f"{obj}->base.{attr}"

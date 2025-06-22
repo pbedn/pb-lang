@@ -87,15 +87,24 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
 
     # Step 4: Collect exports (functions, classes, globals)
     exports = {}
+    functions = {}
     for stmt in program.body:
         if isinstance(stmt, FunctionDef):
-            exports[stmt.name] = "function"  # Optionally: store signature string
+            exports[stmt.name] = "function"  # attribute access type
+            if stmt.name in checker.functions:
+                functions[stmt.name] = checker.functions[stmt.name]
         elif isinstance(stmt, ClassDef):
             exports[stmt.name] = "class"
         elif isinstance(stmt, VarDecl):
             exports[stmt.name] = stmt.declared_type
 
     program.module_name = ".".join(module_name)
-    mod_symbol = ModuleSymbol(name=".".join(module_name), program=program, path=filepath, exports=exports)
+    mod_symbol = ModuleSymbol(
+        name=".".join(module_name),
+        program=program,
+        path=filepath,
+        exports=exports,
+        functions=functions,
+    )
     loaded_modules[name_tuple] = mod_symbol
     return mod_symbol

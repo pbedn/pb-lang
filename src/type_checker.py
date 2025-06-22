@@ -157,11 +157,20 @@ def is_assignable(from_type: str, to_type: str) -> bool:
 
 class ModuleSymbol:
     """Represents an imported PB module in the module table."""
-    def __init__(self, name: str,  program: Program, path: str | None = None, exports: dict | None = None):
+
+    def __init__(
+        self,
+        name: str,
+        program: Program | None,
+        path: str | None = None,
+        exports: dict | None = None,
+        functions: dict | None = None,
+    ):
         self.name = name
         self.path = path  # Optional: absolute path to module file
         self.exports = exports if exports is not None else {}
-        self.program: Program = program
+        self.functions = functions if functions is not None else {}
+        self.program: Program | None = program
 
 
 class TypeError(Exception):
@@ -570,8 +579,22 @@ class TypeChecker:
                 if isinstance(base, Identifier) and base.name in self.modules:
                     mod = self.modules[base.name]
                     if attr not in mod.exports:
-                        raise TypeError(f"Error in call '{attr}' from module '{base.name}'. No export '{attr}'")
-                    # Optionally: type-check arity if you store signatures
+                        raise TypeError(
+                            f"Error in call '{attr}' from module '{base.name}'. No export '{attr}'"
+                        )
+
+                    if attr in mod.functions:
+                        param_types, return_type, num_required = mod.functions[attr]
+                        if not (num_required <= len(expr.args) <= len(param_types)):
+                            raise TypeError(
+                                f"Function '{attr}' expects between {num_required} and {len(param_types)} arguments, got {len(expr.args)}"
+                            )
+                        for i, (arg, expected) in enumerate(zip(expr.args, param_types)):
+                            actual = self.check_expr(arg)
+                            self.check_arg_compatibility(actual, expected, i + 1, attr)
+                        expr.inferred_type = return_type
+                        return return_type
+
                     expr.inferred_type = mod.exports[attr]
                     return mod.exports[attr]
 
@@ -670,7 +693,8 @@ class TypeChecker:
                 mod = self.modules[obj_name]
                 if expr.attr not in mod.exports:
                     raise TypeError(f"Module '{obj_name}' has no export '{expr.attr}'")
-                return mod.exports[expr.attr]
+                expr.inferred_type = mod.exports[expr.attr]
+                return expr.inferred_type
 
             # --- instance-field on any variable (including self) ---
             if obj_name in self.env:
