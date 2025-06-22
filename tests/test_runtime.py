@@ -358,6 +358,8 @@ class TestPipelineRuntime(unittest.TestCase):
     def test_import_mathlib_add(self):
         modules = {
             "mathlib": (
+                "PI: float = 3.1415\n"
+                "\n"
                 "def add(a: int, b: int) -> int:\n"
                 "    return a + b\n"
             ),
@@ -369,6 +371,7 @@ class TestPipelineRuntime(unittest.TestCase):
                 "    print(mathlib.add(5, 4))\n"
                 "    x: int = mathlib.add(5, 4)\n"
                 "    print(x)\n"
+                "    print(mathlib.PI)\n"
                 "    return 0\n"
             )
         }
@@ -377,6 +380,7 @@ class TestPipelineRuntime(unittest.TestCase):
         lines = output.strip().splitlines()
         self.assertEqual(lines[0], "9")
         self.assertEqual(lines[1], "9")
+        self.assertEqual(lines[3], "3.1415")
 
 
 
