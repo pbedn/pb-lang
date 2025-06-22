@@ -9,8 +9,8 @@ from pb_pipeline import compile_code_to_ast, compile_code_to_c_and_h
 BASE_DIR = os.path.dirname(__file__)
 
 class TestCodeGenFromSource(unittest.TestCase):
-    def compile_pipeline(self, code: str) -> tuple:
-        h, c, *_ = compile_code_to_c_and_h(code)
+    def compile_pipeline(self, code: str, pb_path: str | None = None) -> tuple:
+        h, c, *_ = compile_code_to_c_and_h(code, pb_path=pb_path)
         return h, c
 
     # ────────────────────────────────────────────────────────────────
@@ -29,7 +29,11 @@ class TestCodeGenFromSource(unittest.TestCase):
         with open(expected_c_path) as f:
             expected_c = f.read()
 
-        generated_h, generated_c, *_ = compile_code_to_c_and_h(source, module_name="lang")
+        generated_h, generated_c, *_ = compile_code_to_c_and_h(
+            source,
+            module_name="lang",
+            pb_path=pb_path,
+        )
 
         # Optional: normalize line endings to be OS-independent
         expected_h_normalized = expected_h.replace("\r\n", "\n").strip()

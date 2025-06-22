@@ -1,4 +1,5 @@
 #include "lang.h"
+#include "utils.h"
 int64_t counter = 100;
 int64_t Player_hp = 100;
 const char * Player_species = "Human";
@@ -135,6 +136,8 @@ int main(void)
 {
     char __fbuf[256];
     (void)__fbuf;
+    pb_print_str("=== Import and Call ===");
+    utils_helper();
     pb_print_str("=== F-String Interpolation ===");
     int64_t value = 42;
     const char * name = "Alice";
