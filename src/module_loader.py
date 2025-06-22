@@ -78,9 +78,8 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
     for stmt in program.body:
         if isinstance(stmt, ImportStmt):
             # Recursively load imported module
-            imported_name = stmt.module
-            alias = stmt.alias if stmt.alias else imported_name[0]
-            mod_symbol = load_module(imported_name, child_search_paths, loaded_modules)
+            mod_symbol = load_module(stmt.module, child_search_paths, loaded_modules)
+            alias = stmt.alias if stmt.alias else stmt.module[0]
             if verbose: print(f"Loaded module: {alias}, exports: {mod_symbol.exports}")
             checker.modules[alias] = mod_symbol
 
@@ -96,6 +95,7 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
         elif isinstance(stmt, VarDecl):
             exports[stmt.name] = stmt.declared_type
 
-    mod_symbol = ModuleSymbol(name=".".join(module_name), path=filepath, exports=exports)
+    program.module_name = ".".join(module_name)
+    mod_symbol = ModuleSymbol(name=".".join(module_name), program=program, path=filepath, exports=exports)
     loaded_modules[name_tuple] = mod_symbol
     return mod_symbol

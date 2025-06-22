@@ -1,32 +1,8 @@
-#include "pb_runtime.h"
-typedef struct Player {
-    int64_t hp;
-    const char * species;
-    int64_t mp;
-    const char * name;
-    int64_t score;
-} Player;
-typedef struct Mage {
-    Player base;
-    const char * power;
-    int64_t mp;
-} Mage;
+#include "lang.h"
+int64_t counter = 100;
 int64_t Player_hp = 100;
 const char * Player_species = "Human";
 const char * Mage_power = "fire";
-int64_t counter = 100;
-int64_t add(int64_t x, int64_t y);
-int64_t divide(int64_t x, int64_t y);
-int64_t increment(int64_t x, int64_t step);
-bool is_even(int64_t n);
-void Player____init__(struct Player * self, int64_t hp, int64_t mp);
-void Player__heal(struct Player * self, int64_t amount);
-const char * Player__get_name(struct Player * self);
-const char * Player__get_species_one(struct Player * self);
-void Player__add_to_counter(struct Player * self);
-void Mage____init__(struct Mage * self, int64_t hp);
-void Mage__cast_spell(struct Mage * self, int64_t spell_cost);
-void Mage__heal(struct Mage * self, int64_t amount);
 void Player____init__(struct Player * self, int64_t hp, int64_t mp)
 {
     (void)self;
@@ -113,7 +89,7 @@ static inline const char * Mage__get_species_one(
     struct Mage * self) {
     return Player__get_species_one((struct Player *)self);
 }
-int64_t add(int64_t x, int64_t y)
+int64_t lang_add(int64_t x, int64_t y)
 {
     (void)x;
     (void)y;
@@ -124,7 +100,7 @@ int64_t add(int64_t x, int64_t y)
     pb_print_int(result);
     return result;
 }
-int64_t divide(int64_t x, int64_t y)
+int64_t lang_divide(int64_t x, int64_t y)
 {
     (void)x;
     (void)y;
@@ -135,7 +111,7 @@ int64_t divide(int64_t x, int64_t y)
     }
     return (x / y);
 }
-int64_t increment(int64_t x, int64_t step)
+int64_t lang_increment(int64_t x, int64_t step)
 {
     (void)x;
     (void)step;
@@ -143,7 +119,7 @@ int64_t increment(int64_t x, int64_t step)
     (void)__fbuf;
     return (x + step);
 }
-bool is_even(int64_t n)
+bool lang_is_even(int64_t n)
 {
     (void)n;
     char __fbuf[256];
@@ -171,10 +147,11 @@ int main(void)
     pb_print_str("=== Global Variable After Update ===");
     pb_print_int(counter);
     pb_print_str("=== Function Call ===");
-    int64_t total = add(10, 5);
+    int64_t total = lang_add(10, 5);
+    int64_t divided = lang_divide(10, 5);
     pb_print_str("=== Function with Default Argument ===");
-    int64_t a = increment(5, 1);
-    int64_t b = increment(5, 3);
+    int64_t a = lang_increment(5, 1);
+    int64_t b = lang_increment(5, 3);
     pb_print_int(a);
     pb_print_int(b);
     pb_print_str("=== Assert Statement ===");
@@ -186,7 +163,7 @@ int main(void)
     double threshold = 50.0;
     pb_print_double(threshold);
     pb_print_str("=== If/Else ===");
-    if (is_even(total)) {
+    if (lang_is_even(total)) {
         pb_print_str("Total is even");
     }
     else  {

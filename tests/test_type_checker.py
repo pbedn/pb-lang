@@ -905,7 +905,7 @@ class TestTypeCheckerInternals(unittest.TestCase):
         self.tc.check_stmt(import_stmt)
 
         # Simulate: bar.some_func
-        self.tc.modules["bar"] = ModuleSymbol("bar", exports={"some_func": "function"})
+        self.tc.modules["bar"] = ModuleSymbol("bar", None, exports={"some_func": "function"})
         expr = AttributeExpr(obj=Identifier("bar"), attr="some_func")
         result_type = self.tc.check_expr(expr)
 
@@ -920,14 +920,14 @@ class TestTypeCheckerInternals(unittest.TestCase):
             self.tc.check_expr(expr)
 
         # Case 2: "baz" imported as a module, but export does not exist — should raise TypeError for missing export
-        self.tc.modules["baz"] = ModuleSymbol("baz", exports={"exists": "function"})
+        self.tc.modules["baz"] = ModuleSymbol("baz", None, exports={"exists": "function"})
         expr_missing = AttributeExpr(obj=Identifier("baz"), attr="not_exported")
         with self.assertRaises(TypeError):
             self.tc.check_expr(expr_missing)
 
     def test_assign_to_module_attribute_raises(self):
         # Simulate imported module 'mathlib'
-        self.tc.modules["mathlib"] = ModuleSymbol("mathlib", exports={"add": "function"})
+        self.tc.modules["mathlib"] = ModuleSymbol("mathlib", None, exports={"add": "function"})
         stmt = AssignStmt(AttributeExpr(Identifier("mathlib"), "x"), Literal("42"))
         # Expected: assigning to mathlib.x should raise TypeError
         with self.assertRaises(TypeError):
@@ -935,7 +935,7 @@ class TestTypeCheckerInternals(unittest.TestCase):
 
     def test_aug_assign_to_module_attribute_raises(self):
         # Simulate imported module 'mathlib'
-        self.tc.modules["mathlib"] = ModuleSymbol("mathlib", exports={"add": "function"})
+        self.tc.modules["mathlib"] = ModuleSymbol("mathlib", None, exports={"add": "function"})
         stmt = AugAssignStmt(AttributeExpr(Identifier("mathlib"), "x"), "+=", Literal("1"))
         # Expected: augmented assignment to mathlib.x should raise TypeError
         with self.assertRaises(TypeError):

@@ -81,10 +81,14 @@ class CodeGen:
         self._class_bases: dict[str, Optional[str]] = {}
         self._direct_fields: dict[str, set[str]] = {}
 
+        self._modules: set[str] = set()  # track imported module names
+
     def generate(self, program: Program) -> str:
-        """Generate the complete C source for `program`."""
+        """Generate the complete C source for ``program``."""
+        self._program = program
         self._lines.clear()
         self._indent = 0
+        self._runtime_emitted = False
 
         self._classes = [d for d in program.body if isinstance(d, ClassDef)]
         self._instance_fields = getattr(program, "inferred_instance_fields", {})
@@ -92,13 +96,17 @@ class CodeGen:
         self._direct_fields = {}
         for cls in self._classes:
             base_fields = set(self._instance_fields.get(cls.base, {})) if cls.base else set()
-            self._direct_fields[cls.name] = set(self._instance_fields.get(cls.name, {})) - base_fields
+            declared = {f.name for f in cls.fields}
+            assigned_here = self._assigned_fields_in_class(cls)
+            direct = set()
+            for field in self._instance_fields.get(cls.name, {}):
+                if field not in base_fields or field in assigned_here or field in declared:
+                    direct.add(field)
+            self._direct_fields[cls.name] = direct
 
-        self._emit_headers_and_runtime()
-        self._emit_class_structs(program)
-        self._emit_class_statics(program)
+        self._emit_headers_and_runtime(include_self=True, include_runtime=False)
         self._emit_global_decls(program)
-        self._emit_function_prototypes(program)
+        self._emit_class_statics(program)
 
         # Definitions
         for stmt in program.body:
@@ -112,17 +120,63 @@ class CodeGen:
             # top-level VarDecl or Assign go to globals, already handled
         return "\n".join(self._lines)
 
+    def generate_header(self, program: Program) -> str:
+        """Generate a C header file (.h) for a given PB module AST."""
+        self._program = program
+        self._lines.clear()
+        self._indent = 0
+        self._runtime_emitted = False
+        self._structs_emitted.clear()
+
+        self._lines.append("#pragma once")
+
+        self._classes = [d for d in program.body if isinstance(d, ClassDef)]
+        self._instance_fields = getattr(program, "inferred_instance_fields", {})
+        self._class_bases = {cls.name: cls.base for cls in self._classes}
+        self._direct_fields = {}
+        for cls in self._classes:
+            base_fields = set(self._instance_fields.get(cls.base, {})) if cls.base else set()
+            declared = {f.name for f in cls.fields}
+            assigned_here = self._assigned_fields_in_class(cls)
+            direct = set()
+            for field in self._instance_fields.get(cls.name, {}):
+                if field not in base_fields or field in assigned_here or field in declared:
+                    direct.add(field)
+            self._direct_fields[cls.name] = direct
+
+        self._emit_headers_and_runtime(include_self=False, include_runtime=True)
+        self._emit_class_structs(program)
+        self._emit_function_prototypes(program)
+
+        return "\n".join(self._lines)
+
+    def _get_module_name(self) -> str:
+        name = getattr(self._program, "module_name", None)
+        return name or "main"
+
+    def _mangle_function_name(self, name: str) -> str:
+        if name == "main" or "__" in name:
+            return name
+        module = self._get_module_name()
+        return f"{module}_{name}"
+
     def _emit(self, line: str = "") -> None:
         prefix = self.INDENT * self._indent
         for sub in line.splitlines():
             self._lines.append(f"{prefix}{sub}")
 
-    def _emit_headers_and_runtime(self) -> None:
-        if self._runtime_emitted:
-            return
-        self._runtime_emitted = True
+    def _emit_headers_and_runtime(self, include_self: bool = False, include_runtime: bool = True) -> None:
+        """Emit required #include directives for runtime and imports."""
+        if include_runtime:
+            self._emit('#include "pb_runtime.h"')
+        if include_self:
+            self._emit(f'#include "{self._get_module_name()}.h"')
 
-        self._emit('''#include "pb_runtime.h"''')
+        for stmt in self._program.body:
+            if isinstance(stmt, ImportStmt):
+                self._modules.add(stmt.module[0])
+                self._emit(f'#include "{stmt.module[0]}.h"')
+
         self._emit()
 
     @staticmethod
@@ -194,7 +248,7 @@ class CodeGen:
 
             actually_emitted: set[str] = set(declared)
 
-            for field_name in sorted(instance_fields):
+            for field_name in instance_fields:
                 pb_type = instance_fields[field_name]
                 if field_name in base_fields and field_name not in assigned_here:
                     continue
@@ -273,24 +327,31 @@ class CodeGen:
             params.append(f"{pty} {p.name}")
         if not params:
             params = ["void"]
-        return f"{ret} {fn.name}({', '.join(params)})"
+        
+        # add module prefix if not main or class method
+        name = fn.name
+        if not name.startswith("main") and "__" not in name:
+            name = f"{self._get_module_name()}_{name}"
+
+        return f"{ret} {name}({', '.join(params)})"
 
     def _emit_function(self, fn: FunctionDef) -> None:
         """Emit a standard (non-main) function definition."""
+        mangled_name = self._mangle_function_name(fn.name)
 
         self._emit(self._func_proto(fn))
 
         # keep metadata for print() type-picking
-        self._function_returns[fn.name] = fn.return_type or "None"
+        self._function_returns[mangled_name] = fn.return_type or "None"
         
         # … and their default literals (or None if no default)
         # record defaults *only* for the real parameters (skip `self`)
-        self._function_defaults[fn.name] = [
+        self._function_defaults[mangled_name] = [
             (arg.default.raw if arg.default else None)
-            for arg in fn.params[1:]
+            for arg in fn.params
         ]
         # record parameter names …
-        self._function_params[fn.name] = [arg.name for arg in fn.params]
+        self._function_params[mangled_name] = [arg.name for arg in fn.params]
 
         self._emit("{")
         self._indent += 1
@@ -715,12 +776,27 @@ class CodeGen:
         return f"({e.op}{operand})"
 
     def _generate_CallExpr(self, e: CallExpr) -> str:
+        """Generate C code for a function/method/constructor call expression."""
+
+        # --- AttributeExpr: module function, method, or class static method ---
         # Special case: Class.__init__(self, ...) → Player____init__(self, ...)
         if isinstance(e.func, AttributeExpr):
             obj = e.func.obj
             attr = e.func.attr
 
-            # Special case: Class.__init__(self, ...) → Player____init__((struct Player *) self, hp, mp_default)
+            # --- Module function: mathlib.add(...) -> mathlib_add(...) ---
+            if isinstance(obj, Identifier) and obj.name in self._modules:
+                mangled = f"{obj.name}_{attr}"
+                passed_args = [self._expr(arg) for arg in e.args]
+                if mangled in self._function_params:
+                    all_args = self._apply_defaults(mangled, passed_args)
+                    args = ", ".join(all_args)
+                    return f"{mangled}({args})"
+                else:
+                    args = ", ".join(passed_args)
+                    return f"{mangled}({args})"
+
+            # Special case: Class.__init__ → Class____init__
             if attr == "__init__" and isinstance(obj, Identifier):
                 class_name = obj.name
                 init_fn   = f"{class_name}____init__"
@@ -731,8 +807,7 @@ class CodeGen:
                 # pad missing args using defaults
                 defaults = self._function_defaults.get(init_fn, [])
                 # skip the 'self' slot at index 0
-                num_provided = len(actual) - 1    # arguments after 'self'
-                for i in range(num_provided, len(defaults)):
+                for i in range(len(actual), len(defaults)):
                     default = defaults[i]
                     if default is None:
                         raise RuntimeError(f"No default for parameter {i+1} of {init_fn}")
@@ -757,7 +832,7 @@ class CodeGen:
                 # pad using the actual defaults from the .pb AST
                 defaults = self._function_defaults.get(init_func, [])
                 # skip the 'self' slot at index 0
-                for i in range(len(actual_args), len(defaults)):
+                for i in range(len(actual_args) + 1, len(defaults)):
                     if defaults[i] is None:
                         raise RuntimeError(f"Missing default for parameter {i+1} of {init_func}")
                     actual_args.append(defaults[i])
@@ -771,18 +846,28 @@ class CodeGen:
                 return f"&{var}"
 
             # Normal function call — also handle defaults
-            fn_name = class_name
-            if fn_name in self._function_params:
-                expected = self._function_params[fn_name]
-                actual_args = [self._expr(arg) for arg in e.args]
-                while len(actual_args) < len(expected):
-                    # Insert known defaults by name (manual for now)
-                    if fn_name == "increment":
-                        actual_args.append("1")
-                    else:
-                        actual_args.append("0")
-                args = ", ".join(actual_args)
-                return f"{fn_name}({args})"
+            fn_name = e.func.name
+            mangled = self._mangle_function_name(fn_name)
+
+            # Try to detect imported functions
+            imported_from = None
+            for stmt in getattr(self._program, "body", []):
+                if isinstance(stmt, ImportStmt):
+                    if hasattr(stmt, "module") and stmt.module[0] in self._modules:
+                        if fn_name not in self._function_params:
+                            imported_from = stmt.module[0]
+                    if hasattr(stmt, "names") and fn_name in getattr(stmt, "names", []):
+                        imported_from = stmt.module[0]
+            if imported_from:
+                mangled = f"{imported_from}_{fn_name}"
+
+            if mangled in self._function_params:
+                passed_args = [self._expr(arg) for arg in e.args]
+                all_args = self._apply_defaults(mangled, passed_args)
+                args = ", ".join(all_args)
+                return f"{mangled}({args})"
+
+            # --- Built-int type conversions ---
             if fn_name == "int":
                 if e.args[0].inferred_type == "float":
                     return f"(int64_t)({self._expr(e.args[0])})"
@@ -932,6 +1017,24 @@ class CodeGen:
                             self._emit(f'double {stmt.name}_{field.name} = {raw};')
                         else:
                             self._emit(f'int64_t {stmt.name}_{field.name} = {raw};')
+
+    def _apply_defaults(self, mangled_name: str, passed_args: list[str]) -> list[str]:
+        """
+        Given a mangled function name and a list of already generated argument expressions (as strings),
+        return the final list of arguments to use for codegen, padding with defaults as needed.
+        Raise if required arguments are missing.
+        """
+        expected_params = self._function_params[mangled_name]
+        defaults = self._function_defaults[mangled_name]
+        args = list(passed_args)
+        for i in range(len(args), len(expected_params)):
+            default = defaults[i]
+            if default is None:
+                raise RuntimeError(
+                    f"Missing argument for parameter '{expected_params[i]}' in '{mangled_name}', and no default provided."
+                )
+            args.append(default)
+        return args
 
 
 if __name__ == "__main__":
