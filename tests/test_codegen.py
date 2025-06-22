@@ -74,7 +74,10 @@ def assert_all_inferred_types_filled(program: Program):
 def codegen_output(program: Program) -> str:
     TypeChecker().check(program)
     # assert_all_inferred_types_filled(program)
-    return CodeGen().generate(program)
+    codegen = CodeGen()
+    h = codegen.generate_header(program)
+    c = codegen.generate(program)
+    return h + "\n" + c
 
 def assert_contains_all(testcase, output: str, snippets: list[str]):
     for snippet in snippets:
@@ -108,7 +111,7 @@ class TestCodeGen(unittest.TestCase):
         ])
         output = codegen_output(prog)
         assert_contains_all(self, output, [
-            "int64_t add(int64_t x, int64_t y)",
+            "int64_t main_add(int64_t x, int64_t y)",
             "int64_t result = (x + y);",
             'pb_print_str("Adding numbers:");',
             "pb_print_int(result);",
@@ -614,7 +617,7 @@ class TestCodeGen(unittest.TestCase):
         ])
         output = codegen_output(program)
         assert_contains_all(self, output, [
-            "int64_t incr(int64_t x, int64_t step)",
+            "int64_t main_incr(int64_t x, int64_t step)",
             "return (x + step);"
         ])
 
@@ -1020,7 +1023,7 @@ class TestCodeGen(unittest.TestCase):
         ])
         output = codegen_output(prog)
         assert_contains_all(self, output, [
-            'pb_print_str(get_name());',
+            'pb_print_str(main_get_name());',
             'return 0;'
         ])
 

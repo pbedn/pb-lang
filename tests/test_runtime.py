@@ -8,55 +8,51 @@ from lexer import Lexer
 from parser import Parser
 from codegen import CodeGen
 from type_checker import TypeChecker
+from pb_pipeline import compile_code_to_c_and_h
 
 from tests import build_dir
 
 
 class TestPipelineRuntime(unittest.TestCase):
     def compile_and_run(self, code: str) -> str:
-        # Compile full pipeline
-        tokens = Lexer(code).tokenize()
-        ast = Parser(tokens).parse()
-        checker = TypeChecker()
-        checker.check(ast)
-        c_code = CodeGen().generate(ast)
-        # print("=== Generated C ===")
-        # print(c_code)
+        h_code, c_code, *_ = compile_code_to_c_and_h(code, module_name="main")
 
-        # Save C code
-        with tempfile.NamedTemporaryFile(suffix=".c", delete=False) as c_file:
-            c_file.write(c_code.encode("utf-8"))
-            c_file_path = c_file.name
+        with tempfile.TemporaryDirectory() as tmpdir:
+            h_file_path = os.path.join(tmpdir, "main.h")
+            c_file_path = os.path.join(tmpdir, "main.c")
+            exe_path = os.path.join(tmpdir, "main")
+            if sys.platform == "win32":
+                exe_path += ".exe"
 
-        # Compile using GCC
-        exe_path = c_file_path[:-2]
-        if sys.platform == "win32":
-            exe_path += ".exe"
+            # Write header and C files
+            with open(h_file_path, "w", encoding="utf-8") as h_file:
+                h_file.write(h_code)
+            with open(c_file_path, "w", encoding="utf-8") as c_file:
+                c_file.write(c_code)
 
-        # Runtime build once
-        # need to make sure pb_runtime.a is up to date
-        runtime_lib = os.path.join(build_dir, "pb_runtime.a")
-        if not os.path.isfile(runtime_lib):
-            print("Runtime library not found; building it now...")
-            result = subprocess.run("python run.py buildlib")
+            # Runtime build once
+            # need to make sure pb_runtime.a is up to date
+            runtime_lib = os.path.join(build_dir, "pb_runtime.a")
+            if not os.path.isfile(runtime_lib):
+                print("Runtime library not found; building it now...")
+                result = subprocess.run("python run.py buildlib")
 
-        compile_cmd = [
-            "gcc", "-std=c99", "-W", c_file_path,
-            "-o", exe_path,
-            "-I", build_dir,
-            os.path.join(build_dir, "pb_runtime.a")
-        ]
+            compile_cmd = [
+                "gcc", "-std=c99", "-W", c_file_path,
+                "-o", exe_path,
+                "-I", build_dir,
+                runtime_lib
+            ]
 
-        result = subprocess.run(compile_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(f"GCC build failed:\n{result.stderr}")
+            result = subprocess.run(compile_cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(f"GCC build failed:\n{result.stderr}")
 
-        # Run & capture output
-        run_result = subprocess.run([exe_path], capture_output=True, text=True)
-        output = run_result.stdout + run_result.stderr
-        # print(f"[INFO] Program exited with {run_result.returncode}")
+            # Run & capture output
+            run_result = subprocess.run([exe_path], capture_output=True, text=True)
+            output = run_result.stdout + run_result.stderr
 
-        return output.strip()
+            return output.strip()
 
     def test_global_runtime_update(self):
         code = (
@@ -253,6 +249,71 @@ class TestPipelineRuntime(unittest.TestCase):
         )
         output = self.compile_and_run(code)
         self.assertIn("Exception raised", output)
+
+    def test_default_arguments(self):
+        code = (
+            "def increment(x: int, step: int = 1) -> int:\n"
+            "    return x + step\n"
+            "\n"
+            "def main():\n"
+            "    a: int = increment(5)\n"
+            "    b: int = increment(5, 3)\n"
+            "    print(a)\n"
+            "    print(b)\n"
+        )
+        output = self.compile_and_run(code)
+        lines = output.strip().splitlines()
+        self.assertEqual(lines[0], "6")
+        self.assertEqual(lines[1], "8")
+
+    def test_classes(self):
+        code = (
+            "# Class can be empty\n"
+            "class Empty:\n"
+            "    pass\n"
+            "\n"
+            "# Can have class attributes\n"
+            "class ClassWithAttr:\n"
+            "    attr1: str = 'some attr'\n"
+            "    ATR2: str = 'other attr'\n"
+            "\n"
+            "class ClassWithUserDefinedAttr:\n"
+            "    uda: Empty = Empty()\n"
+            "\n"
+            "class Player:\n"
+            "    name: str = 'P'\n"
+            "\n"
+            "    def __init__(self) -> None:\n"
+            "        self.hp = 150\n"
+            "\n"
+            "    def get_hp(self) -> int:\n"
+            "        return self.hp\n"
+            "\n"
+            "class Mage(Player):\n"
+            "\n"
+            "    def __init__(self) -> None:\n"
+            "        Player.__init__(self)\n"
+            "        self.mana = 200\n"
+            "\n"
+            "def main() -> int:\n"
+            "    p: Player = Player()\n"
+            "    print(p.hp)\n"
+            "    print(p.get_hp())\n"
+            "    print(Player.name)\n"
+            "    m: Mage = Mage()\n"
+            "    print(m.hp)\n"
+            "    print(m.mana)\n"
+            "    print(m.get_hp())\n"
+            "    return 0\n"
+        )
+        output = self.compile_and_run(code)
+        lines = output.strip().splitlines()
+        self.assertEqual(lines[0], "150")
+        self.assertEqual(lines[1], "150")
+        self.assertEqual(lines[2], "P")
+        self.assertEqual(lines[3], "150")
+        self.assertEqual(lines[4], "200")
+        self.assertEqual(lines[5], "150")
 
 
 if __name__ == "__main__":

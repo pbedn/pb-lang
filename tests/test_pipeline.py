@@ -4,23 +4,14 @@ from lexer import Lexer
 from parser import Parser, ParserError
 from type_checker import TypeChecker, TypeError
 from codegen import CodeGen
+from pb_pipeline import compile_code_to_ast, compile_code_to_c_and_h
 
 BASE_DIR = os.path.dirname(__file__)
 
 class TestCodeGenFromSource(unittest.TestCase):
-    def compile_pipeline(self, code: str) -> str:
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        # print(tokens)
-
-        parser = Parser(tokens)
-        ast = parser.parse()
-
-        checker = TypeChecker()
-        checker.check(ast)
-
-        codegen = CodeGen()
-        return codegen.generate(ast)
+    def compile_pipeline(self, code: str) -> tuple:
+        h, c, *_ = compile_code_to_c_and_h(code)
+        return h, c
 
     # ────────────────────────────────────────────────────────────────
     # Reference Test
@@ -28,20 +19,29 @@ class TestCodeGenFromSource(unittest.TestCase):
     def test_lang_pb_codegen_matches_expected(self):
         self.maxDiff = None
         pb_path = os.path.join(BASE_DIR, "../ref/lang.pb")
+        expected_h_path = os.path.join(BASE_DIR, "../ref/ref_lang.h")
         expected_c_path = os.path.join(BASE_DIR, "../ref/ref_lang.c")
         with open(pb_path) as f:
             source = f.read()
 
+        with open(expected_h_path) as f:
+            expected_h = f.read()
         with open(expected_c_path) as f:
             expected_c = f.read()
 
-        generated_c = self.compile_pipeline(source)
+        generated_h, generated_c, *_ = compile_code_to_c_and_h(source, module_name="lang")
 
         # Optional: normalize line endings to be OS-independent
+        expected_h_normalized = expected_h.replace("\r\n", "\n").strip()
         expected_c_normalized = expected_c.replace("\r\n", "\n").strip()
+        generated_h_normalized = generated_h.replace("\r\n", "\n").strip()
         generated_c_normalized = generated_c.replace("\r\n", "\n").strip()
 
         # Assert full match
+        self.assertEqual(
+            generated_h_normalized, expected_h_normalized,
+            msg="Generated C header does not match the expected output."
+        )
         self.assertEqual(
             generated_c_normalized, expected_c_normalized,
             msg="Generated C code does not match the expected output."
@@ -56,7 +56,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    print(\"Hello, world!\")\n"
             "    return 0\n"
         )
-        c_code = self.compile_pipeline(code)
+        header, c_code = self.compile_pipeline(code)
         self.assertIn('pb_print_str("Hello, world!");', c_code)
         self.assertIn('return 0;', c_code)
 
@@ -64,7 +64,7 @@ class TestCodeGenFromSource(unittest.TestCase):
         code = (
             "x: int = 42\n"
         )
-        c_code = self.compile_pipeline(code)
+        header, c_code = self.compile_pipeline(code)
         self.assertIn("int64_t x = 42;", c_code)
 
     def test_assign_stmt_from_source(self):
@@ -74,7 +74,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    x = 42\n"
             "    return 0\n"
         )
-        c_code = self.compile_pipeline(code)
+        header, c_code = self.compile_pipeline(code)
         self.assertIn("int64_t x = 0;", c_code)
         self.assertIn("x = 42;", c_code)
 
@@ -85,7 +85,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    print(f\"Hello, {name}!\")\n"
             "    return 0\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         self.assertIn('pb_print_str((snprintf(__fbuf, 256, "Hello, %s!", name), __fbuf));', c)
 
     def test_aug_assign_stmt_from_source(self):
@@ -95,7 +95,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    x += 1\n"
             "    return 0\n"
         )
-        c_code = self.compile_pipeline(code)
+        header, c_code = self.compile_pipeline(code)
         self.assertIn("int64_t x = 0;", c_code)
         self.assertIn("x += 1;", c_code)
 
@@ -104,7 +104,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "def main() -> int:\n"
             "    return 0\n"
         )
-        c_code = self.compile_pipeline(code)
+        header, c_code = self.compile_pipeline(code)
         self.assertIn("return 0;", c_code)
 
     def test_pass_stmt_from_source(self):
@@ -112,7 +112,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "def noop():\n"
             "    pass\n"
         )
-        c_code = self.compile_pipeline(code)
+        header, c_code = self.compile_pipeline(code)
         self.assertIn(";  // pass", c_code)
 
     def test_break_continue_from_source(self):
@@ -126,7 +126,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "        print(i)\n"
             "    return 0\n"
         )
-        c_code = self.compile_pipeline(code)
+        header, c_code = self.compile_pipeline(code)
         self.assertIn("break;", c_code)
         self.assertIn("continue;", c_code)
 
@@ -149,7 +149,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    f(1)\n"
             "    return 0\n"
         )
-        c_code = self.compile_pipeline(code)
+        header, c_code = self.compile_pipeline(code)
         self.assertIn("f(1);", c_code)
         self.assertIn("return 0;", c_code)
 
@@ -171,7 +171,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "        pass\n"
             "    return a\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         self.assertIn("if (true) {", c)
         self.assertIn("else  {", c)
         self.assertIn(";  // pass", c)
@@ -185,7 +185,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "        pass\n"
             "    return a\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         self.assertIn("while (true) {", c)
         self.assertIn(";  // pass", c)
 
@@ -198,7 +198,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "        print(x)\n"
             "    return 0\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         self.assertIn("for (int __i_x = 0;", c)
         self.assertIn("x = arr.data[__i_x];", c)
 
@@ -209,7 +209,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "def main(a: int) -> int:\n"
             "    return a\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         self.assertIn("int main(", c)
         # self.assertIn("int64_t a)", c)
         self.assertIn("return a;", c)
@@ -224,7 +224,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    print(first)\n"
             "    return 0\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         self.assertIn("List_int nums =", c)
         self.assertIn("int64_t first = list_int_get(&nums, 0);", c)
 
@@ -236,7 +236,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    print(x)\n"
             "    return 0\n"
         )
-        c_code = self.compile_pipeline(code)
+        header, c_code = self.compile_pipeline(code)
         self.assertIn('bool __tmp_list_1[] = {true, false, true};', c_code)
         self.assertIn('List_bool flags = (List_bool){ .len=3, .data=__tmp_list_1 };', c_code)
         self.assertIn('bool x = list_bool_get(&flags, 0);', c_code)
@@ -253,7 +253,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    nums[0] = 123\n"
             "    return 0\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         self.assertIn("List_int nums = (List_int){ .len=3, .data=__tmp_list_1 };", c)
         self.assertIn("int64_t first = list_int_get(&nums, 0);", c)
         self.assertIn("pb_print_int(first);", c)
@@ -282,7 +282,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    print(d[\"a\"])\n"
             "    return 0\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         self.assertIn('Pair_str_int __tmp_dict_1[] = {{"a", 1}, {"b", 2}};', c)
         self.assertIn("Dict_str_int d = (Dict_str_int){ .len=2, .data=__tmp_dict_1 };", c)
         self.assertIn('pb_print_int(pb_dict_get_str_int(d, "a"));', c)
@@ -294,7 +294,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    print(d[\"a\"])\n"
             "    return 0\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         self.assertIn('Pair_str_str __tmp_dict_1[] = {{"a", "sth"}, {"b", "here"}};', c)
         self.assertIn("Dict_str_str d = (Dict_str_str){ .len=2, .data=__tmp_dict_1 };", c)
         self.assertIn('pb_print_str(pb_dict_get_str_str(d, "a"));', c)
@@ -306,7 +306,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    print(d[\"a\"])\n"
             "    return 0\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         self.assertIn('Pair_str_bool __tmp_dict_1[] = {{"a", true}, {"b", false}};', c)
         self.assertIn("Dict_str_bool d = (Dict_str_bool){ .len=2, .data=__tmp_dict_1 };", c)
         self.assertIn('pb_print_bool(pb_dict_get_str_bool(d, "a"));', c)
@@ -318,7 +318,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    print(d[\"a\"])\n"
             "    return 0\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         self.assertIn('Pair_str_float __tmp_dict_1[] = {{"a", 1.0}, {"b", 2.0}};', c)
         self.assertIn("Dict_str_float d = (Dict_str_float){ .len=2, .data=__tmp_dict_1 };", c)
         self.assertIn('pb_print_double(pb_dict_get_str_float(d, "a"));', c)
@@ -336,7 +336,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "        print(\"not 20\")\n"
             "    return 0\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         self.assertIn("if ((x == y)) {", c)
         self.assertIn("if ((x != 20)) {", c)
 
@@ -349,7 +349,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "        print(\"ok\")\n"
             "    return 0\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         self.assertIn("if ((x && !(y))) {", c)
 
     # class ------------------------------------------------------
@@ -367,7 +367,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    print(p.get_hp())\n"
             "    return 0\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         self.assertIn("struct Player __tmp_", c)
         self.assertIn("Player____init__(&__tmp_", c)
         self.assertIn("pb_print_int(Player__get_hp(p));", c)
@@ -390,7 +390,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    print(Player.mp)\n"
             "    return 0\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
 
         # Check that instance and class fields are both accessed correctly
         self.assertIn("struct Player __tmp_", c)
@@ -400,9 +400,9 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn("pb_print_int(Player_mp);", c)
 
         # Optional: confirm structure of Player includes both fields
-        self.assertIn("typedef struct Player {", c)
-        self.assertIn("int64_t hp;", c)
-        self.assertIn("int64_t mp;", c)
+        self.assertIn("typedef struct Player {", h)
+        self.assertIn("int64_t hp;", h)
+        self.assertIn("int64_t mp;", h)
 
         # Optional: confirm static field initialization
         self.assertIn("int64_t Player_mp = 100;", c)
@@ -434,17 +434,17 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    print(m.get_hp())\n"
             "    return 0\n"
         )
-        c = self.compile_pipeline(code)
-        self.assertIn("typedef struct Player {", c)
-        self.assertIn("const char * name;", c)
-        self.assertIn("int64_t hp;", c)
-        self.assertIn("typedef struct Mage {", c)
-        self.assertIn("Player base;", c)
-        self.assertIn("int64_t mana;", c)
+        h, c = self.compile_pipeline(code)
+        self.assertIn("typedef struct Player {", h)
+        self.assertIn("const char * name;", h)
+        self.assertIn("int64_t hp;", h)
+        self.assertIn("typedef struct Mage {", h)
+        self.assertIn("Player base;", h)
+        self.assertIn("int64_t mana;", h)
         self.assertIn("const char * Player_name = \"P\";", c)
-        self.assertIn("void Player____init__(struct Player * self);", c)
-        self.assertIn("int64_t Player__get_hp(struct Player * self);", c)
-        self.assertIn("void Mage____init__(struct Mage * self);", c)
+        self.assertIn("void Player____init__(struct Player * self);", h)
+        self.assertIn("int64_t Player__get_hp(struct Player * self);", h)
+        self.assertIn("void Mage____init__(struct Mage * self);", h)
         self.assertIn("Player____init__((struct Player *)self);", c)
         self.assertIn("pb_print_int(p->hp);", c)
         self.assertIn("pb_print_int(Player__get_hp(p));", c)
@@ -470,7 +470,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    c.greet()\n"
             "    return 0\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         self.assertIn("struct Child __tmp_", c)
         self.assertIn("pb_print_str(\"child\");", c)
 
@@ -489,7 +489,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "def main():\n"
             "    crash()\n"
         )
-        c_code = self.compile_pipeline(pb_code)
+        header, c_code = self.compile_pipeline(pb_code)
         # Should emit the constructor forwarding and fail call
         self.assertIn('Exception____init__((struct Exception *)self, msg);', c_code)
         self.assertIn('pb_fail("Exception raised");', c_code)
@@ -506,7 +506,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "        global counter\n"
             "        counter += 1\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         self.assertIn("int64_t counter = 0;", c)
         self.assertIn("/* global counter */", c)
         self.assertIn("counter += 1;", c)
@@ -519,7 +519,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    print(x)\n"
             "    return x\n"
         )
-        c_code = self.compile_pipeline(code)
+        header, c_code = self.compile_pipeline(code)
         self.assertIn('int64_t x = 100;', c_code)
         self.assertIn('pb_print_int(x);', c_code)
 
@@ -533,7 +533,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    print(x)\n"
             "    return x\n"
         )
-        c_code = self.compile_pipeline(code)
+        header, c_code = self.compile_pipeline(code)
         self.assertIn('int64_t x = 10;', c_code)
         self.assertIn('x = 20;', c_code)
 
@@ -546,7 +546,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    print(x)\n"
             "    return x\n"
         )
-        c_code = self.compile_pipeline(code)
+        header, c_code = self.compile_pipeline(code)
         self.assertIn('int64_t x = 10;', c_code)  # global var
         self.assertIn('int64_t x = 5;', c_code)   # local shadowing var
 
@@ -570,7 +570,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "        print(i)\n"
             "    return 0\n"
         )
-        c_code = self.compile_pipeline(code)
+        header, c_code = self.compile_pipeline(code)
         self.assertIn("for (int64_t i = 0; i < 3; ++i)", c_code)
         self.assertIn('pb_print_int(i)', c_code)
 
@@ -581,7 +581,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "        print(x)\n"
             "    return 0\n"
         )
-        c_code = self.compile_pipeline(code)
+        header, c_code = self.compile_pipeline(code)
         self.assertIn("for (int64_t x = 0; x < 2; ++x)", c_code)
         self.assertIn('pb_print_int(x)', c_code)
 
@@ -618,7 +618,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "        print(i)\n"
             "    return 0\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         self.assertIn("for (int64_t i = 0; i < 5; ++i)", c)
         self.assertIn("continue;", c)
         self.assertIn("break;", c)
@@ -641,7 +641,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    z_bool: bool = bool(z)\n"
             "    return 0\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
         
         # Check for type declarations and conversions in the generated C code
         self.assertIn("int64_t x = 10;", c)                # x as int
@@ -682,7 +682,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    print(f\"Player.species: {Player.species}\")\n"
             "    return 0\n"
         )
-        c = self.compile_pipeline(code)
+        h, c = self.compile_pipeline(code)
 
         # f-string expansions
         self.assertIn('pb_print_str((snprintf(__fbuf, 256, "Simple fstring: x=%lld", x), __fbuf));', c)

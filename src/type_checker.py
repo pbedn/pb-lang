@@ -157,10 +157,11 @@ def is_assignable(from_type: str, to_type: str) -> bool:
 
 class ModuleSymbol:
     """Represents an imported PB module in the module table."""
-    def __init__(self, name: str, path: str = None, exports: dict = None):
+    def __init__(self, name: str,  program: Program, path: str | None = None, exports: dict | None = None):
         self.name = name
         self.path = path  # Optional: absolute path to module file
         self.exports = exports if exports is not None else {}
+        self.program: Program = program
 
 
 class TypeError(Exception):

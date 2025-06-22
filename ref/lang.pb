@@ -102,6 +102,7 @@ def main() -> int:
     # Function call and assignment
     print("=== Function Call ===")
     total: int = add(10, 5)
+    divided: int = divide(10, 5)
 
     print("=== Function with Default Argument ===")
     a: int = increment(5)

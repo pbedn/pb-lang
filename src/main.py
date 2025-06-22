@@ -10,6 +10,7 @@ from parser import Parser, ParserError
 from codegen import CodeGen
 from module_loader import load_module
 from type_checker import TypeChecker, TypeError
+from pb_pipeline import compile_code_to_c_and_h 
 
 RICH_PRINT = False
 
@@ -25,71 +26,62 @@ def pretty_print_code(code: str, lexer="c"):
     else:
         print(code)
 
+
 def enable_rich():
     global RICH_PRINT
     from rich.pretty import pprint as rich_pprint
     globals()['pprint'] = rich_pprint
     RICH_PRINT = True
 
-def compile_to_c(source_code: str, pb_path: str, output_file: str = "out.c", verbose: bool = False, debug: bool = False):
-    lexer = Lexer(source_code)
-    try:
-        tokens = lexer.tokenize()
-        if debug: print("TOKENS:\n"); pprint(tokens); print(f"{'-'*80}\n")
-    except LexerError as e:
-        print(f"Lexer error: {e}")
-        return False
 
-    parser = Parser(tokens)
-    try:
-        ast = parser.parse()
-        if debug: print("PARSER AST:\n"); pprint(ast); print(f"{'-'*80}\n")
-    except ParserError as e:
-        print(f"Parser error: {e}")
-        return False
-
-    checker = TypeChecker()
-    loaded_modules = {}
-
-    entry_dir = os.path.dirname(os.path.abspath(pb_path))
-    search_paths = [entry_dir] # add other paths like stdlib, etc.
-    for stmt in getattr(ast, 'body', []):
-        if isinstance(stmt, ImportStmt):
-            mod_symbol = load_module(stmt.module, search_paths, loaded_modules, verbose)
-            alias = stmt.alias if stmt.alias else stmt.module[0]
-            if verbose: print(f"Registering module '{alias}' with exports: {mod_symbol.exports}")
-            checker.modules[alias] = mod_symbol
-
-    # Run type checker
-    try:
-        checker.check(ast)
-        if debug: print("TYPED ENRICHED AST:\n"); pprint(ast); print(f"{'-'*80}\n")
-    except TypeError as e:
-        print(f"Type Error: {e}")
-        return False
-
-    codegen = CodeGen()
-    c_code = codegen.generate(ast)
-    if debug: print("PB CODE:\n"); pretty_print_code(source_code, "py"); print(f"{'-'*80}\n")
-    if debug: print("C CODE:\n"); pretty_print_code(c_code, "c"); print(f"{'-'*80}\n")
-
-    output_path = get_build_output_path(output_file)
-    with open(output_path, "w") as f:
+def compile_to_c(
+    source_code: str, pb_path: str, output_file: str = "out.c", 
+    verbose: bool = False, debug: bool = False
+):
+    basename = os.path.splitext(os.path.basename(pb_path))[0]
+    h_code, c_code, ast, loaded_modules = compile_code_to_c_and_h(
+        source_code,
+        module_name=basename,
+        debug=debug,
+        verbose=verbose,
+        pretty_print_code=pretty_print_code,
+        pprint=pprint,
+        import_support=True,
+        pb_path=pb_path
+    )
+    if ast is None:
+        return (False, None, {})
+    output_h_path = get_build_output_path(output_file.replace(".c", ".h"))
+    with open(output_h_path, "w") as f:
+        f.write(h_code)
+    output_c_path = get_build_output_path(output_file)
+    with open(output_c_path, "w") as f:
         f.write(c_code)
-
-    if verbose: print(f"C code written to {output_path}")
-    return True
+    if verbose: print(f"C code written to {output_c_path}")
+    return (True, ast, loaded_modules)
 
 
 def build(source_code: str, pb_path: str, output_file: str, verbose: bool = False, debug: bool = False) -> bool:
     if not debug: check_gcc_installed(verbose)
 
-    success = compile_to_c(source_code, pb_path, f"{output_file}.c", verbose=verbose, debug=debug)
+    # Compile entry point to C
+    success, ast, loaded_modules = compile_to_c(source_code, pb_path, f"{output_file}.c", verbose=verbose, debug=debug)
     if not success:
         print("Skipping GCC build because type checking failed.")
         return False
 
+    # For each module, generate .c and .h
+    build_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "build"))
+    module_c_files = []
+    for mod in loaded_modules.values():
+        if not hasattr(mod, "program"):
+            continue  # Defensive: only process modules with AST
+        c_file = write_module_code_files(mod, build_dir, verbose, debug)
+        module_c_files.append(c_file)
+
     c_path = get_build_output_path(f"{output_file}.c")
+    module_c_files.append(c_path)
+
     exe_file = get_build_output_path(output_file) + (".exe" if os.name == "nt" else "")
 
     runtime_header = get_build_output_path("pb_runtime.h")
@@ -108,9 +100,9 @@ def build(source_code: str, pb_path: str, output_file: str, verbose: bool = Fals
         "-Wextra",      # extra warnings
         "-Wconversion", # warns about implicit type conversions
         "-Wpedantic",   # enforces ISO C standard
-        c_path,
+        *module_c_files,
         "-o", exe_file,
-        "-I", runtime_header,
+        "-I", build_dir,
         runtime_lib
     ]
     if verbose: print("Compile command:", " ".join(compile_cmd))
@@ -142,6 +134,28 @@ def get_build_output_path(output_file: str) -> str:
     build_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "build"))
     os.makedirs(build_dir, exist_ok=True)
     return os.path.join(build_dir, output_file)
+
+
+def write_module_code_files(mod_symbol, build_dir, verbose: bool = False, debug: bool = False):
+    # Derive path: e.g. "foo/bar" -> "build/foo/bar.h", "build/foo/bar.c"
+    rel_path = mod_symbol.name.replace(".", os.sep)
+    mod_dir = os.path.join(build_dir, os.path.dirname(rel_path))
+    os.makedirs(mod_dir, exist_ok=True)
+    basename = os.path.basename(rel_path)
+
+    h_path = os.path.join(mod_dir, f"{basename}.h")
+    c_path = os.path.join(mod_dir, f"{basename}.c")
+    codegen = CodeGen()
+    h_code = codegen.generate_header(mod_symbol.program)
+    if debug: print(f"Module HEADER: {basename}.h\n"); pretty_print_code(h_code, "c"); print(f"{'-'*80}\n")
+    c_code = codegen.generate(mod_symbol.program)
+    if debug: print(f"Module CODE: {basename}.c\n"); pretty_print_code(c_code, "c"); print(f"{'-'*80}\n")
+
+    with open(h_path, "w") as f:
+        f.write(h_code)
+    with open(c_path, "w") as f:
+        f.write(c_code)
+    return c_path  # return path for later GCC command
 
 
 def build_runtime_library(verbose: bool = False, debug: bool = False):
@@ -191,6 +205,7 @@ def build_runtime_library(verbose: bool = False, debug: bool = False):
     if verbose:
         print(f"Copied pb_runtime.h to: {header_dest}")
 
+
 def check_gcc_installed(verbose):
     """
     Check if GCC is installed by running 'gcc --version'.
@@ -219,32 +234,37 @@ def main():
 
     if args.rich:
         enable_rich()
-        
-    if args.command == "buildlib":
-        build_runtime_library(verbose=args.verbose, debug=args.debug)
-        return
+    
+    try:
+        if args.command == "buildlib":
+            build_runtime_library(verbose=args.verbose, debug=args.debug)
+            return
 
-    if not args.file or not args.file.endswith(".pb"):
-        print("Input file must be .pb")
-        return
+        if not args.file or not args.file.endswith(".pb"):
+            print("Input file must be .pb")
+            return
 
-    pb_path = args.file
-    if not os.path.isabs(pb_path):
-        pb_path = os.path.join(os.path.dirname(__file__), "..", pb_path)
+        pb_path = args.file
+        if not os.path.isabs(pb_path):
+            pb_path = os.path.join(os.path.dirname(__file__), "..", pb_path)
 
-    with open(pb_path) as f:
-        code = f.read()
+        with open(pb_path) as f:
+            code = f.read()
 
 
-    output_path = os.path.splitext(args.file)[0]
-    output_filename = os.path.basename(output_path)
+        output_path = os.path.splitext(args.file)[0]
+        output_filename = os.path.basename(output_path)
 
-    if args.command == "toc":
-        compile_to_c(code, pb_path, f"{output_filename}.c", verbose=args.verbose, debug=args.debug)
-    elif args.command == "build":
-        build(code, pb_path, output_filename, verbose=args.verbose, debug=args.debug)
-    elif args.command == "run":
-        run(code, pb_path, output_filename, verbose=args.verbose, debug=args.debug)
+        if args.command == "toc":
+            compile_to_c(code, pb_path, f"{output_filename}.c", verbose=args.verbose, debug=args.debug)
+        elif args.command == "build":
+            build(code, pb_path, output_filename, verbose=args.verbose, debug=args.debug)
+        elif args.command == "run":
+            run(code, pb_path, output_filename, verbose=args.verbose, debug=args.debug)
+
+    except Exception as e:
+        print(f"{type(e).__name__}: {e}")
+        exit(1)
 
 if __name__ == "__main__":
     main()
