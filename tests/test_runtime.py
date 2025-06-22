@@ -383,6 +383,23 @@ class TestPipelineRuntime(unittest.TestCase):
         self.assertEqual(lines[2], "3.141500")
 
 
+class TestRefLangOutput(unittest.TestCase):
+    """Runtime test for the reference program."""
+
+    def test_ref_lang_runtime_output(self):
+        base = os.path.join(os.path.dirname(__file__), "..", "ref")
+        with open(os.path.join(base, "lang.pb")) as f:
+            lang_src = f.read()
+        with open(os.path.join(base, "utils.pb")) as f:
+            utils_src = f.read()
+        with open(os.path.join(base, "lang_expected_output.out")) as f:
+            expected_lines = f.read().splitlines()
+
+        output = _compile_and_run_modules({"lang": lang_src, "utils": utils_src})
+        self.assertEqual(output.splitlines(), expected_lines)
+
+
+
 
 if __name__ == "__main__":
     unittest.main()
