@@ -235,10 +235,14 @@ Arithmetic allowed only on `int`/`float`.
 
 ## 7. Modules & Imports
 
-* One `.pb` file = one module.  
+* One `.pb` file = one module.
 * Absolute imports only (`import math.stats`); no relative imports yet.
 
 Global variables are module‑scoped; use `global name` inside a function to assign to them.
+When compiling a module, a header file is also produced. All top‑level variables
+are emitted as `extern` declarations so other modules can reference them. The
+compiler keeps the signature of every exported function and checks calls across
+modules against these signatures.
 
 ---
 
