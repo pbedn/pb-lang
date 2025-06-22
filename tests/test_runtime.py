@@ -35,7 +35,7 @@ class TestPipelineRuntime(unittest.TestCase):
             runtime_lib = os.path.join(build_dir, "pb_runtime.a")
             if not os.path.isfile(runtime_lib):
                 print("Runtime library not found; building it now...")
-                result = subprocess.run("python run.py buildlib")
+                subprocess.run(["python", "run.py", "buildlib"], check=True)
 
             compile_cmd = [
                 "gcc", "-std=c99", "-W", c_file_path,
