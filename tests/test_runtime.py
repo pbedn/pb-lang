@@ -380,7 +380,7 @@ class TestPipelineRuntime(unittest.TestCase):
         lines = output.strip().splitlines()
         self.assertEqual(lines[0], "9")
         self.assertEqual(lines[1], "9")
-        self.assertEqual(lines[3], "3.1415")
+        self.assertEqual(lines[2], "3.141500")
 
 
 

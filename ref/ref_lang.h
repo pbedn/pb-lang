@@ -1,5 +1,6 @@
 #pragma once
 #include "pb_runtime.h"
+extern int64_t counter;
 typedef struct Player {
     int64_t hp;
     const char * species;
