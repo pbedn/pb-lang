@@ -84,9 +84,11 @@ class CodeGen:
         self._modules: set[str] = set()  # track imported module names
 
     def generate(self, program: Program) -> str:
-        """Generate the complete C source for `program`."""
+        """Generate the complete C source for ``program``."""
+        self._program = program
         self._lines.clear()
         self._indent = 0
+        self._runtime_emitted = False
 
         self._classes = [d for d in program.body if isinstance(d, ClassDef)]
         self._instance_fields = getattr(program, "inferred_instance_fields", {})
@@ -94,10 +96,17 @@ class CodeGen:
         self._direct_fields = {}
         for cls in self._classes:
             base_fields = set(self._instance_fields.get(cls.base, {})) if cls.base else set()
-            self._direct_fields[cls.name] = set(self._instance_fields.get(cls.name, {})) - base_fields
+            declared = {f.name for f in cls.fields}
+            assigned_here = self._assigned_fields_in_class(cls)
+            direct = set()
+            for field in self._instance_fields.get(cls.name, {}):
+                if field not in base_fields or field in assigned_here or field in declared:
+                    direct.add(field)
+            self._direct_fields[cls.name] = direct
 
-        self._emit_class_statics(program)
+        self._emit_headers_and_runtime(include_self=True, include_runtime=False)
         self._emit_global_decls(program)
+        self._emit_class_statics(program)
 
         # Definitions
         for stmt in program.body:
@@ -115,10 +124,27 @@ class CodeGen:
         """Generate a C header file (.h) for a given PB module AST."""
         self._program = program
         self._lines.clear()
-        self._lines.append("#pragma once")
-        self._classes = [d for d in program.body if isinstance(d, ClassDef)]
+        self._indent = 0
+        self._runtime_emitted = False
+        self._structs_emitted.clear()
 
-        self._emit_headers_and_runtime()
+        self._lines.append("#pragma once")
+
+        self._classes = [d for d in program.body if isinstance(d, ClassDef)]
+        self._instance_fields = getattr(program, "inferred_instance_fields", {})
+        self._class_bases = {cls.name: cls.base for cls in self._classes}
+        self._direct_fields = {}
+        for cls in self._classes:
+            base_fields = set(self._instance_fields.get(cls.base, {})) if cls.base else set()
+            declared = {f.name for f in cls.fields}
+            assigned_here = self._assigned_fields_in_class(cls)
+            direct = set()
+            for field in self._instance_fields.get(cls.name, {}):
+                if field not in base_fields or field in assigned_here or field in declared:
+                    direct.add(field)
+            self._direct_fields[cls.name] = direct
+
+        self._emit_headers_and_runtime(include_self=False, include_runtime=True)
         self._emit_class_structs(program)
         self._emit_function_prototypes(program)
 
@@ -139,8 +165,12 @@ class CodeGen:
         for sub in line.splitlines():
             self._lines.append(f"{prefix}{sub}")
 
-    def _emit_headers_and_runtime(self) -> None:
-        self._emit('#include "pb_runtime.h"')
+    def _emit_headers_and_runtime(self, include_self: bool = False, include_runtime: bool = True) -> None:
+        """Emit required #include directives for runtime and imports."""
+        if include_runtime:
+            self._emit('#include "pb_runtime.h"')
+        if include_self:
+            self._emit(f'#include "{self._get_module_name()}.h"')
 
         for stmt in self._program.body:
             if isinstance(stmt, ImportStmt):
@@ -218,7 +248,7 @@ class CodeGen:
 
             actually_emitted: set[str] = set(declared)
 
-            for field_name in sorted(instance_fields):
+            for field_name in instance_fields:
                 pb_type = instance_fields[field_name]
                 if field_name in base_fields and field_name not in assigned_here:
                     continue
@@ -318,7 +348,7 @@ class CodeGen:
         # record defaults *only* for the real parameters (skip `self`)
         self._function_defaults[mangled_name] = [
             (arg.default.raw if arg.default else None)
-            for arg in fn.params[1:]
+            for arg in fn.params
         ]
         # record parameter names …
         self._function_params[mangled_name] = [arg.name for arg in fn.params]
@@ -777,8 +807,7 @@ class CodeGen:
                 # pad missing args using defaults
                 defaults = self._function_defaults.get(init_fn, [])
                 # skip the 'self' slot at index 0
-                num_provided = len(actual) - 1    # arguments after 'self'
-                for i in range(num_provided, len(defaults)):
+                for i in range(len(actual), len(defaults)):
                     default = defaults[i]
                     if default is None:
                         raise RuntimeError(f"No default for parameter {i+1} of {init_fn}")
@@ -803,7 +832,7 @@ class CodeGen:
                 # pad using the actual defaults from the .pb AST
                 defaults = self._function_defaults.get(init_func, [])
                 # skip the 'self' slot at index 0
-                for i in range(len(actual_args), len(defaults)):
+                for i in range(len(actual_args) + 1, len(defaults)):
                     if defaults[i] is None:
                         raise RuntimeError(f"Missing default for parameter {i+1} of {init_func}")
                     actual_args.append(defaults[i])
