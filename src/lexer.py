@@ -29,7 +29,7 @@ class TokenType(Enum):
     ARROW = auto()
 
     # Structure
-    NEWLINE = auto(); INDENT = auto(); DEDENT = auto(); EOF = auto()
+    NEWLINE = auto(); NL = auto(); INDENT = auto(); DEDENT = auto(); EOF = auto(); COMMENT = auto()
 
     # Literals & Identifiers
     IDENTIFIER = auto(); INT_LIT = auto(); FLOAT_LIT = auto()
@@ -152,15 +152,19 @@ TOKEN_REGEX = [
 
 WHITESPACE = re.compile(r'[ \t]*')
 
-def strip_comments(line: str) -> str:
-    """
-    Remove comments (starting with #) unless inside a string literal.
+def split_comment(line: str) -> tuple[str, str | None, int | None]:
+    """Return code portion and comment from a line.
+
+    If a ``#`` is encountered outside quotes, returns the code before the
+    comment, the comment text (including ``#``), and the 1-based column where
+    the comment starts. If no comment is present, returns the line and ``None``
+    values.
     """
     result = []
     in_string = False
     string_char = ''
     escape = False
-    for c in line:
+    for idx, c in enumerate(line):
         if escape:
             result.append(c)
             escape = False
@@ -177,10 +181,10 @@ def strip_comments(line: str) -> str:
                 string_char = c
                 result.append(c)
             elif c == '#':
-                break
+                return ''.join(result), line[idx:], idx + 1
             else:
                 result.append(c)
-    return ''.join(result)
+    return ''.join(result), None, None
 
 
 # ───────────────────────── lexer proper ─────────────────────────
@@ -191,6 +195,7 @@ class Lexer:
         self.lines = source.splitlines(keepends=False)
         self.indents = [0]
         self.line_num = 0
+        self.bracket_depth = 0
 
     # public API --------------------------------------------------
     def tokenize(self) -> List[Token]:
@@ -206,19 +211,16 @@ class Lexer:
     # single line -------------------------------------------------
     def _tokenize_line(self):
         raw = self.lines[self.line_num]; self.line_num += 1
-        line = strip_comments(raw).rstrip()
+        code, comment, comment_col = split_comment(raw)
+        line = code.rstrip()
 
-        # blank / comment-only lines → NEWLINE
-        if not line.strip():
-            # self.tokens.append(Token(TokenType.NEWLINE, "", self.line_num, 1))
-            return
-
-        # indentation
-        indent_str   = WHITESPACE.match(line).group(0)
-        if " " in indent_str and "\t" in indent_str:
-            raise LexerError("Mixed tabs and spaces in indentation", self.line_num, 1)
-        indent_width = len(indent_str.replace("\t", "    "))
-        self._emit_indentation(indent_width)
+        indent_width = 0
+        if line.strip():
+            indent_str   = WHITESPACE.match(line).group(0)
+            if " " in indent_str and "\t" in indent_str:
+                raise LexerError("Mixed tabs and spaces in indentation", self.line_num, 1)
+            indent_width = len(indent_str.replace("\t", "    "))
+            self._emit_indentation(indent_width)
 
         # scan the rest of the line
         pos, length = indent_width, len(line)
@@ -254,13 +256,23 @@ class Lexer:
 
                 # emit
                 self.tokens.append(Token(ttype, value, self.line_num, pos + 1))
+
+                if ttype in (TokenType.LPAREN, TokenType.LBRACKET, TokenType.LBRACE):
+                    self.bracket_depth += 1
+                elif ttype in (TokenType.RPAREN, TokenType.RBRACKET, TokenType.RBRACE):
+                    if self.bracket_depth > 0:
+                        self.bracket_depth -= 1
                 pos = m.end()
                 break
             else:
                 snippet = line[pos:pos + 10]
                 raise LexerError(f"Unknown token {snippet!r}", self.line_num, pos + 1)
 
-        self.tokens.append(Token(TokenType.NEWLINE, "", self.line_num, len(line)))
+        if comment is not None:
+            self.tokens.append(Token(TokenType.COMMENT, comment, self.line_num, comment_col))
+
+        nl_type = TokenType.NEWLINE if self.bracket_depth == 0 else TokenType.NL
+        self.tokens.append(Token(nl_type, "", self.line_num, len(raw)))
 
     def _tokenize_expr(self, expr: str, base_line: int, base_col: int) -> None:
         """
@@ -294,6 +306,11 @@ class Lexer:
 
                 self.tokens.append(Token(ttype, value, base_line, base_col + pos + 1))
                 pos = m.end()
+                if ttype in (TokenType.LPAREN, TokenType.LBRACKET, TokenType.LBRACE):
+                    self.bracket_depth += 1
+                elif ttype in (TokenType.RPAREN, TokenType.RBRACKET, TokenType.RBRACE):
+                    if self.bracket_depth > 0:
+                        self.bracket_depth -= 1
                 break
             else:
                 snippet = expr[pos:pos + 10]
