@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Generic, List, Type, Optional
 from lexer import Token, TokenType
 from lang_ast import (
@@ -41,13 +42,28 @@ from lang_ast import (
 )
 
 
+@dataclass
+class Comment:
+    text: str
+    line: int
+    column: int
+    kind: str = "inline"
+
+
 class ParserError(Exception):
     pass
 
 
 class Parser:
     def __init__(self, tokens: List[Token]):
-        self.tokens: List[Token] = tokens
+        self.comments: List[Comment] = [
+            Comment(t.value, t.line, t.column)
+            for t in tokens
+            if t.type == TokenType.COMMENT
+        ]
+        self.tokens: List[Token] = [
+            t for t in tokens if t.type not in (TokenType.COMMENT, TokenType.NL)
+        ]
         self.pos: int = 0
         self.loop_depth: int = 0      # > 0 → inside while/for
         self.fn_depth:   int = 0      # > 0 → inside def
@@ -498,6 +514,9 @@ class Parser:
         Determines the appropriate statement rule based on the current token.
         """
 
+        while self.match(TokenType.NEWLINE):
+            pass
+
         tok = self.current()
 
         if tok.type == TokenType.IMPORT:
@@ -683,10 +702,17 @@ class Parser:
             cond = self.parse_expr() if with_condition else None
             self.expect(TokenType.COLON)
             self.expect(TokenType.NEWLINE)
+            while self.match(TokenType.NEWLINE):
+                pass
             self.expect(TokenType.INDENT)
 
             body = []
-            while not self.match(TokenType.DEDENT):
+            while True:
+                if self.match(TokenType.DEDENT):
+                    break
+                if self.check(TokenType.NEWLINE):
+                    self.advance()
+                    continue
                 stmt = self.parse_statement()
                 body.append(stmt)
 
@@ -714,11 +740,18 @@ class Parser:
         condition = self.parse_expr()
         self.expect(TokenType.COLON)
         self.expect(TokenType.NEWLINE)
+        while self.match(TokenType.NEWLINE):
+            pass
         self.expect(TokenType.INDENT)
 
         body: List[Stmt] = []
         self.loop_depth += 1
-        while not self.match(TokenType.DEDENT):
+        while True:
+            if self.match(TokenType.DEDENT):
+                break
+            if self.check(TokenType.NEWLINE):
+                self.advance()
+                continue
             body.append(self.parse_statement())
         self.loop_depth -= 1
 
@@ -737,11 +770,18 @@ class Parser:
         iterable = self.parse_expr()
         self.expect(TokenType.COLON)
         self.expect(TokenType.NEWLINE)
+        while self.match(TokenType.NEWLINE):
+            pass
         self.expect(TokenType.INDENT)
 
         body: List[Stmt] = []
         self.loop_depth += 1
-        while not self.match(TokenType.DEDENT):
+        while True:
+            if self.match(TokenType.DEDENT):
+                break
+            if self.check(TokenType.NEWLINE):
+                self.advance()
+                continue
             body.append(self.parse_statement())
         self.loop_depth -= 1
 
@@ -821,6 +861,8 @@ class Parser:
 
         self.expect(TokenType.COLON)
         self.expect(TokenType.NEWLINE)
+        while self.match(TokenType.NEWLINE):
+            pass
         self.expect(TokenType.INDENT)
 
         body: List[Stmt] = []
@@ -907,6 +949,8 @@ class Parser:
 
         self.expect(TokenType.COLON)
         self.expect(TokenType.NEWLINE)
+        while self.match(TokenType.NEWLINE):
+            pass
         self.expect(TokenType.INDENT)
 
         fields: List[VarDecl] = []
@@ -914,7 +958,9 @@ class Parser:
 
         is_empty_with_pass = False
 
-        while not self.match(TokenType.DEDENT):
+        while True:
+            if self.match(TokenType.DEDENT):
+                break
             if self.check(TokenType.NEWLINE):
                 self.advance()
                 continue
@@ -996,7 +1042,12 @@ class Parser:
         self.expect(TokenType.INDENT)
 
         try_body: List[Stmt] = []
-        while not self.match(TokenType.DEDENT):
+        while True:
+            if self.match(TokenType.DEDENT):
+                break
+            if self.check(TokenType.NEWLINE):
+                self.advance()
+                continue
             try_body.append(self.parse_statement())
 
         except_blocks: List[ExceptBlock] = []
@@ -1015,10 +1066,17 @@ class Parser:
 
             self.expect(TokenType.COLON)
             self.expect(TokenType.NEWLINE)
+            while self.match(TokenType.NEWLINE):
+                pass
             self.expect(TokenType.INDENT)
 
             body: List[Stmt] = []
-            while not self.match(TokenType.DEDENT):
+            while True:
+                if self.match(TokenType.DEDENT):
+                    break
+                if self.check(TokenType.NEWLINE):
+                    self.advance()
+                    continue
                 body.append(self.parse_statement())
 
             except_blocks.append(ExceptBlock(exc_type, alias, body))

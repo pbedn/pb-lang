@@ -1,7 +1,7 @@
 # test_lexer.py
 import unittest
 
-from lexer import Lexer, LexerError
+from lexer import Lexer, LexerError, TokenType
 
 class TestLexer(unittest.TestCase):
     def test_keywords_and_literals(self):
@@ -500,6 +500,24 @@ class TestFStringLexing(unittest.TestCase):
             ("IDENTIFIER", "b"),
             ("FSTRING_END", '"')
         ])
+
+    def test_nl_tokens_for_multiline_expr(self):
+        code = (
+            "total = (\n"
+            "    1 +\n"
+            "    2\n"
+            ")\n"
+        )
+        tokens = Lexer(code).tokenize()
+        nls = [t.type.name for t in tokens if t.type in (TokenType.NEWLINE, TokenType.NL)]
+        self.assertEqual(nls, ["NL", "NL", "NL", "NEWLINE"])
+
+    def test_comment_token_emitted(self):
+        code = 'x = 1  # important\n'
+        tokens = Lexer(code).tokenize()
+        comments = [t for t in tokens if t.type == TokenType.COMMENT]
+        self.assertEqual(len(comments), 1)
+        self.assertEqual(comments[0].value, "# important")
 
 if __name__ == "__main__":
     unittest.main()
