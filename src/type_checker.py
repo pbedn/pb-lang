@@ -1258,13 +1258,13 @@ class TypeChecker:
             raise TypeError(f"Assert expression must be bool, got {cond_type}")
 
     def check_raise_stmt(self, stmt: RaiseStmt):
-        """Check that raise expression is not None.
-
-        For now, accept any non-None value, and reject None
-        """
-        exc_type = self.check_expr(stmt.exception)
-        if exc_type == "None":
-            raise TypeError(f"Cannot raise value of type None — expression was: {stmt.exception}")
+        """Check a raise statement."""
+        if stmt.exception is not None:
+            exc_type = self.check_expr(stmt.exception)
+            if exc_type == "None":
+                raise TypeError(
+                    f"Cannot raise value of type None — expression was: {stmt.exception}"
+                )
 
     def check_global_stmt(self, stmt: GlobalStmt):
         """Ensure global declaration is inside a function body.
@@ -1283,7 +1283,7 @@ class TypeChecker:
             self.env[name] = self.global_env[name]
 
     def check_try_except_stmt(self, stmt: TryExceptStmt):
-        """Type-check try-except blocks."""
+        """Type-check try/except/finally blocks."""
         # Check try block
         for s in stmt.try_body:
             self.check_stmt(s)
@@ -1304,6 +1304,10 @@ class TypeChecker:
                 self.check_stmt(s)
 
             self.env = old_env
+
+        if stmt.finally_body:
+            for s in stmt.finally_body:
+                self.check_stmt(s)
 
 if __name__ == "__main__":
     import sys

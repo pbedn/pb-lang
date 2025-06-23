@@ -494,9 +494,9 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    crash()\n"
         )
         header, c_code = self.compile_pipeline(pb_code)
-        # Should emit the constructor forwarding and fail call
+        # Should emit the constructor forwarding and raise call
         self.assertIn('Exception____init__((struct Exception *)self, msg);', c_code)
-        self.assertIn('pb_fail("Exception raised");', c_code)
+        self.assertIn('pb_raise("RuntimeError"', c_code)
         # Should use the forwarded RuntimeError constructor
         self.assertIn('void RuntimeError____init__(struct RuntimeError * self, const char * msg)', c_code)
 
