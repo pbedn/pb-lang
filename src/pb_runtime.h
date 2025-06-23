@@ -19,6 +19,30 @@ void pb_print_bool(bool b);
 
 void pb_fail(const char *msg);
 
+/* ------------ EXCEPTIONS ------------- */
+
+#include <setjmp.h>
+#include <assert.h>
+
+typedef struct {
+    const char *type;
+    void *value;
+} PbException;
+
+typedef struct PbTryContext {
+    jmp_buf env;
+    struct PbTryContext *prev;
+} PbTryContext;
+
+extern PbTryContext *pb_current_try;
+extern PbException pb_current_exc;
+
+void pb_push_try(PbTryContext *ctx);
+void pb_pop_try(void);
+void pb_raise(const char *type, void *value);
+void pb_clear_exc(void);
+void pb_reraise(void);
+
 /* ------------ LIST ------------- */
 typedef struct {
     int64_t len;

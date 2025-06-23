@@ -108,7 +108,7 @@ int64_t lang_divide(int64_t x, int64_t y)
     char __fbuf[256];
     (void)__fbuf;
     if ((y == 0)) {
-        pb_fail("Exception raised");
+        pb_raise("RuntimeError", "division by zero");
     }
     return (x / y);
 }
@@ -238,7 +238,25 @@ int main(void)
     pb_print_str(pb_dict_get_str_str(map_str, "a"));
     pb_print_str(pb_dict_get_str_str(map_str, "b"));
     pb_print_str("=== Try / Except / Raise ===");
-    /* try/except not supported at runtime */
+    PbTryContext __exc_ctx_1;
+    pb_push_try(&__exc_ctx_1);
+    int __exc_flag_1 = setjmp(__exc_ctx_1.env);
+    bool __exc_handled_1 = false;
+    if (__exc_flag_1 == 0) {
+        int64_t result = lang_divide(10, 0);
+        pb_print_int(result);
+    pb_pop_try();
+    } else {
+        if (strcmp(pb_current_exc.type, "RuntimeError") == 0) {
+            pb_print_str("Caught division by zero");
+            pb_clear_exc();
+            __exc_handled_1 = true;
+        }
+        else {
+            pb_reraise();
+        }
+    }
+    if (__exc_flag_1 && !__exc_handled_1) pb_reraise();
     pb_print_str("=== Boolean Literals ===");
     bool x = true;
     bool y = false;
@@ -294,9 +312,9 @@ int main(void)
     int64_t i2 = (int64_t)(f2);
     pb_print_str((snprintf(__fbuf, 256, "f2: %f, i2: %lld", f2, i2), __fbuf));
     pb_print_str("=== Class Instantiation and Methods ===");
-    struct Player __tmp_player_1;
-    Player____init__(&__tmp_player_1, 110, 150);
-    struct Player * player = &__tmp_player_1;
+    struct Player __tmp_player_2;
+    Player____init__(&__tmp_player_2, 110, 150);
+    struct Player * player = &__tmp_player_2;
     pb_print_str((snprintf(__fbuf, 256, "player.hp: %lld", player->hp), __fbuf));
     pb_print_str("Healing player by 50...");
     Player__heal(player, 50);
@@ -306,12 +324,12 @@ int main(void)
     pb_print_str("Updated counter:");
     pb_print_int(counter);
     pb_print_str("=== Class vs Instance Variables ===");
-    struct Player __tmp_player_2;
-    Player____init__(&__tmp_player_2, 1234, 150);
-    struct Player * player1 = &__tmp_player_2;
     struct Player __tmp_player_3;
-    Player____init__(&__tmp_player_3, 5678, 150);
-    struct Player * player2 = &__tmp_player_3;
+    Player____init__(&__tmp_player_3, 1234, 150);
+    struct Player * player1 = &__tmp_player_3;
+    struct Player __tmp_player_4;
+    Player____init__(&__tmp_player_4, 5678, 150);
+    struct Player * player2 = &__tmp_player_4;
     player1->score = 100;
     pb_print_str((snprintf(__fbuf, 256, "Player1 score: %lld", player1->score), __fbuf));
     pb_print_str((snprintf(__fbuf, 256, "Player2 score (should be default): %lld", player2->score), __fbuf));
@@ -325,9 +343,9 @@ int main(void)
     player->hp = 999;
     pb_print_int(player->hp);
     pb_print_str("=== Inheritance: Mage Subclass ===");
-    struct Mage __tmp_mage_4;
-    Mage____init__(&__tmp_mage_4, 120);
-    struct Mage * mage = &__tmp_mage_4;
+    struct Mage __tmp_mage_5;
+    Mage____init__(&__tmp_mage_5, 120);
+    struct Mage * mage = &__tmp_mage_5;
     pb_print_str((snprintf(__fbuf, 256, "Mage name: %s", Mage__get_name(mage)), __fbuf));
     pb_print_str((snprintf(__fbuf, 256, "Mage HP: %lld", mage->base.hp), __fbuf));
     pb_print_str((snprintf(__fbuf, 256, "Mage MP: %lld", mage->mp), __fbuf));

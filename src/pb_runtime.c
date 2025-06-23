@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <inttypes.h>
+#include <assert.h>
 
 #include "pb_runtime.h"
 
@@ -21,6 +22,48 @@ void pb_print_bool(bool b)     { printf("%s\n", b ? "True" : "False"); }
 void pb_fail(const char *msg) {
     fprintf(stderr, "%s\n", msg);
     exit(EXIT_FAILURE);
+}
+
+/* ------------ EXCEPTION SUPPORT ------------- */
+
+PbTryContext *pb_current_try = NULL;
+PbException pb_current_exc = {NULL, NULL};
+
+void pb_push_try(PbTryContext *ctx) {
+    assert(ctx && "Cannot push NULL try context");
+    ctx->prev = pb_current_try;
+    pb_current_try = ctx;
+}
+
+void pb_pop_try(void) {
+    assert(pb_current_try && "Try stack underflow");
+    pb_current_try = pb_current_try->prev;
+}
+
+void pb_raise(const char *type, void *value) {
+    pb_current_exc.type = type;
+    pb_current_exc.value = value;
+    if (pb_current_try) {
+        PbTryContext *ctx = pb_current_try;
+        pb_current_try = ctx->prev;
+        longjmp(ctx->env, 1);
+    } else {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Uncaught %s", type);
+        pb_fail(buf);
+    }
+}
+
+void pb_clear_exc(void) {
+    pb_current_exc.type = NULL;
+    pb_current_exc.value = NULL;
+}
+
+void pb_reraise(void) {
+    if (!pb_current_exc.type) {
+        pb_fail("Cannot re-raise: no active exception");
+    }
+    pb_raise(pb_current_exc.type, pb_current_exc.value);
 }
 
 /* ------------ LIST ------------- */

@@ -13,7 +13,7 @@ class TokenType(Enum):
     AND = auto(); OR = auto(); BREAK = auto(); CONTINUE = auto(); PASS = auto()
     GLOBAL = auto(); IMPORT = auto(); CLASS = auto(); ASSERT = auto()
     TRUE = auto(); FALSE = auto(); NONE = auto()
-    TRY = auto(); EXCEPT = auto(); RAISE = auto(); AS = auto()
+    TRY = auto(); EXCEPT = auto(); FINALLY = auto(); RAISE = auto(); AS = auto()
 
     # Symbols
     COLON = auto(); COMMA = auto(); LPAREN = auto(); RPAREN = auto()
@@ -93,6 +93,7 @@ KEYWORDS = {
     "or": TokenType.OR,
     "try": TokenType.TRY,
     "except": TokenType.EXCEPT,
+    "finally": TokenType.FINALLY,
     "as": TokenType.AS,
     "raise": TokenType.RAISE,
     "True": TokenType.TRUE,

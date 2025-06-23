@@ -673,15 +673,75 @@ class CodeGen:
         return f"if(!({cond})) pb_fail(\"Assertion failed\");"
 
     def _generate_RaiseStmt(self, st: RaiseStmt) -> str:
-        # dynamic exceptions not supported → abort
-        return 'pb_fail("Exception raised");'
+        if st.exception is None:
+            return "pb_reraise();"
+
+        exc = st.exception
+        if isinstance(exc, CallExpr) and isinstance(exc.func, Identifier):
+            name = exc.func.name
+            if name in self._structs_emitted:
+                val = self._expr(exc)
+                etype = exc.inferred_type or name
+                return f'pb_raise("{etype}", {val});'
+            elif len(exc.args) == 1:
+                msg = self._expr(exc.args[0])
+                return f'pb_raise("{name}", {msg});'
+        val = self._expr(exc)
+        etype = exc.inferred_type or "Exception"
+        return f'pb_raise("{etype}", {val});'
 
     def _generate_GlobalStmt(self, st: GlobalStmt) -> str:
         names = ", ".join(st.names)
         return f"/* global {names} */"
 
     def _generate_TryExceptStmt(self, st: TryExceptStmt) -> str:
-        return "/* try/except not supported at runtime */"
+        self._tmp_counter += 1
+        ctx = f"__exc_ctx_{self._tmp_counter}"
+        flag = f"__exc_flag_{self._tmp_counter}"
+        handled = f"__exc_handled_{self._tmp_counter}"
+
+        lines = [
+            f"PbTryContext {ctx};",
+            f"pb_push_try(&{ctx});",
+            f"int {flag} = setjmp({ctx}.env);",
+            f"bool {handled} = false;",
+            f"if ({flag} == 0) {{",
+        ]
+        for s in st.try_body:
+            lines.append(self.INDENT + self._stmt(s))
+        lines.append(f"pb_pop_try();")
+        lines.append("} else {")
+
+        first = True
+        for block in st.except_blocks:
+            cond = "1"
+            if block.exc_type:
+                cond = f'strcmp(pb_current_exc.type, \"{block.exc_type}\") == 0'
+            prefix = "if" if first else "else if"
+            lines.append(self.INDENT + f"{prefix} ({cond}) {{")
+            if block.alias:
+                cty = block.exc_type or "Exception"
+                lines.append(self.INDENT*2 + f"struct {cty} * {block.alias} = (struct {cty} *)pb_current_exc.value;")
+            for s in block.body:
+                lines.append(self.INDENT*2 + self._stmt(s))
+            lines.append(self.INDENT*2 + "pb_clear_exc();")
+            lines.append(self.INDENT*2 + f"{handled} = true;")
+            lines.append(self.INDENT + "}")
+            first = False
+        if st.except_blocks:
+            lines.append(self.INDENT + "else {")
+            lines.append(self.INDENT*2 + "pb_reraise();")
+            lines.append(self.INDENT + "}")
+        else:
+            lines.append(self.INDENT + "pb_reraise();")
+        lines.append("}")
+
+        if st.finally_body:
+            for s in st.finally_body:
+                lines.append(self._stmt(s))
+
+        lines.append(f"if ({flag} && !{handled}) pb_reraise();")
+        return "\n".join(lines)
 
     def _generate_VarDecl(self, st: VarDecl) -> str:
         c_ty = self._c_type(st.declared_type)

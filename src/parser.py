@@ -1017,11 +1017,13 @@ class Parser:
         """Parse a raise statement
 
         Grammar:
-        RaiseStmt ::= "raise" Expr NEWLINE
-        AST: RaiseStmt(exception)
+        RaiseStmt ::= "raise" [Expr] NEWLINE
+        AST: RaiseStmt(exception_or_none)
         """
         self.expect(TokenType.RAISE)
-        expr = self.parse_expr()
+        expr = None
+        if not self.check(TokenType.NEWLINE):
+            expr = self.parse_expr()
         self.expect(TokenType.NEWLINE)
         return RaiseStmt(expr)
 
@@ -1031,7 +1033,8 @@ class Parser:
         Grammar:
         TryExceptStmt ::= "try" ":" NEWLINE INDENT { Statement } DEDENT
                           { "except" [Identifier] [ "as" Identifier ] ":" NEWLINE INDENT { Statement } DEDENT }
-        AST: TryExceptStmt(try_body, except_blocks)
+                          [ "finally" ":" NEWLINE INDENT { Statement } DEDENT ]
+        AST: TryExceptStmt(try_body, except_blocks, finally_body?)
         """
         self.expect(TokenType.TRY)
         self.expect(TokenType.COLON)
@@ -1078,7 +1081,17 @@ class Parser:
 
             except_blocks.append(ExceptBlock(exc_type, alias, body))
 
-        return TryExceptStmt(try_body, except_blocks)
+        finally_body: Optional[List[Stmt]] = None
+
+        if self.match(TokenType.FINALLY):
+            self.expect(TokenType.COLON)
+            self.expect(TokenType.NEWLINE)
+            self.expect(TokenType.INDENT)
+            finally_body = []
+            while not self.match(TokenType.DEDENT):
+                finally_body.append(self.parse_statement())
+
+        return TryExceptStmt(try_body, except_blocks, finally_body)
 
     def parse_import_stmt(self) -> ImportStmt:
         """Parse an import statement
