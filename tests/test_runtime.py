@@ -288,7 +288,42 @@ class TestPipelineRuntime(unittest.TestCase):
             "    crash()\n"
         )
         output = compile_and_run(code)
-        self.assertIn("Exception raised", output)
+        self.assertIn("Uncaught RuntimeError", output)
+
+    def test_reraise(self):
+        code = (
+            "class Exception:\n"
+            "    def __init__(self, msg: str):\n"
+            "        self.msg = msg\n"
+            "\n"
+            "class MyError(Exception):\n"
+            "    pass\n"
+            "\n"
+            "def foo():\n"
+            "    try:\n"
+            "        raise MyError('oops')\n"
+            "    except:\n"
+            "        raise\n"
+            "\n"
+            "def main():\n"
+            "    try:\n"
+            "        foo()\n"
+            "    except MyError as e:\n"
+            "        print(e.msg)\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(output.strip(), "oops")
+
+    def test_finally_runs(self):
+        code = (
+            "def main():\n"
+            "    try:\n"
+            "        print('A')\n"
+            "    finally:\n"
+            "        print('B')\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(output.strip().splitlines(), ['A', 'B'])
 
     def test_default_arguments(self):
         code = (

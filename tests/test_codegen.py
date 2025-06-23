@@ -566,10 +566,11 @@ class TestCodeGen(unittest.TestCase):
             )
         ])
         output = codegen_output(program)
-        assert_contains_all(self, output, [
-            "/* try/except not supported at runtime */",
-            "return 0;"
-        ])
+        self.assertIn('pb_push_try(&', output)
+        self.assertIn('pb_raise("RuntimeError"', output)
+        self.assertIn('strcmp(pb_current_exc.type, "RuntimeError") == 0', output)
+        self.assertIn('pb_clear_exc();', output)
+        self.assertIn('pb_reraise();', output)
 
     def test_global_variable_in_method(self):
         program = Program(body=[

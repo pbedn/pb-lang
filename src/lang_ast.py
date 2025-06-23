@@ -109,6 +109,7 @@ class ForStmt:
 class TryExceptStmt:
     try_body: List[Stmt]
     except_blocks: List[ExceptBlock]
+    finally_body: Optional[List[Stmt]] = None
 
 
 @dataclass
@@ -120,7 +121,7 @@ class ExceptBlock:
 
 @dataclass
 class RaiseStmt:
-    exception: Expr
+    exception: Optional[Expr]
 
 
 @dataclass

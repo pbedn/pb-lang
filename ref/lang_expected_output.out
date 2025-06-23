@@ -54,6 +54,7 @@ True
 sth here
 and here
 === Try / Except / Raise ===
+Caught division by zero
 === Boolean Literals ===
 x is True and y is False
 === If/Elif/Else ===
