@@ -699,6 +699,109 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn('pb_print_str((snprintf(__fbuf, 256, "player get_name: %s", Player__get_name(p)), __fbuf));', c)
         self.assertIn('pb_print_str((snprintf(__fbuf, 256, "Player.species: %s", Player_species), __fbuf));', c)
 
+    def test_raise_valueerror(self):
+        code = (
+            "def main():\n"
+            "    try:\n"
+            "        raise ValueError(\"bad\")\n"
+            "    except ValueError:\n"
+            "        print(\"caught ValueError\")\n"
+        )
+        header, c_code = self.compile_pipeline(code)
+        self.assertIn('pb_print_str("caught ValueError");', c_code)
+
+    def test_dict_keyerror(self):
+        code = (
+            "class KeyError:\n"
+            "    msg: str = ''\n"
+            "def main():\n"
+            "    d: dict[str, int] = {\"a\": 1}\n"
+            "    try:\n"
+            "        print(d[\"b\"])\n"
+            "    except KeyError:\n"
+            "        print(\"caught KeyError\")\n"
+        )
+        header, c_code = self.compile_pipeline(code)
+        self.assertIn('pb_print_int(pb_dict_get_str_int(d, "b"));', c_code)
+        self.assertIn('if (strcmp(pb_current_exc.type, "KeyError") == 0)', c_code)
+        self.assertIn('pb_print_str("caught KeyError");', c_code)
+
+    def test_reraise_in_except(self):
+        code = (
+            "def main():\n"
+            "    try:\n"
+            "        try:\n"
+            "            raise ValueError(\"bad\")\n"
+            "        except ValueError:\n"
+            "            print(\"re-raising\")\n"
+            "            raise\n"
+            "    except ValueError:\n"
+            "        print(\"caught outer\")\n"
+        )
+        header, c_code = self.compile_pipeline(code)
+        self.assertIn('pb_raise("ValueError", "bad");', c_code)
+        self.assertIn('if (strcmp(pb_current_exc.type, "ValueError") == 0)', c_code)
+        self.assertIn('pb_print_str("re-raising");', c_code)
+        self.assertIn('if (__exc_flag_2 && !__exc_handled_2) pb_reraise();', c_code)
+        self.assertIn('pb_print_str("caught outer");', c_code)
+
+    def test_raise_custom_struct(self):
+        code = (
+            "class MyError:\n"
+            "    def __init__(self, msg: str):\n"
+            "        self.msg = msg\n"
+            "def main():\n"
+            "    e: MyError = MyError(\"oops\")\n"
+            "    try:\n"
+            "        raise e\n"
+            "    except MyError as err:\n"
+            "        print(err.msg)\n"
+        )
+        header, c_code = self.compile_pipeline(code)
+        self.assertIn('pb_raise("MyError", e);', c_code)
+        self.assertIn('if (strcmp(pb_current_exc.type, "MyError") == 0)', c_code)
+        self.assertIn('struct MyError * err = (struct MyError *)pb_current_exc.value;', c_code)
+        self.assertIn('pb_print_str(err->msg);', c_code)
+
+    def test_raise_string(self):
+        code = (
+            "def main():\n"
+            "    try:\n"
+            "        raise \"basic failure\"\n"
+            "    except Exception:\n"
+            "        print(\"caught generic error\")\n"
+        )
+        header, c_code = self.compile_pipeline(code)
+        self.assertIn('pb_raise("str", "basic failure");', c_code)
+        self.assertIn('if (strcmp(pb_current_exc.type, "Exception") == 0)', c_code)
+        self.assertIn('pb_print_str("caught generic error");', c_code)
+
+    def test_raise_without_except(self):
+        code = (
+            "def main():\n"
+            "    try:\n"
+            "        raise \"basic failure\"\n"
+            "    except:\n"
+            "        print(\"caught generic error\")\n"
+        )
+        header, c_code = self.compile_pipeline(code)
+        self.assertIn('pb_raise("str", "basic failure");', c_code)
+        self.assertIn('if (1)', c_code)
+        self.assertIn('pb_print_str("caught generic error");', c_code)
+
+    def test_raise_without_raise_msg(self):
+        code = (
+            "def main():\n"
+            "    try:\n"
+            "        raise\n"
+            "    except Exception:\n"
+            "        print(\"caught generic error\")\n"
+        )
+        header, c_code = self.compile_pipeline(code)
+        self.assertIn('pb_reraise();', c_code)
+        self.assertIn('if (strcmp(pb_current_exc.type, "Exception") == 0)', c_code)
+        self.assertIn('pb_print_str("caught generic error");', c_code)
+
 
 if __name__ == "__main__":
     unittest.main()
