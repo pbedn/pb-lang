@@ -946,6 +946,9 @@ class CodeGen:
                 all_args = self._apply_defaults(mangled, passed_args)
                 args = ", ".join(all_args)
                 return f"{mangled}({args})"
+            elif imported_from:
+                args = ", ".join(self._expr(arg) for arg in e.args)
+                return f"{mangled}({args})"
 
             if fn_name == "open":
                 arg0 = self._expr(e.args[0])

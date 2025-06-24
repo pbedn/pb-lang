@@ -5,7 +5,7 @@ from parser import Parser, ParserError
 from type_checker import TypeChecker, TypeError
 from codegen import CodeGen
 from lang_ast import ImportStmt, Program
-from module_loader import load_module
+from module_loader import load_module, ModuleNotFoundError
 
 
 def process_imports(ast: Program, pb_path: str, verbose: bool = False):
@@ -21,10 +21,20 @@ def process_imports(ast: Program, pb_path: str, verbose: bool = False):
     for stmt in getattr(ast, "body", []):
         if isinstance(stmt, ImportStmt):
             mod_symbol = load_module(stmt.module, search_paths, loaded_modules, verbose)
-            alias = stmt.alias if stmt.alias else stmt.module[0]
-            if verbose:
-                print(f"Registering module '{alias}' with exports: {mod_symbol.exports}")
-            checker.modules[alias] = mod_symbol
+            if stmt.names:
+                for name in stmt.names:
+                    if name not in mod_symbol.exports:
+                        raise ModuleNotFoundError(f"Module '{'.'.join(stmt.module)}' has no export '{name}'")
+                    kind = mod_symbol.exports[name]
+                    if kind == "function" and name in mod_symbol.functions:
+                        checker.functions[name] = mod_symbol.functions[name]
+                    else:
+                        checker.env[name] = kind
+            else:
+                alias = stmt.alias if stmt.alias else stmt.module[0]
+                if verbose:
+                    print(f"Registering module '{alias}' with exports: {mod_symbol.exports}")
+                checker.modules[alias] = mod_symbol
     return checker, loaded_modules
 
 

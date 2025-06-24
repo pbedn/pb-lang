@@ -428,6 +428,24 @@ class TestPipelineRuntime(unittest.TestCase):
         self.assertEqual(lines[1], "9")
         self.assertEqual(lines[2], "3.1415")
 
+    def test_from_import_function(self):
+        modules = {
+            "mathlib": (
+                "def add(a: int, b: int) -> int:\n"
+                "    return a + b\n"
+            ),
+            "main": (
+                "from mathlib import add\n"
+                "\n"
+                "def main() -> int:\n"
+                "    print(add(2, 3))\n"
+                "    return 0\n"
+            )
+        }
+
+        output = compile_modules_and_run_main(modules)
+        self.assertEqual(output.strip(), "5")
+    
     def test_file_read_write(self):
         code = (
             "def main() -> int:\n"
