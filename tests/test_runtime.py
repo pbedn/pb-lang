@@ -428,6 +428,21 @@ class TestPipelineRuntime(unittest.TestCase):
         self.assertEqual(lines[1], "9")
         self.assertEqual(lines[2], "3.1415")
 
+    def test_file_read_write(self):
+        code = (
+            "def main() -> int:\n"
+            "    f: file = open('tmp.txt', 'w')\n"
+            "    f.write('Hello!')\n"
+            "    f.close()\n"
+            "    f = open('tmp.txt', 'r')\n"
+            "    data: str = f.read()\n"
+            "    f.close()\n"
+            "    print(data)\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(output.strip(), "Hello!")
+
 
 class TestRefLangOutput(unittest.TestCase):
     """Runtime test for the reference program."""

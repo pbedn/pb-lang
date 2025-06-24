@@ -199,6 +199,7 @@ class CodeGen:
             "float": "double",
             "bool": "bool",
             "str": "const char *",
+            "file": "PbFile",
         }
         if pb_type in tbl:
             return tbl[pb_type]
@@ -946,6 +947,11 @@ class CodeGen:
                 args = ", ".join(all_args)
                 return f"{mangled}({args})"
 
+            if fn_name == "open":
+                arg0 = self._expr(e.args[0])
+                arg1 = self._expr(e.args[1])
+                return f"pb_open({arg0}, {arg1})"
+
             # --- Built-int type conversions ---
             if fn_name == "int":
                 if e.args[0].inferred_type == "float":
@@ -973,6 +979,16 @@ class CodeGen:
         if isinstance(e.func, AttributeExpr):
             obj_expr = self._expr(e.func.obj)
             method_name = e.func.attr
+
+            obj_type = self._get_expr_type(e.func.obj)
+            if obj_type == "file":
+                if method_name == "read":
+                    return f"pb_file_read({obj_expr})"
+                if method_name == "write":
+                    arg = self._expr(e.args[0]) if e.args else "\"\""
+                    return f"pb_file_write({obj_expr}, {arg})"
+                if method_name == "close":
+                    return f"pb_file_close({obj_expr})"
 
             class_type = self._get_expr_type(e.func.obj)
             if class_type:

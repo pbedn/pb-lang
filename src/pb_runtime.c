@@ -167,6 +167,40 @@ void pb_reraise(void) {
     pb_raise_obj(pb_current_exc.type, pb_current_exc.value);
 }
 
+/* ------------ FILE ------------- */
+
+PbFile pb_open(const char *path, const char *mode) {
+    FILE *fp = fopen(path, mode);
+    if (!fp) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Failed to open file %s", path);
+        pb_fail(buf);
+    }
+    PbFile f = {fp};
+    return f;
+}
+
+const char *pb_file_read(PbFile f) {
+    fseek(f.handle, 0, SEEK_END);
+    long size = ftell(f.handle);
+    fseek(f.handle, 0, SEEK_SET);
+    char *buf = malloc(size + 1);
+    if (!buf) pb_fail("Out of memory in pb_file_read");
+    size_t n = fread(buf, 1, size, f.handle);
+    buf[n] = '\0';
+    return buf;
+}
+
+void pb_file_write(PbFile f, const char *s) {
+    if (fputs(s, f.handle) == EOF) {
+        pb_fail("Failed to write file");
+    }
+}
+
+void pb_file_close(PbFile f) {
+    fclose(f.handle);
+}
+
 void pb_index_error(const char *type, const char *op, int64_t index, int64_t len, void *ptr) {
     char buf[256];
     if (strcmp(op, "get") == 0) {

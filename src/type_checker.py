@@ -566,6 +566,15 @@ class TypeChecker:
                         raise TypeError(f"Function 'str' expects int, float, or str, got {arg_type}")
                     expr.inferred_type = "str"
                     return "str"
+                if fname == "open":
+                    if len(expr.args) != 2:
+                        raise TypeError("Function 'open' expects exactly two arguments")
+                    a0 = self.check_expr(expr.args[0])
+                    a1 = self.check_expr(expr.args[1])
+                    if a0 != "str" or a1 != "str":
+                        raise TypeError("Function 'open' expects (str, str)")
+                    expr.inferred_type = "file"
+                    return "file"
                 if fname not in self.functions:
                     raise TypeError(f"Call to undefined function '{fname}'")
                 param_types, return_type, num_required = self.functions[fname]
@@ -597,6 +606,27 @@ class TypeChecker:
 
                     expr.inferred_type = mod.exports[attr]
                     return mod.exports[attr]
+
+                if isinstance(base, Identifier) and base.name in self.env and self.env[base.name] == "file":
+                    base.inferred_type = "file"
+                    if attr == "read":
+                        if len(expr.args) != 0:
+                            raise TypeError("File.read expects no arguments")
+                        expr.inferred_type = "str"
+                        return "str"
+                    if attr == "write":
+                        if len(expr.args) != 1:
+                            raise TypeError("File.write expects one argument")
+                        if self.check_expr(expr.args[0]) != "str":
+                            raise TypeError("File.write argument must be str")
+                        expr.inferred_type = "None"
+                        return "None"
+                    if attr == "close":
+                        if len(expr.args) != 0:
+                            raise TypeError("File.close expects no arguments")
+                        expr.inferred_type = "None"
+                        return "None"
+                    raise TypeError(f"File object has no method '{attr}'")
 
                 # --- INSTANCE OR STATIC CLASS METHOD CALL ---
                 obj = base
@@ -697,6 +727,13 @@ class TypeChecker:
                 return expr.inferred_type
 
             # --- instance-field on any variable (including self) ---
+            if obj_name in self.env and self.env[obj_name] == "file":
+                if expr.attr not in {"read", "write", "close"}:
+                    raise TypeError(f"File object has no attribute '{expr.attr}'")
+                expr.obj.inferred_type = "file"
+                expr.inferred_type = "function"
+                return "function"
+
             if obj_name in self.env:
                 class_type = self.env[obj_name]
                 expr.obj.inferred_type = class_type
