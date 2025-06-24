@@ -461,6 +461,15 @@ class TestParseStatements(ParserTestCase):
         self.assertIsInstance(stmt.value, Literal)
         self.assertEqual(stmt.value.raw, "42")
 
+    def test_parse_var_decl_without_initializer(self):
+        parser = self.parse_tokens("y: str\n")
+        stmt = parser.parse_var_decl()
+
+        self.assertIsInstance(stmt, VarDecl)
+        self.assertEqual(stmt.name, "y")
+        self.assertEqual(stmt.declared_type, "str")
+        self.assertIsNone(stmt.value)
+
     def test_parse_assign_stmt(self):
         parser = self.parse_tokens("x = y + 1\n")
         stmt = parser.parse_assign_stmt()
@@ -1107,8 +1116,10 @@ class TestParserEdgeCases(unittest.TestCase):
 
     # VarDecl missing initializer -------------------------------------
     def test_vardecl_without_initializer(self):
-        with self.assertRaises(ParserError):
-            self.parse_program("x: int\n")
+        prog = self.parse_program("x: int\n")
+        self.assertIsInstance(prog.body[0], VarDecl)
+        self.assertEqual(prog.body[0].name, "x")
+        self.assertIsNone(prog.body[0].value)
 
     # illegal break ----------------------------------------------------
     def test_break_outside_loop(self):

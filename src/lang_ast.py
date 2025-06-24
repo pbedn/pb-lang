@@ -62,7 +62,7 @@ class GlobalStmt:
 class VarDecl:
     name: str
     declared_type: str
-    value: Expr
+    value: Optional[Expr] = None
     inferred_type: Optional[str] = None
 
 
