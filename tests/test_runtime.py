@@ -401,6 +401,22 @@ class TestPipelineRuntime(unittest.TestCase):
         self.assertEqual(lines[4], "200")
         self.assertEqual(lines[5], "150")
 
+    def test_class_field_without_initializer_runtime(self):
+        code = (
+            "class Foo:\n"
+            "    val: int\n"
+            "\n"
+            "    def __init__(self) -> None:\n"
+            "        self.val = 5\n"
+            "\n"
+            "def main() -> int:\n"
+            "    f: Foo = Foo()\n"
+            "    print(f.val)\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(output.strip(), "5")
+
     def test_import_mathlib_add(self):
         modules = {
             "mathlib": (

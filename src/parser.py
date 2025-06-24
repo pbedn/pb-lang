@@ -629,17 +629,18 @@ class Parser:
         return ReturnStmt(value)
     
     def parse_var_decl(self) -> VarDecl:
-        """Parse a typed variable declaration with initializer
+        """Parse a typed variable declaration, optionally with an initializer
 
         Grammar fragment:
-        VarDecl ::= Identifier \":\" Type \"=\" Expr NEWLINE
+        VarDecl ::= Identifier ":" Type ["=" Expr] NEWLINE
         AST target: VarDecl(name, declared_type, value)
         """
         name = self.expect(TokenType.IDENTIFIER).value
         self.expect(TokenType.COLON)
         declared_type = self.parse_type()
-        self.expect(TokenType.ASSIGN)
-        value = self.parse_expr()
+        value: Optional[Expr] = None
+        if self.match(TokenType.ASSIGN):
+            value = self.parse_expr()
         self.expect(TokenType.NEWLINE)
         return VarDecl(name, declared_type, value)
 

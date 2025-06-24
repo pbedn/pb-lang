@@ -411,6 +411,17 @@ class TestCodeGenFromSource(unittest.TestCase):
         # Optional: confirm static field initialization
         self.assertIn("int64_t Player_mp = 100;", c)
 
+    def test_class_field_without_initializer_pipeline(self):
+        code = (
+            "class Foo:\n"
+            "    a: int\n"
+        )
+
+        h, c = self.compile_pipeline(code)
+        self.assertIn("typedef struct Foo {", h)
+        self.assertIn("int64_t a;", h)
+        self.assertNotIn("Foo_a =", c)
+
     def test_codegen_class_inheritance_with_fields(self):
         code = (
             "class Player:\n"
