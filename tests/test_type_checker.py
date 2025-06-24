@@ -31,6 +31,7 @@ from lang_ast import (
     AttributeExpr,
     IndexExpr,
     ListExpr,
+    SetExpr,
     DictExpr,
     AssertStmt,
     RaiseStmt,
@@ -495,6 +496,14 @@ class TestTypeCheckerInternals(unittest.TestCase):
     def test_list_expr_empty_with_type_hint(self):
         expr = ListExpr(elements=[])
         self.assertEqual(self.tc.check_expr(expr, expected_type="list[int]"), "list[int]")
+
+    def test_set_expr_valid(self):
+        expr = SetExpr(elements=[Literal("1"), Literal("2")])
+        self.assertEqual(self.tc.check_expr(expr), "set[int]")
+
+    def test_set_expr_empty_with_hint(self):
+        expr = SetExpr(elements=[])
+        self.assertEqual(self.tc.check_expr(expr, expected_type="set[int]"), "set[int]")
 
     def test_var_decl_empty_list_with_annotation(self):
         decl = VarDecl(name="a", declared_type="list[int]", value=ListExpr(elements=[]))

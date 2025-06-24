@@ -1374,6 +1374,32 @@ class TestCodeGen(unittest.TestCase):
     #         "list_float_print(&arr);"
     #     ])
 
+    def test_set_literal(self):
+        prog = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("s", "set[int]", SetExpr(
+                        elements=[Literal("1"), Literal("2")],
+                        elem_type="int",
+                        inferred_type="set[int]"
+                    )),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("s")])),
+                    ReturnStmt(Literal("0"))
+                ],
+                globals_declared=None
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "int64_t __tmp_set_1[] = {1, 2}",
+            "Set_int s = (Set_int){ .len=2, .data=__tmp_set_1 };",
+            "set_int_print(&s);",
+            "return 0;",
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()

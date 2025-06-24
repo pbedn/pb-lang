@@ -247,6 +247,18 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn('bool x = list_bool_get(&flags, 0);', c_code)
         self.assertIn('pb_print_bool(x);', c_code)
 
+    def test_set_literal(self):
+        code = (
+            "def main() -> int:\n"
+            "    s: set[int] = {1, 2}\n"
+            "    print(s)\n"
+            "    return 0\n"
+        )
+        h, c_code = self.compile_pipeline(code)
+        self.assertIn('int64_t __tmp_set_1[] = {1, 2};', c_code)
+        self.assertIn('Set_int s = (Set_int){ .len=2, .data=__tmp_set_1 };', c_code)
+        self.assertIn('set_int_print(&s);', c_code)
+
     def test_list_index_get_set(self):
         code = (
             "def main() -> int:\n"
