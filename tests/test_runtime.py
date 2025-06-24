@@ -299,7 +299,7 @@ class TestPipelineRuntime(unittest.TestCase):
             "    crash()\n"
         )
         output = compile_and_run(code)
-        self.assertIn("RuntimeError:", output)
+        self.assertIn("RuntimeError: division by zero", output)
 
     def test_reraise(self):
         code = (

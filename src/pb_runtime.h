@@ -43,7 +43,14 @@ extern PbException pb_current_exc;
 
 void pb_push_try(PbTryContext *ctx);
 void pb_pop_try(void);
-void pb_raise(const char *type, void *value);
+
+/* Raise a simple exception whose payload is a C string.*/
+void pb_raise_msg(const char *type, const char *msg);
+
+/* Raise an “exception object”.                                       *
+ * The object must have ‘const char *msg’ as its first field.          */
+void pb_raise_obj(const char *type, void *obj);
+
 void pb_clear_exc(void);
 void pb_reraise(void);
 

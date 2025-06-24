@@ -65,6 +65,46 @@ void pb_pop_try(void) {
     pb_try_depth--;
 }
 
+void pb_raise_msg(const char *type, const char *msg)
+{
+    pb_current_exc.type  = type;
+    pb_current_exc.value = (void *)msg;       /* stored only for re-raise */
+
+    if (pb_current_try) {
+        PbTryContext *ctx = pb_current_try;
+        pb_current_try    = ctx->prev;
+        longjmp(ctx->env, 1);
+    }
+
+    /* Uncaught ⇒ abort the program with a readable message */
+    char buf[512];
+    snprintf(buf, sizeof(buf), "%s: %s", type, msg);
+    pb_fail(buf);                             /* pb_fail must not return */
+}
+
+void pb_raise_obj(const char *type, void *obj)
+{
+    pb_current_exc.type  = type;
+    pb_current_exc.value = obj;
+
+    if (pb_current_try) {
+        PbTryContext *ctx = pb_current_try;
+        pb_current_try    = ctx->prev;
+        longjmp(ctx->env, 1);
+    }
+
+    /* Uncaught ⇒ fetch msg from the struct’s first slot */
+    const char *msg = obj ? *((const char **)obj) : NULL;
+
+    char buf[512];
+    if (msg)
+        snprintf(buf, sizeof(buf), "%s: %s", type, msg);
+    else
+        snprintf(buf, sizeof(buf), "Uncaught exception of type %s", type);
+
+    pb_fail(buf);
+}
+
 /**
  * Raise a runtime exception of a given type with an optional value.
  *
@@ -78,30 +118,40 @@ void pb_pop_try(void) {
  * @param type   A string identifying the exception type (e.g. "ValueError").
  * @param value  An optional payload (e.g. a string or struct pointer).
  */
-void pb_raise(const char *type, void *value) {
-    // consider to define known error types as global constants (e.g., extern const char *PB_EXC_IOERROR)
-    // const char *PB_EXC_IOERROR = "IOError";
-    // const char *PB_EXC_VALUEERROR = "ValueError";
-    // and codegen would do: if (strcmp(pb_current_exc.type, PB_EXC_VALUEERROR) == 0)
-    pb_current_exc.type = type;
-    pb_current_exc.value = value;
-    if (pb_current_try) {
-        PbTryContext *ctx = pb_current_try;
-        pb_current_try = ctx->prev;
-        longjmp(ctx->env, 1);
-    } else {
-        if (value) {
-            const char *msg = ((const char *)value);  // assumes strdup'd string
-            char buf[512];
-            snprintf(buf, sizeof(buf), "%s: %s", type, msg);
-            pb_fail(buf);
-        } else {
-            char buf[256];
-            snprintf(buf, sizeof(buf), "Uncaught exception of type %s", type);
-            pb_fail(buf);
-        }
-    }
-}
+// void pb_raise(const char *type, void *value) {
+//     // consider to define known error types as global constants (e.g., extern const char *PB_EXC_IOERROR)
+//     // const char *PB_EXC_IOERROR = "IOError";
+//     // const char *PB_EXC_VALUEERROR = "ValueError";
+//     // and codegen would do: if (strcmp(pb_current_exc.type, PB_EXC_VALUEERROR) == 0)
+//     pb_current_exc.type = type;
+//     pb_current_exc.value = value;
+//     if (pb_current_try) {
+//         PbTryContext *ctx = pb_current_try;
+//         pb_current_try = ctx->prev;
+//         longjmp(ctx->env, 1);
+//     } else {
+//         const char *msg = NULL;
+
+//         /* Heuristic: if value looks like a C string, treat it as such   */
+//         if (value && strlen((const char *)value) < 256)
+//             msg = (const char *)value;
+
+//         /* Otherwise, assume an Exception-like struct whose first field
+//            is a const char *msg and read it through a generic pointer    */
+//         else if (value)
+//             msg = *((const char **)value);
+
+//         if (msg) {
+//             char buf[512];
+//             snprintf(buf, sizeof(buf), "%s: %s", type, msg);
+//             pb_fail(buf);
+//         } else {
+//             char buf[256];
+//             snprintf(buf, sizeof(buf), "Uncaught exception of type %s", type);
+//             pb_fail(buf);
+//         }
+//     }
+// }
 
 // Clear the current exception state
 void pb_clear_exc(void) {
@@ -114,7 +164,7 @@ void pb_reraise(void) {
     if (!pb_current_exc.type) {
         pb_fail("Cannot re-raise: no active exception");
     }
-    pb_raise(pb_current_exc.type, pb_current_exc.value);
+    pb_raise_obj(pb_current_exc.type, pb_current_exc.value);
 }
 
 void pb_index_error(const char *type, const char *op, int64_t index, int64_t len, void *ptr) {
@@ -135,7 +185,7 @@ void pb_index_error(const char *type, const char *op, int64_t index, int64_t len
             index, type, len
         );
     }
-    pb_raise("IndexError", strdup(buf));
+    pb_raise_obj("IndexError", strdup(buf));
 }
 
 /* ------------ LIST ------------- */

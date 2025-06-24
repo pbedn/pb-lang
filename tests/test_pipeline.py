@@ -496,7 +496,7 @@ class TestCodeGenFromSource(unittest.TestCase):
         header, c_code = self.compile_pipeline(pb_code)
         # Should emit the constructor forwarding and raise call
         self.assertIn('Exception____init__((struct Exception *)self, msg);', c_code)
-        self.assertIn('pb_raise("RuntimeError"', c_code)
+        self.assertIn('pb_raise_obj("RuntimeError"', c_code)
         # Should use the forwarded RuntimeError constructor
         self.assertIn('void RuntimeError____init__(struct RuntimeError * self, const char * msg)', c_code)
 
@@ -739,7 +739,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "        print(\"caught outer\")\n"
         )
         header, c_code = self.compile_pipeline(code)
-        self.assertIn('pb_raise("ValueError", "bad");', c_code)
+        self.assertIn('pb_raise_msg("ValueError", "bad");', c_code)
         self.assertIn('if (strcmp(pb_current_exc.type, "ValueError") == 0)', c_code)
         self.assertIn('pb_print_str("re-raising");', c_code)
         self.assertIn('if (__exc_flag_2 && !__exc_handled_2) pb_reraise();', c_code)
@@ -758,7 +758,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "        print(err.msg)\n"
         )
         header, c_code = self.compile_pipeline(code)
-        self.assertIn('pb_raise("MyError", e);', c_code)
+        self.assertIn('pb_raise_obj("MyError", e);', c_code)
         self.assertIn('if (strcmp(pb_current_exc.type, "MyError") == 0)', c_code)
         self.assertIn('struct MyError * err = (struct MyError *)pb_current_exc.value;', c_code)
         self.assertIn('pb_print_str(err->msg);', c_code)
@@ -772,7 +772,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "        print(\"caught generic error\")\n"
         )
         header, c_code = self.compile_pipeline(code)
-        self.assertIn('pb_raise("str", "basic failure");', c_code)
+        self.assertIn('pb_raise_msg("str", "basic failure");', c_code)
         self.assertIn('if (strcmp(pb_current_exc.type, "Exception") == 0)', c_code)
         self.assertIn('pb_print_str("caught generic error");', c_code)
 
@@ -785,7 +785,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "        print(\"caught generic error\")\n"
         )
         header, c_code = self.compile_pipeline(code)
-        self.assertIn('pb_raise("str", "basic failure");', c_code)
+        self.assertIn('pb_raise_msg("str", "basic failure");', c_code)
         self.assertIn('if (1)', c_code)
         self.assertIn('pb_print_str("caught generic error");', c_code)
 

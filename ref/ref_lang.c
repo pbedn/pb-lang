@@ -107,7 +107,7 @@ int64_t lang_divide(int64_t x, int64_t y)
     char __fbuf[256];
     (void)__fbuf;
     if ((y == 0)) {
-        pb_raise("RuntimeError", "division by zero");
+        pb_raise_msg("RuntimeError", "division by zero");
     }
     return (x / y);
 }

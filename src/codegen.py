@@ -679,16 +679,23 @@ class CodeGen:
         exc = st.exception
         if isinstance(exc, CallExpr) and isinstance(exc.func, Identifier):
             name = exc.func.name
+
+            # Exception *instance* → pb_raise_obj
             if name in self._structs_emitted:
                 val = self._expr(exc)
                 etype = exc.inferred_type or name
-                return f'pb_raise("{etype}", {val});'
+                return f'pb_raise_obj("{etype}", {val});'
+
+            # `raise ValueError("msg")`-style → pb_raise_msg
             elif len(exc.args) == 1:
                 msg = self._expr(exc.args[0])
-                return f'pb_raise("{name}", {msg});'
+                return f'pb_raise_msg("{name}", {msg});'
+
         val = self._expr(exc)
         etype = exc.inferred_type or "Exception"
-        return f'pb_raise("{etype}", {val});'
+        if etype == "str":
+            return f'pb_raise_msg("{etype}", {val});'
+        return f'pb_raise_obj("{etype}", {val});'
 
     def _generate_GlobalStmt(self, st: GlobalStmt) -> str:
         names = ", ".join(st.names)
