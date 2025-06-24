@@ -9,7 +9,7 @@ from lang_ast import (
     ImportStmt,
     Expr, Identifier, Literal, StringLiteral, FStringLiteral, FStringText, FStringExpr,
     BinOp, UnaryOp, CallExpr, AttributeExpr, IndexExpr,
-    ListExpr, DictExpr,
+    ListExpr, SetExpr, DictExpr,
     Parameter, FunctionDef, PassStmt,
 )
 
@@ -75,6 +75,7 @@ class CodeGen:
         self._tmp_counter: int = 0
         self._tmp_list_counter: int = 0
         self._tmp_dict_counter: int = 0
+        self._tmp_set_counter: int = 0
 
         # Instance field information from the type checker
         self._instance_fields: dict[str, dict[str, str]] = {}
@@ -233,6 +234,13 @@ class CodeGen:
                 'list[float]': 'List_float',
                 'list[bool]': 'List_bool',
                 'list[str]': 'List_str',
+            }[pb_type]
+        if pb_type.startswith("set[") and pb_type.endswith("]"):
+            return {
+                'set[int]': 'Set_int',
+                'set[float]': 'Set_float',
+                'set[bool]': 'Set_bool',
+                'set[str]': 'Set_str',
             }[pb_type]
         if pb_type.startswith("dict[") and pb_type.endswith("]"):
             return {
@@ -552,6 +560,10 @@ class CodeGen:
                 "list[float]": "list_float_print",
                 "list[bool]": "list_bool_print",
                 "list[str]": "list_str_print",
+                "set[int]": "set_int_print",
+                "set[float]": "set_float_print",
+                "set[bool]": "set_bool_print",
+                "set[str]": "set_str_print",
             }.get(t, "pb_print_int")  # default to int
 
         def _extract_dict_value_type(type_str: str) -> str:
@@ -584,7 +596,7 @@ class CodeGen:
             # - IndexExpr       arr[0], d["x"]
             # - CallExpr        get_name()
             if isinstance(arg, Identifier):
-                if t and t.startswith("list["):
+                if t and (t.startswith("list[") or t.startswith("set[")):
                     print_arg = f"&{print_arg}"
 
             if isinstance(arg, IndexExpr):
@@ -796,6 +808,7 @@ class CodeGen:
         if isinstance(e, AttributeExpr): return self._generate_AttributeExpr(e)
         if isinstance(e, IndexExpr): return self._generate_IndexExpr(e)
         if isinstance(e, ListExpr): return self._generate_ListExpr(e)
+        if isinstance(e, SetExpr): return self._generate_SetExpr(e)
         if isinstance(e, DictExpr): return self._generate_DictExpr(e)
 
         # fallback
@@ -1094,6 +1107,21 @@ class CodeGen:
             elems = ", ".join(self._expr(x) for x in e.elements)
             self._emit(f"{elem_c_type} {buf_name}[] = {{{elems}}};")
             return f"({list_c_type}){{ .len={len(e.elements)}, .data={buf_name} }}"
+
+    def _generate_SetExpr(self, e: SetExpr) -> str:
+        self._tmp_set_counter += 1
+        buf_name = f"__tmp_set_{self._tmp_set_counter}"
+
+        elem_c_type = self._c_type(e.elem_type)
+        set_c_type = self._c_type(e.inferred_type)
+
+        if not e.elements:
+            self._emit(f"{elem_c_type} {buf_name}[1] = {{0}};")
+            return f"({set_c_type}){{ .len=0, .data={buf_name} }}"
+        else:
+            elems = ", ".join(self._expr(x) for x in e.elements)
+            self._emit(f"{elem_c_type} {buf_name}[] = {{{elems}}};")
+            return f"({set_c_type}){{ .len={len(e.elements)}, .data={buf_name} }}"
 
     def _generate_DictExpr(self, e: DictExpr) -> str:
         self._tmp_dict_counter += 1

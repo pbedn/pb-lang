@@ -90,6 +90,11 @@ typedef struct {
     const char **data;
 } List_str;
 
+typedef List_int   Set_int;
+typedef List_float Set_float;
+typedef List_bool  Set_bool;
+typedef List_str   Set_str;
+
 #define INITIAL_LIST_CAPACITY 4
 
 void list_int_grow_if_needed(List_int *lst);
@@ -131,6 +136,11 @@ const char *list_str_pop(List_str *lst);
 bool list_str_remove(List_str *lst, const char *value);
 void list_str_free(List_str *lst);
 void list_str_print(const List_str *lst);
+
+void set_int_print(const Set_int *s);
+void set_float_print(const Set_float *s);
+void set_bool_print(const Set_bool *s);
+void set_str_print(const Set_str *s);
 
 /* ------------ DICT ------------- */
 

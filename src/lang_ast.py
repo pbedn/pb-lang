@@ -250,6 +250,13 @@ class ListExpr:
 
 
 @dataclass
+class SetExpr:
+    elements: List[Expr]
+    elem_type: Optional[TypeNode] = None
+    inferred_type: Optional[TypeNode] = None
+
+
+@dataclass
 class DictExpr:
     keys: List[Expr]
     values: List[Expr]
@@ -297,5 +304,6 @@ Expr = Union[
     AttributeExpr,
     IndexExpr,
     ListExpr,
+    SetExpr,
     DictExpr,
 ]

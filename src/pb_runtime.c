@@ -565,6 +565,48 @@ void list_str_print(const List_str *lst) {
     printf("]\n");
 }
 
+void set_int_print(const Set_int *s) {
+    printf("{");
+    for (int64_t i = 0; i < s->len; ++i) {
+        if (i > 0) printf(", ");
+        printf("%" PRId64, s->data[i]);
+    }
+    printf("}\n");
+}
+
+void set_float_print(const Set_float *s) {
+    printf("{");
+    for (int64_t i = 0; i < s->len; ++i) {
+        if (i > 0) printf(", ");
+        printf("%g", s->data[i]);
+    }
+    printf("}\n");
+}
+
+void set_bool_print(const Set_bool *s) {
+    printf("{");
+    for (int64_t i = 0; i < s->len; ++i) {
+        if (i > 0) printf(", ");
+        printf(s->data[i] ? "True" : "False");
+    }
+    printf("}\n");
+}
+
+void set_str_print(const Set_str *s) {
+    printf("{");
+    for (int64_t i = 0; i < s->len; ++i) {
+        const char *str = s->data[i];
+        if (i > 0) printf(", ");
+        bool has_single_quote = strchr(str, '\'') != NULL;
+        if (has_single_quote) {
+            printf("\"%s\"", str);
+        } else {
+            printf("'%s'", str);
+        }
+    }
+    printf("}\n");
+}
+
 
 /* ------------ DICT ------------- */
 

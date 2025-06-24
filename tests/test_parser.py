@@ -41,6 +41,7 @@ from lang_ast import (
     AttributeExpr,
     IndexExpr,
     ListExpr,
+    SetExpr,
     DictExpr,
 )
 
@@ -429,6 +430,15 @@ class TestParseExpressions(ParserTestCase):
         self.assertEqual(expr.keys[0].value, "a")
         self.assertIsInstance(expr.values[1], BinOp)
         self.assertEqual(expr.values[1].op, "+")
+
+    def test_parse_set_expr(self):
+        parser = self.parse_tokens("{1, x + 2}")
+        expr = parser.parse_expr()
+
+        self.assertIsInstance(expr, SetExpr)
+        self.assertEqual(len(expr.elements), 2)
+        self.assertIsInstance(expr.elements[0], Literal)
+        self.assertIsInstance(expr.elements[1], BinOp)
 
 
 class TestParseStatements(ParserTestCase):
