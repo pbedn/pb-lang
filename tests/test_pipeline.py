@@ -723,6 +723,16 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn('pb_print_str((snprintf(__fbuf, 256, "player get_name: %s", Player__get_name(p)), __fbuf));', c)
         self.assertIn('pb_print_str((snprintf(__fbuf, 256, "Player.species: %s", Player_species), __fbuf));', c)
 
+    def test_raw_and_multiline_string_codegen(self):
+        code = (
+            "def main():\n"
+            "    print(r\"line\\nnext\")\n"
+            "    print(\"\"\"hello\n    world\"\"\")\n"
+        )
+        h, c = self.compile_pipeline(code)
+        self.assertIn('pb_print_str("line\\\\nnext");', c)
+        self.assertIn('pb_print_str("hello\\n    world");', c)
+
     def test_raise_valueerror(self):
         code = (
             "def main():\n"
