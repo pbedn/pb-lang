@@ -479,6 +479,16 @@ class TestPipelineRuntime(unittest.TestCase):
         output = compile_and_run(code)
         self.assertEqual(output.strip(), "Hello!")
 
+    def test_raw_and_multiline_strings_runtime(self):
+        base = os.path.join(os.path.dirname(__file__), "samples", "raw_strings.pb")
+        with open(base) as f:
+            code = f.read()
+        output = _compile_and_run_modules({"raw_strings": code})
+        lines = output.splitlines()
+        self.assertEqual(lines[0], "line\\nnext")
+        self.assertEqual(lines[1], "hello")
+        self.assertEqual(lines[2], "    world")
+
 
 class TestRefLangOutput(unittest.TestCase):
     """Runtime test for the reference program."""

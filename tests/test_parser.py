@@ -130,6 +130,18 @@ class TestParseExpressions(ParserTestCase):
         self.assertIsInstance(lit, StringLiteral)
         self.assertEqual(lit.value, "hello")
 
+    def test_parse_literal_raw_string(self):
+        parser = self.parse_tokens('r"a\\nb"')
+        lit = parser.parse_literal()
+        self.assertIsInstance(lit, StringLiteral)
+        self.assertEqual(lit.value, "a\\nb")
+
+    def test_parse_literal_multiline_string(self):
+        parser = self.parse_tokens('"""x\ny"""')
+        lit = parser.parse_literal()
+        self.assertIsInstance(lit, StringLiteral)
+        self.assertEqual(lit.value, "x\ny")
+
     def test_parse_literal_fstring(self):
         parser = self.parse_tokens("f'hello {x}'")
         lit = parser.parse_literal()

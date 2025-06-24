@@ -319,6 +319,20 @@ class TestLexer(unittest.TestCase):
         self.assertEqual(len(lits), 1)
         self.assertEqual(lits[0].value, "#notcomment")
 
+    def test_raw_string_literal(self):
+        code = 's = r"line\\nnext"\n'
+        tokens = Lexer(code).tokenize()
+        vals = [t.value for t in tokens if t.type == TokenType.STRING_LIT]
+        self.assertIn("line\\nnext", vals)
+
+    def test_multiline_string_literal(self):
+        code = (
+            's = """hello\nworld"""\n'
+        )
+        tokens = Lexer(code).tokenize()
+        vals = [t.value for t in tokens if t.type == TokenType.STRING_LIT]
+        self.assertEqual(vals, ["hello\nworld"])
+
     @unittest.skip("Currently inserting new line is removed from lexer")
     def test_blank_line_generates_NEWLINE(self):
         code = "a=1\n\nb=2\n"

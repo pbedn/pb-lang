@@ -807,8 +807,16 @@ class CodeGen:
         if e.raw == "False": return "false"
         return e.raw
 
+    def _c_escape(self, text: str) -> str:
+        """Escape a Python string for inclusion in C source."""
+        return (
+            text.replace('\\', '\\\\')
+                .replace('"', '\\"')
+                .replace('\n', '\\n')
+        )
+
     def _generate_StringLiteral(self, e: StringLiteral) -> str:
-        return f"\"{e.value}\""
+        return f'"{self._c_escape(e.value)}"'
 
     def _generate_FStringLiteral(self, e: FStringLiteral) -> str:
         """
@@ -827,7 +835,7 @@ class CodeGen:
 
         for part in e.parts:
             if isinstance(part, FStringText):
-                escaped = part.text.replace("%", "%%").replace('"', '\\"')
+                escaped = self._c_escape(part.text).replace("%", "%%")
                 fmt_parts.append(escaped)
             elif isinstance(part, FStringExpr):
                 inner = self._expr(part.expr)

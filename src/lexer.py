@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import ast
 from enum import Enum, auto
 from typing import List, NamedTuple
 
@@ -69,6 +70,10 @@ class Token(NamedTuple):
 class LexerError(Exception):
     def __init__(self, message, line, column):
         super().__init__(f"Lexer error at line {line}, column {column}: {message}")
+
+# Helper to decode Python-style string literals (supports raw and triple quotes)
+def _decode_string(text: str) -> str:
+    return ast.literal_eval(text)
 
 # ───────────────────────── keywords ──────────────────────────
 KEYWORDS = {
@@ -144,6 +149,10 @@ TOKEN_REGEX = [
     (re.compile(r'\d[\d_]*\.\d[\d_]*'), TokenType.FLOAT_LIT),                   # Simple Fraction (no exponent); 3.1415, 0.5, 2_5.0
     (re.compile(r'\d[\d_]*'), TokenType.INT_LIT),
     
+    # raw string literals
+    (re.compile(r'[rR]"(?:[^"\\]|\\.)*"'), TokenType.STRING_LIT),
+    (re.compile(r"[rR]'(?:[^'\\]|\\.)*'"), TokenType.STRING_LIT),
+
     # plain string literals
     (re.compile(r'"(?:\\.|[^"\\])*"'), TokenType.STRING_LIT),
     (re.compile(r"'(?:\\.|[^'\\])*'"), TokenType.STRING_LIT),
@@ -232,6 +241,28 @@ class Lexer:
             if ch in " \t":
                 pos += 1; continue
 
+            # multi-line raw string
+            if line.startswith(('r"""', 'R"""', "r'''", "R'''"), pos):
+                quote = line[pos+1]
+                value, remainder, raw_line = self._scan_multiline_string(line, pos, True, quote, line[pos])
+                self.tokens.append(Token(TokenType.STRING_LIT, value, self.line_num, pos + 1))
+                line = remainder.rstrip()
+                raw = raw_line
+                length = len(line)
+                pos = 0
+                continue
+
+            # multi-line normal string
+            if line.startswith('"""', pos) or line.startswith("'''", pos):
+                quote = line[pos]
+                value, remainder, raw_line = self._scan_multiline_string(line, pos, False, quote)
+                self.tokens.append(Token(TokenType.STRING_LIT, value, self.line_num, pos + 1))
+                line = remainder.rstrip()
+                raw = raw_line
+                length = len(line)
+                pos = 0
+                continue
+
             if (ch in 'fF') and pos + 1 < length and line[pos+1] in ('"', "'"):
                     pos = self._scan_fstring(line, pos)
                     continue
@@ -253,8 +284,7 @@ class Lexer:
 
                 # plain strings – decode escapes
                 elif ttype == TokenType.STRING_LIT:
-                    inner = value[1:-1]
-                    value = bytes(inner, "utf-8").decode("unicode_escape")
+                    value = _decode_string(value)
 
                 # emit
                 self.tokens.append(Token(ttype, value, self.line_num, pos + 1))
@@ -303,8 +333,7 @@ class Lexer:
                 elif ttype in (TokenType.INT_LIT, TokenType.FLOAT_LIT):
                     value = value.replace("_", "")
                 elif ttype == TokenType.STRING_LIT:
-                    inner = value[1:-1]
-                    value = bytes(inner, "utf-8").decode("unicode_escape")
+                    value = _decode_string(value)
 
                 self.tokens.append(Token(ttype, value, base_line, base_col + pos + 1))
                 pos = m.end()
@@ -330,6 +359,38 @@ class Lexer:
                 self.tokens.append(Token(TokenType.DEDENT, "", self.line_num, 1))
             if width != self.indents[-1]:
                 raise LexerError("Inconsistent indentation", self.line_num, 1)
+
+    def _scan_multiline_string(self, line: str, start_pos: int, raw: bool,
+                               quote_char: str, prefix: str = "") -> tuple[str, str, str]:
+        """Scan a triple-quoted string starting at start_pos.
+
+        Returns (value, remainder_line, raw_line) where `value` is the decoded
+        string literal, `remainder_line` is the code after the closing quotes on
+        the final line, and `raw_line` is that full final line as read from the
+        source. `self.line_num` is updated to the line containing the closing
+        quotes.
+        """
+        delim = quote_char * 3
+        text = prefix + delim
+        pos = start_pos + len(prefix) + 3
+        cur_line = line
+        while True:
+            if pos >= len(cur_line):
+                text += cur_line[pos:] + "\n"
+                if self.line_num >= len(self.lines):
+                    raise LexerError("Unterminated multi-line string", self.line_num, pos + 1)
+                cur_line = self.lines[self.line_num]
+                self.line_num += 1
+                pos = 0
+                continue
+            if cur_line.startswith(delim, pos):
+                text += delim
+                remainder = cur_line[pos + 3:]
+                raw_line = cur_line
+                value = _decode_string(text)
+                return value, remainder, raw_line
+            text += cur_line[pos]
+            pos += 1
 
     def _scan_fstring(self, line: str, start_pos: int) -> int:
         """Scan an f-string from the starting quote. Returns the position after closing quote."""
