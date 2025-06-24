@@ -83,6 +83,16 @@ class CodeGen:
 
         self._modules: set[str] = set()  # track imported module names
 
+    def _attr_full_name(self, expr: Expr) -> str | None:
+        if isinstance(expr, Identifier):
+            return expr.name
+        if isinstance(expr, AttributeExpr):
+            base = self._attr_full_name(expr.obj)
+            if base is None:
+                return None
+            return f"{base}.{expr.attr}"
+        return None
+
     def generate(self, program: Program) -> str:
         """Generate the complete C source for ``program``."""
         self._program = program
@@ -156,7 +166,10 @@ class CodeGen:
         for stmt in program.body:
             if isinstance(stmt, VarDecl):
                 c_ty = self._c_type(stmt.declared_type)
-                self._emit(f"extern {c_ty} {stmt.name};")
+                name = self._mangle_global_name(stmt.name)
+                self._emit(f"extern {c_ty} {name};")
+                if name != stmt.name:
+                    self._emit(f"#define {stmt.name} {name}")
         if any(isinstance(stmt, VarDecl) for stmt in program.body):
             self._emit()
 
@@ -167,7 +180,14 @@ class CodeGen:
     def _mangle_function_name(self, name: str) -> str:
         if name == "main" or "__" in name:
             return name
+        module = self._get_module_name().replace('.', '_')
+        return f"{module}_{name}"
+
+    def _mangle_global_name(self, name: str) -> str:
         module = self._get_module_name()
+        if module == "main" or "." not in module:
+            return name
+        module = module.replace('.', '_')
         return f"{module}_{name}"
 
     def _emit(self, line: str = "") -> None:
@@ -184,8 +204,12 @@ class CodeGen:
 
         for stmt in self._program.body:
             if isinstance(stmt, ImportStmt):
-                self._modules.add(stmt.module[0])
-                self._emit(f'#include "{stmt.module[0]}.h"')
+                mod_name = ".".join(stmt.module)
+                alias = stmt.alias if stmt.alias else mod_name
+                self._modules.add(alias)
+                self._emit(f'#include "{mod_name}.h"')
+                if stmt.names and stmt.alias and stmt.alias != stmt.names[0]:
+                    self._emit(f'#define {stmt.alias} {stmt.names[0]}')
 
         self._emit()
 
@@ -287,7 +311,8 @@ class CodeGen:
                 c_ty = self._c_type(stmt.declared_type)
                 # initializer expression will be a constant literal or simple expr
                 init = self._expr(stmt.value)
-                self._emit(f"{c_ty} {stmt.name} = {init};")
+                name = self._mangle_global_name(stmt.name)
+                self._emit(f"{c_ty} {name} = {init};")
         if self._globals_emitted:
             self._emit()
 
@@ -864,9 +889,10 @@ class CodeGen:
             obj = e.func.obj
             attr = e.func.attr
 
-            # --- Module function: mathlib.add(...) -> mathlib_add(...) ---
-            if isinstance(obj, Identifier) and obj.name in self._modules:
-                mangled = f"{obj.name}_{attr}"
+            obj_full = self._attr_full_name(obj)
+
+            if obj_full and obj_full in self._modules:
+                mangled = f"{obj_full.replace('.', '_')}_{attr}"
                 passed_args = [self._expr(arg) for arg in e.args]
                 if mangled in self._function_params:
                     all_args = self._apply_defaults(mangled, passed_args)
@@ -1013,8 +1039,11 @@ class CodeGen:
         obj = self._expr(e.obj)
         attr = e.attr
 
+        obj_full = self._attr_full_name(e.obj)
+        if obj_full and obj_full in self._modules:
+            return attr
+
         if isinstance(e.obj, Identifier):
-            # module attribute access: mathlib.PI -> PI (global variable)
             if e.obj.name in self._modules:
                 return attr
 

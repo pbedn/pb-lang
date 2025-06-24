@@ -20,18 +20,31 @@ def process_imports(ast: Program, pb_path: str, verbose: bool = False):
     search_paths = [entry_dir]
     for stmt in getattr(ast, "body", []):
         if isinstance(stmt, ImportStmt):
-            mod_symbol = load_module(stmt.module, search_paths, loaded_modules, verbose)
             if stmt.names:
-                for name in stmt.names:
+                name = stmt.names[0]
+                alias = stmt.alias if stmt.alias else name
+                # Attempt to treat 'from X import Y' as importing submodule X.Y
+                try:
+                    sub_mod = load_module(stmt.module + [name], search_paths, loaded_modules, verbose)
+                except ModuleNotFoundError:
+                    mod_symbol = load_module(stmt.module, search_paths, loaded_modules, verbose)
                     if name not in mod_symbol.exports:
-                        raise ModuleNotFoundError(f"Module '{'.'.join(stmt.module)}' has no export '{name}'")
+                        raise ModuleNotFoundError(
+                            f"Module '{'.'.join(stmt.module)}' has no export '{name}'"
+                        )
                     kind = mod_symbol.exports[name]
                     if kind == "function" and name in mod_symbol.functions:
-                        checker.functions[name] = mod_symbol.functions[name]
+                        checker.functions[alias] = mod_symbol.functions[name]
                     else:
-                        checker.env[name] = kind
+                        checker.env[alias] = kind
+                else:
+                    checker.modules[alias] = sub_mod
+                    stmt.module = stmt.module + [name]
+                    stmt.names = None
+                    stmt.alias = alias
             else:
-                alias = stmt.alias if stmt.alias else stmt.module[0]
+                mod_symbol = load_module(stmt.module, search_paths, loaded_modules, verbose)
+                alias = stmt.alias if stmt.alias else ".".join(stmt.module)
                 if verbose:
                     print(f"Registering module '{alias}' with exports: {mod_symbol.exports}")
                 checker.modules[alias] = mod_symbol

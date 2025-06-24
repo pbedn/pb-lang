@@ -839,6 +839,15 @@ class TestParseStatements(ParserTestCase):
         self.assertEqual(stmt.module, ["foo"])
         self.assertEqual(stmt.names, ["bar"])
 
+    def test_parse_from_import_alias(self):
+        parser = self.parse_tokens("from foo import bar as baz\n")
+        stmt = parser.parse_import_stmt()
+
+        self.assertIsInstance(stmt, ImportStmt)
+        self.assertEqual(stmt.module, ["foo"])
+        self.assertEqual(stmt.names, ["bar"])
+        self.assertEqual(stmt.alias, "baz")
+
 
 class TestParseComplexStmtAndExpr(ParserTestCase):
 

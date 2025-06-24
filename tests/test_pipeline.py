@@ -1,4 +1,5 @@
 import os
+import tempfile
 import unittest
 from lexer import Lexer
 from parser import Parser, ParserError
@@ -812,6 +813,26 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn('pb_reraise();', c_code)
         self.assertIn('if (strcmp(pb_current_exc.type, "Exception") == 0)', c_code)
         self.assertIn('pb_print_str("caught generic error");', c_code)
+
+    def test_pipeline_import_with_alias(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            base = os.path.join(os.path.dirname(__file__), "samples")
+            # write modules
+            for name in ["mathlib.pb", "utils.pb", "test_import/mathlib2.pb", "imports_extended.pb"]:
+                src_path = os.path.join(base, name)
+                dst_path = os.path.join(tempdir, name)
+                os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+                with open(src_path) as fsrc, open(dst_path, "w") as fdst:
+                    fdst.write(fsrc.read())
+
+            imports_path = os.path.join(tempdir, "imports_extended.pb")
+            with open(imports_path) as f:
+                code = f.read()
+
+            h, c, *_ = compile_code_to_c_and_h(code, module_name="imports_extended", pb_path=imports_path)
+
+            self.assertIn('#include "mathlib.h"', c)
+            self.assertIn('#include "test_import.mathlib2.h"', c)
 
 
 if __name__ == "__main__":

@@ -229,6 +229,16 @@ class TypeChecker:
             self.methods[exc] = {}  # no own methods
             self.class_bases[exc] = "Exception"
 
+    def _attr_full_name(self, expr: Expr) -> str | None:
+        if isinstance(expr, Identifier):
+            return expr.name
+        if isinstance(expr, AttributeExpr):
+            base = self._attr_full_name(expr.obj)
+            if base is None:
+                return None
+            return f"{base}.{expr.attr}"
+        return None
+
     # TODO
     # def assert_all_exprs_typed(node: Node):
     #     for child in walk_ast(node):
@@ -711,15 +721,20 @@ class TypeChecker:
         # - TypeError if the object or class is not defined or the attribute is missing
 
         elif isinstance(expr, AttributeExpr):
-            # only allow obj.attr when obj is a simple identifier
+            obj_full = self._attr_full_name(expr.obj)
+            if obj_full and obj_full in self.modules:
+                mod = self.modules[obj_full]
+                if expr.attr not in mod.exports:
+                    raise TypeError(f"Module '{obj_full}' has no export '{expr.attr}'")
+                expr.inferred_type = mod.exports[expr.attr]
+                return expr.inferred_type
+
             if not isinstance(expr.obj, Identifier):
                 raise TypeError("Attribute access must be through an identifier")
 
             obj_name = expr.obj.name
 
-            # import
             if obj_name in self.modules:
-                # Accessing an attribute from an imported module
                 mod = self.modules[obj_name]
                 if expr.attr not in mod.exports:
                     raise TypeError(f"Module '{obj_name}' has no export '{expr.attr}'")

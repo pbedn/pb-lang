@@ -1099,7 +1099,7 @@ class Parser:
 
         Grammar:
         ImportStmt ::= "import" Identifier { "." Identifier } [ "as" Identifier ] NEWLINE
-        FromImport ::= "from" Identifier { "." Identifier } "import" Identifier NEWLINE
+        FromImport ::= "from" Identifier { "." Identifier } "import" Identifier [ "as" Identifier ] NEWLINE
         """
         if self.match(TokenType.FROM):
             module = [self.expect(TokenType.IDENTIFIER).value]
@@ -1107,9 +1107,12 @@ class Parser:
                 module.append(self.expect(TokenType.IDENTIFIER).value)
             self.expect(TokenType.IMPORT)
             name = self.expect(TokenType.IDENTIFIER).value
+            alias = None
+            if self.match(TokenType.AS):
+                alias = self.expect(TokenType.IDENTIFIER).value
             self.expect(TokenType.NEWLINE)
             loc = (self.tokens[self.pos-1].line, self.tokens[self.pos-1].column)
-            return ImportStmt(module=module, names=[name], loc=loc)
+            return ImportStmt(module=module, names=[name], alias=alias, loc=loc)
 
         self.expect(TokenType.IMPORT)
         names = [self.expect(TokenType.IDENTIFIER).value]
