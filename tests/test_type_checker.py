@@ -941,6 +941,17 @@ class TestTypeCheckerInternals(unittest.TestCase):
         with self.assertRaises(TypeError):
             self.tc.check_aug_assign_stmt(stmt)
 
+    def test_nested_module_attribute_access(self):
+        self.tc.modules["test_import.mathlib2"] = ModuleSymbol(
+            "test_import.mathlib2", None, exports={"PI": "float"}
+        )
+        expr = AttributeExpr(
+            obj=AttributeExpr(Identifier("test_import"), "mathlib2"),
+            attr="PI",
+        )
+        result = self.tc.check_expr(expr)
+        self.assertEqual(result, "float")
+
 
 # ────────────────────────────────────────────────────────────────
 # Top-down tests (integration-level)

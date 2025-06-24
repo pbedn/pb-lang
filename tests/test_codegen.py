@@ -207,6 +207,13 @@ class TestCodeGen(unittest.TestCase):
         self.assertIn('pb_print_str((snprintf(__fbuf, 256, "Hello, %s!", name), __fbuf));', output)
         self.assertIn('return 0;', output)
 
+    def test_include_dotted_module_header(self):
+        prog = Program(body=[
+            ImportStmt(module=["pkg", "sub"])
+        ])
+        output = codegen_output(prog)
+        self.assertIn('#include "pkg.sub.h"', output)
+
     def test_if_else_chain(self):
         prog = Program(body=[
             FunctionDef(

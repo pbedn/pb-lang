@@ -27,13 +27,15 @@ def _compile_and_run_modules(modules: dict[str, str]) -> str:
 
         # Step 1: Write all .pb files
         for name, code in modules.items():
-            pb_file = os.path.join(tmpdir, f"{name}.pb")
+            pb_rel = f"{name.replace('.', os.sep)}.pb"
+            pb_file = os.path.join(tmpdir, pb_rel)
+            os.makedirs(os.path.dirname(pb_file), exist_ok=True)
             with open(pb_file, "w", encoding="utf-8") as f:
                 f.write(code)
 
         # Step 2: Compile each module using real pb_path
         for name in modules:
-            pb_file = os.path.join(tmpdir, f"{name}.pb")
+            pb_file = os.path.join(tmpdir, f"{name.replace('.', os.sep)}.pb")
             h_code, c_code, ast, _ = compile_code_to_c_and_h(
                 source_code=modules[name],
                 module_name=name,
@@ -503,6 +505,37 @@ class TestImportUtilsHelper(unittest.TestCase):
         ]
         output = _compile_and_run_modules({"imports": imports_src, "mathlib": mathlib_src, "utils": utils_src})
         self.assertEqual(output.splitlines(), expected_lines)
+
+    def test_extended_imports_runtime_output(self):
+        base = os.path.join(os.path.dirname(__file__), "samples")
+        with open(os.path.join(base, "imports_extended.pb")) as f:
+            imports_src = f.read()
+        with open(os.path.join(base, "mathlib.pb")) as f:
+            mathlib_src = f.read()
+        with open(os.path.join(base, "utils.pb")) as f:
+            utils_src = f.read()
+        with open(os.path.join(base, "test_import", "mathlib2.pb")) as f:
+            mathlib2_src = f.read()
+        expected = [
+            "9",
+            "9",
+            "import mathlib: 3.1415",
+            "import mathlib as m1: 3.1415",
+            "import test_import.mathlib2: 3.1415",
+            "from test_import import mathlib2: 3.1415",
+            "from test_import import mathlib2: 3.1415",
+            "from test_import.mathlib2 import PI: 3.1415",
+            "from test_import.mathlib2 import PI as pi: 3.1415",
+            "Runinng helper from imported utils.pb file",
+        ]
+        modules = {
+            "imports_extended": imports_src,
+            "mathlib": mathlib_src,
+            "utils": utils_src,
+            "test_import.mathlib2": mathlib2_src,
+        }
+        output = _compile_and_run_modules(modules)
+        self.assertEqual(output.splitlines(), expected)
 
 
 if __name__ == "__main__":
