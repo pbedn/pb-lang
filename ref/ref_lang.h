@@ -1,6 +1,5 @@
 #pragma once
 #include "pb_runtime.h"
-#include "utils.h"
 extern int64_t counter;
 typedef struct Player {
     int64_t hp;

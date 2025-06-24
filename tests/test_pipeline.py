@@ -691,7 +691,7 @@ class TestCodeGenFromSource(unittest.TestCase):
         # f-string expansions
         self.assertIn('pb_print_str((snprintf(__fbuf, 256, "Simple fstring: x=%lld", x), __fbuf));', c)
         self.assertIn('pb_print_str((snprintf(__fbuf, 256, "x + 1: %lld", (x + 1)), __fbuf));', c)
-        self.assertIn('pb_print_str((snprintf(__fbuf, 256, "Float conversion: %f", (double)(2)), __fbuf));', c)
+        self.assertIn('pb_print_str((snprintf(__fbuf, 256, "Float conversion: %s", pb_format_double((double)(2))), __fbuf));', c)
         self.assertIn('pb_print_str("-----', c)
 
         # player expressions

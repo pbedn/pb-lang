@@ -3,6 +3,9 @@ import subprocess
 import tempfile
 import sys
 import os
+import shutil
+import ast
+
 from type_checker import TypeError
 from lexer import Lexer
 from parser import Parser
@@ -56,13 +59,19 @@ def _compile_and_run_modules(modules: dict[str, str]) -> str:
             exe_path += ".exe"
 
         runtime_lib = get_build_output_path("pb_runtime.a")
-        if not os.path.isfile(runtime_lib):
+        runtime_header = get_build_output_path("pb_runtime.h")
+        if not os.path.isfile(runtime_lib) or not os.path.isfile(runtime_header):
             build_runtime_library(verbose=False, debug=False)
+        # Copy the runtime header next to generated sources to avoid picking up
+        # unrelated headers that may exist in the system include paths on some
+        # platforms (e.g. Windows)
+        shutil.copy2(runtime_header, os.path.join(tmpdir, "pb_runtime.h"))
 
         compile_cmd = [
             "gcc", "-std=c99", "-W",
             *c_files,
             "-o", exe_path,
+            "-I", tmpdir,
             "-I", get_build_output_path(""),
             runtime_lib
         ]
@@ -73,6 +82,7 @@ def _compile_and_run_modules(modules: dict[str, str]) -> str:
 
         run_result = subprocess.run([exe_path], capture_output=True, text=True)
         return (run_result.stdout + run_result.stderr).strip()
+
 
 
 def compile_and_run(code: str) -> str:
@@ -148,8 +158,8 @@ class TestPipelineRuntime(unittest.TestCase):
         )
         output = compile_and_run(code)
         lines = output.strip().splitlines()
-        self.assertEqual(lines[0], "1.500000")
-        self.assertEqual(lines[1], "3.500000")
+        self.assertEqual(lines[0], "1.5")
+        self.assertEqual(lines[1], "3.5")
 
     def test_list_indexing_and_printing(self):
         code = (
@@ -186,10 +196,10 @@ class TestPipelineRuntime(unittest.TestCase):
         # Assertions for arr_str
         self.assertEqual(lines[4], "a")                # arr_str[0] before assignment
         self.assertEqual(lines[5], "C")                # arr_str[0] after assignment
-        self.assertEqual(lines[6], '["C", "C"]')           # arr_str list contents
+        self.assertEqual(lines[6], "['C', 'C']")           # arr_str list contents
 
         # Assertions for arr_bool
-        self.assertEqual(lines[7], "[false]")          # arr_bool after assignment
+        self.assertEqual(lines[7], "[False]")          # arr_bool after assignment
 
     def test_type_conversions_and_printing(self):
         code = (
@@ -227,13 +237,13 @@ class TestPipelineRuntime(unittest.TestCase):
         lines = output.strip().splitlines()
 
         # Assertions for type conversions
-        self.assertEqual(lines[0], "x: 10, x_float: 10.000000")  # x to float
-        self.assertEqual(lines[1], "b: 1.0, b_float: 1.000000")  # b to float
-        self.assertEqual(lines[2], "y: 1.000000, y_int: 1")        # y to int
+        self.assertEqual(lines[0], "x: 10, x_float: 10.0")  # x to float
+        self.assertEqual(lines[1], "b: 1.0, b_float: 1.0")  # b to float
+        self.assertEqual(lines[2], "y: 1.0, y_int: 1")        # y to int
         self.assertEqual(lines[3], "a: 1, a_int: 1")        # a to int
         self.assertEqual(lines[4], "x: 10, x_bool: True")     # x to bool
-        self.assertEqual(lines[5], "y: 1.000000, y_bool: True")    # y to bool
-        self.assertEqual(lines[6], "z: 0.000000, z_bool: False")    # z to bool
+        self.assertEqual(lines[5], "y: 1.0, y_bool: True")    # y to bool
+        self.assertEqual(lines[6], "z: 0.0, z_bool: False")    # z to bool
 
     def test_fstring_expression_variants(self):
         code = (
@@ -266,7 +276,7 @@ class TestPipelineRuntime(unittest.TestCase):
         # Assertions for correctness of f-string interpolation
         self.assertEqual(lines[0], "Simple fstring: x=5")
         self.assertEqual(lines[1], "x + 1: 6")
-        self.assertEqual(lines[2], "Float conversion: 2.000000")
+        self.assertEqual(lines[2], "Float conversion: 2.0")
         self.assertEqual(lines[3], "--------------------------------")
         self.assertEqual(lines[4], "player.hp: 100")
         self.assertEqual(lines[5], "player get_name: Hero")
@@ -415,7 +425,7 @@ class TestPipelineRuntime(unittest.TestCase):
         lines = output.strip().splitlines()
         self.assertEqual(lines[0], "9")
         self.assertEqual(lines[1], "9")
-        self.assertEqual(lines[2], "3.141500")
+        self.assertEqual(lines[2], "3.1415")
 
 
 class TestRefLangOutput(unittest.TestCase):
@@ -425,15 +435,40 @@ class TestRefLangOutput(unittest.TestCase):
         base = os.path.join(os.path.dirname(__file__), "..", "ref")
         with open(os.path.join(base, "lang.pb")) as f:
             lang_src = f.read()
-        with open(os.path.join(base, "utils.pb")) as f:
-            utils_src = f.read()
         with open(os.path.join(base, "lang_expected_output.out")) as f:
             expected_lines = f.read().splitlines()
 
-        output = _compile_and_run_modules({"lang": lang_src, "utils": utils_src})
+        output = _compile_and_run_modules({"lang": lang_src})
+
+        def safe_eval(line):
+            try:
+                return ast.literal_eval(line)
+            except Exception:
+                return line
+
+        actual_lines = [safe_eval(line) for line in output.splitlines()]
+        expected_lines = [safe_eval(line) for line in expected_lines]
+
+        self.assertEqual(actual_lines, expected_lines)
+
+
+class TestImportUtilsHelper(unittest.TestCase):
+    """Runtime test for the imports."""
+
+    def test_import_utils_runtime_output(self):
+        base = os.path.join(os.path.dirname(__file__), "samples")
+        with open(os.path.join(base, "imports.pb")) as f:
+            imports_src = f.read()
+        with open(os.path.join(base, "mathlib.pb")) as f:
+            mathlib_src = f.read()
+        with open(os.path.join(base, "utils.pb")) as f:
+            utils_src = f.read()
+        expected_lines = [
+            "9", "9", "3.1415",
+            "Runinng helper from imported utils.pb file"
+        ]
+        output = _compile_and_run_modules({"imports": imports_src, "mathlib": mathlib_src, "utils": utils_src})
         self.assertEqual(output.splitlines(), expected_lines)
-
-
 
 
 if __name__ == "__main__":

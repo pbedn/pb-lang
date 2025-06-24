@@ -13,9 +13,31 @@
 
 // PRId64 is a format macro from the C standard header <inttypes.h>
 void pb_print_int(int64_t x)   { printf("%" PRId64 "\n", x); }
-void pb_print_double(double x) { printf("%f\n", x); }
+void pb_print_double(double x)
+{
+    if (x == (int64_t)x) {
+        printf("%.1f\n", x);  // 50.0 (preserve .0)
+    } else {
+        printf("%.15g\n", x); // Python-like float precision
+    }
+}
 void pb_print_str(const char *s){ printf("%s\n", s); }
 void pb_print_bool(bool b)     { printf("%s\n", b ? "True" : "False"); }
+
+const char *pb_format_double(double x) {
+    static char bufs[4][32];
+    static int i = 0;
+    i = (i + 1) % 4;
+
+    if (x == (int64_t)x) {
+        snprintf(bufs[i], sizeof(bufs[i]), "%.1f", x);  // 50.0 (preserve .0)
+    } else {
+        snprintf(bufs[i], sizeof(bufs[i]), "%.15g", x); // Python-like float precision
+    }
+
+    return bufs[i];
+}
+
 
 /* ------------ ERROR HANDLING ------------- */
 
@@ -305,7 +327,7 @@ void list_bool_print(const List_bool *lst) {
     printf("[");
     for (int64_t i = 0; i < lst->len; ++i) {
         if (i > 0) printf(", ");
-        printf(lst->data[i] ? "true" : "false");
+        printf(lst->data[i] ? "True" : "False");
     }
     printf("]\n");
 }
@@ -383,13 +405,26 @@ void list_str_free(List_str *lst) {
 }
 
 void list_str_print(const List_str *lst) {
+    assert(lst != NULL && "list is NULL");
+    assert(lst->data != NULL && "list data is NULL");
+
     printf("[");
     for (int64_t i = 0; i < lst->len; ++i) {
+        const char *s = lst->data[i];
+        assert(s != NULL && "list element is NULL");
+
         if (i > 0) printf(", ");
-        printf("\"%s\"", lst->data[i]);
+
+        bool has_single_quote = strchr(s, '\'') != NULL;
+        if (has_single_quote) {
+            printf("\"%s\"", s);
+        } else {
+            printf("'%s'", s);
+        }
     }
     printf("]\n");
 }
+
 
 /* ------------ DICT ------------- */
 

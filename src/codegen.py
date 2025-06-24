@@ -788,7 +788,6 @@ class CodeGen:
 
         specs = {
             "int": "%lld",
-            "float": "%f",
             "str": "%s",
             "bool": "%s"
         }
@@ -804,6 +803,9 @@ class CodeGen:
                 if ty == "bool":
                     fmt_parts.append(specs["bool"])
                     args.append(f"(({inner}) ? \"True\" : \"False\")")
+                elif ty == "float":
+                    fmt_parts.append("%s")
+                    args.append(f"pb_format_double({inner})")
                 elif ty in specs:
                     fmt_parts.append(specs[ty])
                     args.append(inner)

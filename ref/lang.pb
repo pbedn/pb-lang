@@ -2,8 +2,6 @@
 # This file demonstrates all currently implemented features of the language.
 # Each section includes comments describing what is tested.
 
-import utils
-
 # === Global variable declaration ===
 counter: int = 100
 
@@ -79,24 +77,17 @@ def is_even(n: int) -> bool:
 
 # === Main function showcasing all features ===
 def main() -> int:
-    # NOT SUPPORTED YET
-    print("=== Import and Call ===")
-    utils.helper()
-
     print("=== F-String Interpolation ===")
     value: int = 42
     name: str = "Alice"
     print(f"Value is {value}")
     print(f"Hello, {name}!")
 
-    print("=== Global Variable Before Update ===")
-    print(counter)
-
+    print("=== Global Variable===")
     global counter
+    print(f"Before Update: {counter}")
     counter = 200
-
-    print("=== Global Variable After Update ===")
-    print(counter)
+    print(f"After Update: {counter}")
 
     # Function call and assignment
     print("=== Function Call ===")

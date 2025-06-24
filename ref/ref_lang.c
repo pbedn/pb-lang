@@ -1,5 +1,4 @@
 #include "lang.h"
-#include "utils.h"
 int64_t counter = 100;
 int64_t Player_hp = 100;
 const char * Player_species = "Human";
@@ -136,19 +135,16 @@ int main(void)
 {
     char __fbuf[256];
     (void)__fbuf;
-    pb_print_str("=== Import and Call ===");
-    utils_helper();
     pb_print_str("=== F-String Interpolation ===");
     int64_t value = 42;
     const char * name = "Alice";
     pb_print_str((snprintf(__fbuf, 256, "Value is %lld", value), __fbuf));
     pb_print_str((snprintf(__fbuf, 256, "Hello, %s!", name), __fbuf));
-    pb_print_str("=== Global Variable Before Update ===");
-    pb_print_int(counter);
+    pb_print_str("=== Global Variable===");
     /* global counter */
+    pb_print_str((snprintf(__fbuf, 256, "Before Update: %lld", counter), __fbuf));
     counter = 200;
-    pb_print_str("=== Global Variable After Update ===");
-    pb_print_int(counter);
+    pb_print_str((snprintf(__fbuf, 256, "After Update: %lld", counter), __fbuf));
     pb_print_str("=== Function Call ===");
     int64_t total = lang_add(10, 5);
     int64_t divided = lang_divide(10, 5);
@@ -307,10 +303,10 @@ int main(void)
     pb_print_str("=== Explicit Type Conversion ===");
     int64_t i = 10;
     double f = (double)(i);
-    pb_print_str((snprintf(__fbuf, 256, "i: %lld, f: %f", i, f), __fbuf));
+    pb_print_str((snprintf(__fbuf, 256, "i: %lld, f: %s", i, pb_format_double(f)), __fbuf));
     double f2 = 3.5;
     int64_t i2 = (int64_t)(f2);
-    pb_print_str((snprintf(__fbuf, 256, "f2: %f, i2: %lld", f2, i2), __fbuf));
+    pb_print_str((snprintf(__fbuf, 256, "f2: %s, i2: %lld", pb_format_double(f2), i2), __fbuf));
     pb_print_str("=== Class Instantiation and Methods ===");
     struct Player __tmp_player_2;
     Player____init__(&__tmp_player_2, 110, 150);

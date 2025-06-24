@@ -1,12 +1,9 @@
-=== Import and Call ===
-Runinng helper from imported utils.pb file
 === F-String Interpolation ===
 Value is 42
 Hello, Alice!
-=== Global Variable Before Update ===
-100
-=== Global Variable After Update ===
-200
+=== Global Variable===
+Before Update: 100
+After Update: 200
 === Function Call ===
 Adding numbers:
 15
@@ -16,7 +13,7 @@ Adding numbers:
 === Assert Statement ===
 Assertion passed
 === Handle Float/Double ===
-50.000000
+50.0
 === If/Else ===
 Total is odd
 === While Loop ===
@@ -38,15 +35,15 @@ Total is odd
 100
 100
 [100, 200, 300]
-1.100000
+1.1
 [1.1, 2.2, 3.3]
 abc
-["abc", "def"]
+['abc', 'def']
 True
-[true, false]
+[True, False]
 [100.101, 2.2, 3.3]
-["some string", "def"]
-[false, false]
+["some string", 'def']
+[False, False]
 === List Operations ===
 === Dict Literal and Access ===
 10
@@ -71,10 +68,10 @@ a is not 20
 24
 12
 0
-2.500000
+2.5
 === Explicit Type Conversion ===
-i: 10, f: 10.000000
-f2: 3.500000, i2: 3
+i: 10, f: 10.0
+f2: 3.5, i2: 3
 === Class Instantiation and Methods ===
 player.hp: 110
 Healing player by 50...
