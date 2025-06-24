@@ -369,6 +369,18 @@ class TestCodeGenFromSource(unittest.TestCase):
         h, c = self.compile_pipeline(code)
         self.assertIn("if ((x && !(y))) {", c)
 
+    def test_chained_comparison_from_source(self):
+        code = (
+            "def main() -> int:\n"
+            "    x: int = 5\n"
+            "    if 1 < x < 10:\n"
+            "        print(\"ok\")\n"
+            "    return 0\n"
+        )
+        h, c = self.compile_pipeline(code)
+        self.assertIn("if (((1 < x) && (x < 10))) {", c)
+        self.assertIn('pb_print_str("ok");', c)
+
     # class ------------------------------------------------------
 
     def test_class_instantiation_and_method_call(self):

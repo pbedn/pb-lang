@@ -127,6 +127,22 @@ class TestTypeCheckerInternals(unittest.TestCase):
         expr = BinOp(Literal("1"), "<", Literal("2"))
         self.assertEqual(self.tc.check_expr(expr), "bool")
 
+    def test_binop_lte(self):
+        expr = BinOp(Literal("1"), "<=", Literal("2"))
+        self.assertEqual(self.tc.check_expr(expr), "bool")
+
+    def test_binop_gt(self):
+        expr = BinOp(Literal("2"), ">", Literal("1"))
+        self.assertEqual(self.tc.check_expr(expr), "bool")
+
+    def test_binop_gte(self):
+        expr = BinOp(Literal("2"), ">=", Literal("1"))
+        self.assertEqual(self.tc.check_expr(expr), "bool")
+
+    def test_chained_comparison_type(self):
+        expr = BinOp(BinOp(Literal("1"), "<", Literal("2")), "and", BinOp(Literal("2"), "<", Literal("3")))
+        self.assertEqual(self.tc.check_expr(expr), "bool")
+
     def test_binop_is(self):
         expr = BinOp(Literal("None"), "is", Literal("None"))
         self.assertEqual(self.tc.check_expr(expr), "bool")
