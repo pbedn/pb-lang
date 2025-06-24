@@ -203,6 +203,17 @@ class TestPipelineRuntime(unittest.TestCase):
         # Assertions for arr_bool
         self.assertEqual(lines[7], "[False]")          # arr_bool after assignment
 
+    def test_set_literal_runtime(self):
+        code = (
+            "def main() -> int:\n"
+            "    s: set[int] = {1, 2}\n"
+            "    print(s)\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        lines = output.strip().splitlines()
+        self.assertEqual(lines[0], "{1, 2}")
+
     def test_type_conversions_and_printing(self):
         code = (
             "def main() -> int:\n"

@@ -37,6 +37,7 @@ from lang_ast import (
     AttributeExpr,
     IndexExpr,
     ListExpr,
+    SetExpr,
     DictExpr,
     ImportStmt,
 )
@@ -301,14 +302,15 @@ class Parser:
             return ListExpr(elements)
         elif tok.type == TokenType.LBRACE:
             self.advance()
-            keys = []
-            values = []
-            if not self.check(TokenType.RBRACE):
-                key = self.parse_expr()
-                self.expect(TokenType.COLON)
-                value = self.parse_expr()
-                keys.append(key)
-                values.append(value)
+            if self.check(TokenType.RBRACE):
+                self.advance()
+                return DictExpr(keys=[], values=[])
+
+            first = self.parse_expr()
+            if self.match(TokenType.COLON):
+                # dict literal
+                keys = [first]
+                values = [self.parse_expr()]
                 while self.match(TokenType.COMMA):
                     if self.check(TokenType.RBRACE):
                         break  # allow trailing comma
@@ -317,8 +319,17 @@ class Parser:
                     value = self.parse_expr()
                     keys.append(key)
                     values.append(value)
-            self.expect(TokenType.RBRACE)
-            return DictExpr(keys, values)
+                self.expect(TokenType.RBRACE)
+                return DictExpr(keys, values)
+            else:
+                # set literal
+                elements = [first]
+                while self.match(TokenType.COMMA):
+                    if self.check(TokenType.RBRACE):
+                        break
+                    elements.append(self.parse_expr())
+                self.expect(TokenType.RBRACE)
+                return SetExpr(elements)
         else:
             raise ParserError(f"Expected primary expression, got {tok.type.name} at {tok.line},{tok.column}")
 

@@ -32,6 +32,7 @@ Supported Expression Types:
                       - Validates fields based on class or instance context
 - `IndexExpr`:        Supports `list[T]` and `dict[str, T]` indexing
 - `ListExpr`:         Homogeneous list literals (type inferred or declared)
+- `SetExpr`:          Homogeneous set literals (type inferred or declared)
 - `DictExpr`:         Homogeneous `dict[str, T]` literals
 - `FStringLiteral`:   Formatted string literals with variable interpolation
 
@@ -49,7 +50,7 @@ Supported Statement Types:
 - `GlobalStmt`:        Declares intention to assign to top-level variable
 - `IfStmt`:            All conditions must be bool; checked per branch
 - `WhileStmt`:         Condition must be bool; body checked with loop context
-- `ForStmt`:           Iterates over `list[T]`; loop var declared with element type `T`
+- `ForStmt`:           Iterates over `list[T]` or `set[T]`; loop var declared with element type `T`
 - `FunctionDef`:       Parameters must be typed; default values checked; return statements validated
 - `ClassDef`:          Fields and methods validated; base class resolved and fields inherited
 - `TryExceptStmt`:     Validates try body and each except-block separately
@@ -108,6 +109,7 @@ from lang_ast import (
     AttributeExpr,
     IndexExpr,
     ListExpr,
+    SetExpr,
     DictExpr,
     AssertStmt,
     RaiseStmt,
@@ -833,6 +835,26 @@ class TypeChecker:
             expr.inferred_type = f"list[{elem_type}]"
             return expr.inferred_type
 
+        # SetExpr(elements=[...])        → set[T]
+        elif isinstance(expr, SetExpr):
+            if not expr.elements:
+                if expected_type and expected_type.startswith("set["):
+                    elem_type = expected_type[4:-1]
+                    expr.elem_type = elem_type
+                    expr.inferred_type = expected_type
+                    return expected_type
+                else:
+                    raise TypeError("Cannot infer element type from empty set literal, add a variable type annotation.")
+
+            elem_types = {self.check_expr(e) for e in expr.elements}
+            if len(elem_types) > 1:
+                raise TypeError(f"Set elements must be the same type, got: {elem_types}")
+
+            elem_type = elem_types.pop()
+            expr.elem_type = elem_type
+            expr.inferred_type = f"set[{elem_type}]"
+            return expr.inferred_type
+
         # PB supports:
         # DictExpr(entries=[(key, val)])  → dict[str, T]
         #
@@ -1149,20 +1171,24 @@ class TypeChecker:
         self.in_loop -= 1
 
     def check_for_stmt(self, stmt: ForStmt):
-        """Type-check a for loop over list[T].
+        """Type-check a for loop over list[T] or set[T].
 
         Type-checking requirements:
-        - Iterable must be a list[T]
+        - Iterable must be a list[T] or set[T]
         - var_name is assigned elements of type T
         - Body type-checks with var_name bound to T
         - Must track loop context for break / continue
         """
         iterable_type = self.check_expr(stmt.iterable)
 
-        if not iterable_type.startswith("list[") or not iterable_type.endswith("]"):
-            raise TypeError(f"For loop requires iterable of type list[T], got {iterable_type}")
-
-        element_type = iterable_type[5:-1]  # extract T from 'list[T]'
+        if iterable_type.startswith("list[") and iterable_type.endswith("]"):
+            element_type = iterable_type[5:-1]
+        elif iterable_type.startswith("set[") and iterable_type.endswith("]"):
+            element_type = iterable_type[4:-1]
+        else:
+            raise TypeError(
+                f"For loop requires iterable of type list[T] or set[T], got {iterable_type}"
+            )
         stmt.elem_type = element_type
 
         # Extend environment with loop variable
