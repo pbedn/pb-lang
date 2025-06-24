@@ -772,6 +772,24 @@ class TestCodeGen(unittest.TestCase):
             "pb_print_int(Player_mp);"
         ])
 
+    def test_class_field_without_initializer(self):
+        program = Program(body=[
+            ClassDef(
+                name="Foo",
+                base=None,
+                fields=[VarDecl("attr1", "int", None)],
+                methods=[]
+            )
+        ])
+        output = codegen_output(program)
+
+        assert_contains_all(self, output, [
+            "typedef struct Foo {",
+            "int64_t attr1;",
+            "} Foo;",
+        ])
+        self.assertNotIn("Foo_attr1 =", output)
+
     def test_class_inheritance_with_fields(self):
         program = Program(body=[
             ClassDef(
