@@ -299,7 +299,7 @@ class TestPipelineRuntime(unittest.TestCase):
             "    crash()\n"
         )
         output = compile_and_run(code)
-        self.assertIn("Uncaught RuntimeError", output)
+        self.assertIn("RuntimeError:", output)
 
     def test_reraise(self):
         code = (

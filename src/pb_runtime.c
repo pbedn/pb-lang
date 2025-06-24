@@ -90,9 +90,16 @@ void pb_raise(const char *type, void *value) {
         pb_current_try = ctx->prev;
         longjmp(ctx->env, 1);
     } else {
-        char buf[256];
-        snprintf(buf, sizeof(buf), "Uncaught %s", type);
-        pb_fail(buf);
+        if (value) {
+            const char *msg = ((const char *)value);  // assumes strdup'd string
+            char buf[512];
+            snprintf(buf, sizeof(buf), "%s: %s", type, msg);
+            pb_fail(buf);
+        } else {
+            char buf[256];
+            snprintf(buf, sizeof(buf), "Uncaught exception of type %s", type);
+            pb_fail(buf);
+        }
     }
 }
 
@@ -110,6 +117,27 @@ void pb_reraise(void) {
     pb_raise(pb_current_exc.type, pb_current_exc.value);
 }
 
+void pb_index_error(const char *type, const char *op, int64_t index, int64_t len, void *ptr) {
+    char buf[256];
+    if (strcmp(op, "get") == 0) {
+        snprintf(buf, sizeof(buf),
+            "cannot get index %" PRId64 " from list[%s] of length %" PRId64 " (valid range: 0 to %" PRId64 ")",
+            index, type, len, len > 0 ? len - 1 : -1
+        );
+    } else if (strcmp(op, "set") == 0) {
+        snprintf(buf, sizeof(buf),
+            "cannot assign to index %" PRId64 " in list[%s] of length %" PRId64 " (valid range: 0 to %" PRId64 ")",
+            index, type, len, len > 0 ? len - 1 : -1
+        );
+    } else {
+        snprintf(buf, sizeof(buf),
+            "invalid access to index %" PRId64 " in list[%s] of length %" PRId64,
+            index, type, len
+        );
+    }
+    pb_raise("IndexError", strdup(buf));
+}
+
 /* ------------ LIST ------------- */
 
 void list_int_grow_if_needed(List_int *lst) {
@@ -117,7 +145,11 @@ void list_int_grow_if_needed(List_int *lst) {
         int64_t new_capacity = (lst->capacity == 0) ? INITIAL_LIST_CAPACITY : (lst->capacity * 2);
         int64_t *new_data = (int64_t *)realloc(lst->data, new_capacity * sizeof(int64_t));
         if (!new_data) {
-            pb_fail("No memory to resize list[int]");
+            char buf[128];
+            snprintf(buf, sizeof(buf),
+                "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64,
+                "int", lst->capacity);
+            pb_fail(buf);
         }
         lst->data = new_data;
         lst->capacity = new_capacity;
@@ -132,14 +164,15 @@ void list_int_init(List_int *lst) {
 
 void list_int_set(List_int *lst, int64_t index, int64_t value) {
     if (index < 0 || index >= lst->len) {
-        pb_fail("List[int] assignment index out of bounds");
+        pb_index_error("int", "set", index, lst->len, lst);
     }
     lst->data[index] = value;
 }
 
+
 int64_t list_int_get(List_int *lst, int64_t index) {
     if (index < 0 || index >= lst->len) {
-        pb_fail("List[int] index out of bounds");
+        pb_index_error("int", "get", index, lst->len, lst);
     }
     return lst->data[index];
 }
@@ -151,7 +184,9 @@ void list_int_append(List_int *lst, int64_t value) {
 
 int64_t list_int_pop(List_int *lst) {
     if (lst->len == 0) {
-        pb_fail("Pop from empty list");
+        char buf[128];
+        snprintf(buf, sizeof(buf), "Cannot pop from empty list");
+        pb_fail(buf);
     }
     return lst->data[--lst->len];
 }
@@ -194,7 +229,10 @@ void list_float_grow_if_needed(List_float *lst) {
         int64_t new_capacity = (lst->capacity == 0) ? INITIAL_LIST_CAPACITY : (lst->capacity * 2);
         double *new_data = (double *)realloc(lst->data, new_capacity * sizeof(double));
         if (!new_data) {
-            pb_fail("No memory to resize list[float]");
+            char buf[128];
+            snprintf(buf, sizeof(buf),
+                "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
+            pb_fail(buf);
         }
         lst->data = new_data;
         lst->capacity = new_capacity;
@@ -209,14 +247,14 @@ void list_float_init(List_float *lst) {
 
 void list_float_set(List_float *lst, int64_t index, double value) {
     if (index < 0 || index >= lst->len) {
-        pb_fail("List[float] assignment index out of bounds");
+        pb_index_error("float", "set", index, lst->len, lst);
     }
     lst->data[index] = value;
 }
 
 double list_float_get(List_float *lst, int64_t index) {
     if (index < 0 || index >= lst->len) {
-        pb_fail("List[float] index out of bounds");
+        pb_index_error("float", "get", index, lst->len, lst);
     }
     return lst->data[index];
 }
@@ -228,7 +266,9 @@ void list_float_append(List_float *lst, double value) {
 
 double list_float_pop(List_float *lst) {
     if (lst->len == 0) {
-        pb_fail("Pop from empty list");
+        char buf[128];
+        snprintf(buf, sizeof(buf), "Cannot pop from empty list");
+        pb_fail(buf);
     }
     return lst->data[--lst->len];
 }
@@ -271,7 +311,10 @@ void list_bool_grow_if_needed(List_bool *lst) {
         int64_t new_capacity = (lst->capacity == 0) ? INITIAL_LIST_CAPACITY : (lst->capacity * 2);
         bool *new_data = (bool *)realloc(lst->data, new_capacity * sizeof(bool));
         if (!new_data) {
-            pb_fail("No memory to resize list[bool]");
+            char buf[128];
+            snprintf(buf, sizeof(buf),
+                "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
+            pb_fail(buf);
         }
         lst->data = new_data;
         lst->capacity = new_capacity;
@@ -286,15 +329,14 @@ void list_bool_init(List_bool *lst) {
 
 void list_bool_set(List_bool *lst, int64_t index, bool value) {
     if (index < 0 || index >= lst->len) {
-        pb_fail("List[bool] assignment index out of bounds");
+        pb_index_error("bool", "set", index, lst->len, lst);
     }
     lst->data[index] = value;
 }
 
 bool list_bool_get(List_bool *lst, int64_t index) {
     if (index < 0 || index >= lst->len) {
-        pb_fail("List[bool] index out of bounds");
-        abort();
+        pb_index_error("bool", "get", index, lst->len, lst);
     }
     return lst->data[index];
 }
@@ -306,7 +348,9 @@ void list_bool_append(List_bool *lst, bool value) {
 
 bool list_bool_pop(List_bool *lst) {
     if (lst->len == 0) {
-        pb_fail("Pop from empty list");
+        char buf[128];
+        snprintf(buf, sizeof(buf), "Cannot pop from empty list");
+        pb_fail(buf);
     }
     return lst->data[--lst->len];
 }
@@ -349,7 +393,10 @@ void list_str_grow_if_needed(List_str *lst) {
         int64_t new_capacity = (lst->capacity == 0) ? INITIAL_LIST_CAPACITY : (lst->capacity * 2);
         const char **new_data = (const char **)realloc(lst->data, new_capacity * sizeof(const char *));
         if (!new_data) {
-            pb_fail("No memory to resize list[str]");
+            char buf[128];
+            snprintf(buf, sizeof(buf),
+                "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
+            pb_fail(buf);
         }
         lst->data = new_data;
         lst->capacity = new_capacity;
@@ -364,14 +411,14 @@ void list_str_init(List_str *lst) {
 
 void list_str_set(List_str *lst, int64_t index, const char *value) {
     if (index < 0 || index >= lst->len) {
-        pb_fail("List[str] assignment index out of bounds");
+        pb_index_error("str", "set", index, lst->len, lst);
     }
     lst->data[index] = value;  // assumes value is valid for the lifetime of lst
 }
 
 const char* list_str_get(List_str *lst, int64_t index) {
     if (index < 0 || index >= lst->len) {
-        pb_fail("List[str] index out of bounds");
+        pb_index_error("str", "get", index, lst->len, lst);
     }
     return lst->data[index];
 }
@@ -383,7 +430,9 @@ void list_str_append(List_str *lst, const char *value) {
 
 const char *list_str_pop(List_str *lst) {
     if (lst->len == 0) {
-        pb_fail("Pop from empty list");
+        char buf[128];
+        snprintf(buf, sizeof(buf), "Cannot pop from empty list");
+        pb_fail(buf);
     }
     return lst->data[--lst->len];
 }
@@ -439,7 +488,10 @@ int64_t pb_dict_get_str_int(Dict_str_int d, const char *key) {
     for (int64_t i = 0; i < d.len; ++i) {
         if (strcmp(d.data[i].key, key) == 0) return d.data[i].value;
     }
-    pb_fail("Key not found in dict");
+    char buf[128];
+    snprintf(buf, sizeof(buf),
+        "Key '%s' not found in dict[%s]", key, "str->int");
+    pb_fail(buf);
     return 0;
 }
 
@@ -447,7 +499,10 @@ const char* pb_dict_get_str_str(Dict_str_str d, const char *key) {
     for (int64_t i = 0; i < d.len; ++i) {
         if (strcmp(d.data[i].key, key) == 0) return d.data[i].value;
     }
-    pb_fail("Key not found in dict");
+    char buf[128];
+    snprintf(buf, sizeof(buf),
+        "Key '%s' not found in dict[%s]", key, "str->str");
+    pb_fail(buf);
     return "";
 }
 
@@ -455,7 +510,10 @@ double pb_dict_get_str_float(Dict_str_float d, const char *key) {
     for (int64_t i = 0; i < d.len; ++i) {
         if (strcmp(d.data[i].key, key) == 0) return d.data[i].value;
     }
-    pb_fail("Key not found in dict");
+    char buf[128];
+    snprintf(buf, sizeof(buf),
+        "Key '%s' not found in dict[%s]", key, "str->float");
+    pb_fail(buf);
     return 0.0;
 }
 
@@ -463,6 +521,9 @@ bool pb_dict_get_str_bool(Dict_str_bool d, const char *key) {
     for (int64_t i = 0; i < d.len; ++i) {
         if (strcmp(d.data[i].key, key) == 0) return d.data[i].value;
     }
-    pb_fail("Key not found in dict");
+    char buf[128];
+    snprintf(buf, sizeof(buf),
+        "Key '%s' not found in dict[%s]", key, "str->bool");
+    pb_fail(buf);
     return false;
 }
