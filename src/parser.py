@@ -519,7 +519,7 @@ class Parser:
 
         tok = self.current()
 
-        if tok.type == TokenType.IMPORT:
+        if tok.type in (TokenType.IMPORT, TokenType.FROM):
             return self.parse_import_stmt()
 
         if tok.type == TokenType.CLASS:
@@ -1094,12 +1094,22 @@ class Parser:
         return TryExceptStmt(try_body, except_blocks, finally_body)
 
     def parse_import_stmt(self) -> ImportStmt:
-        """Parse an import statement
+        """Parse an import statement or from-import statement.
 
         Grammar:
-        ImportStmt ::= "import" Identifier { "." Identifier } [ "as" Identifier ] NEWLINE ;
-        AST: ImportStmt(module)
+        ImportStmt ::= "import" Identifier { "." Identifier } [ "as" Identifier ] NEWLINE
+        FromImport ::= "from" Identifier { "." Identifier } "import" Identifier NEWLINE
         """
+        if self.match(TokenType.FROM):
+            module = [self.expect(TokenType.IDENTIFIER).value]
+            while self.match(TokenType.DOT):
+                module.append(self.expect(TokenType.IDENTIFIER).value)
+            self.expect(TokenType.IMPORT)
+            name = self.expect(TokenType.IDENTIFIER).value
+            self.expect(TokenType.NEWLINE)
+            loc = (self.tokens[self.pos-1].line, self.tokens[self.pos-1].column)
+            return ImportStmt(module=module, names=[name], loc=loc)
+
         self.expect(TokenType.IMPORT)
         names = [self.expect(TokenType.IDENTIFIER).value]
 

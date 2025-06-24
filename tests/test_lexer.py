@@ -260,6 +260,11 @@ class TestLexer(unittest.TestCase):
         types = [t.type.name for t in Lexer(code).tokenize()]
         self.assertIn("IMPORT", types)
 
+    def test_from_keyword(self):
+        code = 'from utils import helper\n'
+        types = [t.type.name for t in Lexer(code).tokenize()]
+        self.assertIn("FROM", types)
+
     def test_boolean_literals(self):
         code = 'x = True\ny = False\n'
         types = [t.type.name for t in Lexer(code).tokenize()]

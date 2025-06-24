@@ -11,7 +11,7 @@ class TokenType(Enum):
     DEF = auto(); RETURN = auto(); IF = auto(); ELSE = auto(); ELIF = auto()
     WHILE = auto(); FOR = auto(); IN = auto(); IS = auto(); NOT = auto()
     AND = auto(); OR = auto(); BREAK = auto(); CONTINUE = auto(); PASS = auto()
-    GLOBAL = auto(); IMPORT = auto(); CLASS = auto(); ASSERT = auto()
+    GLOBAL = auto(); IMPORT = auto(); FROM = auto(); CLASS = auto(); ASSERT = auto()
     TRUE = auto(); FALSE = auto(); NONE = auto()
     TRY = auto(); EXCEPT = auto(); FINALLY = auto(); RAISE = auto(); AS = auto()
 
@@ -77,6 +77,7 @@ KEYWORDS = {
     "return": TokenType.RETURN,
     "global": TokenType.GLOBAL,
     "import": TokenType.IMPORT,
+    "from": TokenType.FROM,
     "assert": TokenType.ASSERT,
     "if": TokenType.IF,
     "else": TokenType.ELSE,

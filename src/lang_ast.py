@@ -159,6 +159,7 @@ class ExprStmt:
 class ImportStmt:
     module: List[str]
     alias: Optional[str] = None
+    names: Optional[List[str]] = None
     loc: Optional[tuple] = None
 
 
