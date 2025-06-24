@@ -2529,3 +2529,11 @@ class TestTypeCheckerProgramLevel(unittest.TestCase):
         checker = TypeChecker().check(prog)
         self.assertEqual(checker.body[0].inferred_type, "list[bool]")
         self.assertEqual(checker.body[1].inferred_type, "list[bool]")
+
+    def test_open_and_file_methods(self):
+        prog = Program(body=[
+            VarDecl("f", "file", CallExpr(Identifier("open"), [StringLiteral("t.txt"), StringLiteral("w")])),
+            ExprStmt(CallExpr(AttributeExpr(Identifier("f"), "write"), [StringLiteral("hi")])),
+            ExprStmt(CallExpr(AttributeExpr(Identifier("f"), "close"), []))
+        ])
+        TypeChecker().check(prog)

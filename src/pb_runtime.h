@@ -54,6 +54,17 @@ void pb_raise_obj(const char *type, void *obj);
 void pb_clear_exc(void);
 void pb_reraise(void);
 
+/* ------------ FILE ------------- */
+
+typedef struct {
+    FILE *handle;
+} PbFile;
+
+PbFile pb_open(const char *path, const char *mode);
+const char *pb_file_read(PbFile f);
+void pb_file_write(PbFile f, const char *s);
+void pb_file_close(PbFile f);
+
 /* ------------ LIST ------------- */
 typedef struct {
     int64_t len;
