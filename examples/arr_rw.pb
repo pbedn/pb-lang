@@ -10,7 +10,7 @@ def main():
         b[0] = 1
     except IndexError as exc:
          print(exc)
-         b: list[int] = [1]
+         b = [1]
     y: int = b[0] 
     print(b)
     print(y)

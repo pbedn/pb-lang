@@ -217,24 +217,15 @@ class TestPipelineRuntime(unittest.TestCase):
     def test_empty_list_assignment_runtime(self):
         code = (
             "def main() -> int:\n"
-            "    a: list[int] = [0]\n"
-            "    a[0] = 10\n"
-            "    x: int = a[0]\n"
-            "    print(a)\n"
-            "    print(x)\n"
             "    b: list[int] = []\n"
-            "    b[0] = 1\n"
-            "    y: int = b[0]\n"
-            "    print(b)\n"
-            "    print(y)\n"
+            "    try:\n"
+            "        b[0] = 1\n"
+            "    except IndexError as e:\n"
+            "        print(e)\n"
             "    return 0\n"
         )
         output = compile_and_run(code)
-        lines = output.strip().splitlines()
-        self.assertEqual(lines[0], "[10]")
-        self.assertEqual(lines[1], "10")
-        self.assertEqual(lines[2], "[1]")
-        self.assertEqual(lines[3], "1")
+        self.assertEqual(output.strip(), "list assignment index out of range")
 
     def test_set_literal_runtime(self):
         code = (
@@ -246,6 +237,16 @@ class TestPipelineRuntime(unittest.TestCase):
         output = compile_and_run(code)
         lines = output.strip().splitlines()
         self.assertEqual(lines[0], "{1, 2}")
+
+    def test_len_builtin_runtime(self):
+        code = (
+            "def main() -> int:\n"
+            "    arr: list[int] = [1, 2, 3]\n"
+            "    print(len(arr))\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(output.strip(), "3")
 
     def test_set_str_literal_runtime(self):
         code = (
