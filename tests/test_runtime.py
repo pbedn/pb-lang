@@ -214,6 +214,28 @@ class TestPipelineRuntime(unittest.TestCase):
         # Assertions for arr_bool
         self.assertEqual(lines[7], "[False]")          # arr_bool after assignment
 
+    def test_empty_list_assignment_runtime(self):
+        code = (
+            "def main() -> int:\n"
+            "    a: list[int] = [0]\n"
+            "    a[0] = 10\n"
+            "    x: int = a[0]\n"
+            "    print(a)\n"
+            "    print(x)\n"
+            "    b: list[int] = []\n"
+            "    b[0] = 1\n"
+            "    y: int = b[0]\n"
+            "    print(b)\n"
+            "    print(y)\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        lines = output.strip().splitlines()
+        self.assertEqual(lines[0], "[10]")
+        self.assertEqual(lines[1], "10")
+        self.assertEqual(lines[2], "[1]")
+        self.assertEqual(lines[3], "1")
+
     def test_set_literal_runtime(self):
         code = (
             "def main() -> int:\n"
