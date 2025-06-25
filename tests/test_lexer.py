@@ -333,6 +333,10 @@ class TestLexer(unittest.TestCase):
         vals = [t.value for t in tokens if t.type == TokenType.STRING_LIT]
         self.assertEqual(vals, ["hello\nworld"])
 
+    def test_pipe_token(self):
+        tokens = Lexer('x: int | None\n').tokenize()
+        self.assertTrue(any(t.type == TokenType.PIPE for t in tokens))
+
     @unittest.skip("Currently inserting new line is removed from lexer")
     def test_blank_line_generates_NEWLINE(self):
         code = "a=1\n\nb=2\n"
