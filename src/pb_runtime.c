@@ -222,24 +222,15 @@ void pb_file_close(PbFile f) {
 }
 
 void pb_index_error(const char *type, const char *op, int64_t index, int64_t len, void *ptr) {
-    char buf[256];
+    const char *msg = NULL;
     if (strcmp(op, "get") == 0) {
-        snprintf(buf, sizeof(buf),
-            "cannot get index %" PRId64 " from list[%s] of length %" PRId64 " (valid range: 0 to %" PRId64 ")",
-            index, type, len, len > 0 ? len - 1 : -1
-        );
+        msg = "list index out of range";
     } else if (strcmp(op, "set") == 0) {
-        snprintf(buf, sizeof(buf),
-            "cannot assign to index %" PRId64 " in list[%s] of length %" PRId64 " (valid range: 0 to %" PRId64 ")",
-            index, type, len, len > 0 ? len - 1 : -1
-        );
+        msg = "list assignment index out of range";
     } else {
-        snprintf(buf, sizeof(buf),
-            "invalid access to index %" PRId64 " in list[%s] of length %" PRId64,
-            index, type, len
-        );
+        msg = "list index out of range";
     }
-    pb_raise_msg("IndexError", pb_strdup(buf));
+    pb_raise_msg("IndexError", pb_strdup(msg));
 }
 
 /* ------------ LIST ------------- */
@@ -267,10 +258,8 @@ void list_int_init(List_int *lst) {
 }
 
 void list_int_set(List_int *lst, int64_t index, int64_t value) {
-    if (index < 0 || index > lst->len) {
+    if (index < 0 || index >= lst->len) {
         pb_index_error("int", "set", index, lst->len, lst);
-    } else if (index == lst->len) {
-        list_int_append(lst, value);
     } else {
         lst->data[index] = value;
     }
@@ -353,10 +342,8 @@ void list_float_init(List_float *lst) {
 }
 
 void list_float_set(List_float *lst, int64_t index, double value) {
-    if (index < 0 || index > lst->len) {
+    if (index < 0 || index >= lst->len) {
         pb_index_error("float", "set", index, lst->len, lst);
-    } else if (index == lst->len) {
-        list_float_append(lst, value);
     } else {
         lst->data[index] = value;
     }
@@ -438,10 +425,8 @@ void list_bool_init(List_bool *lst) {
 }
 
 void list_bool_set(List_bool *lst, int64_t index, bool value) {
-    if (index < 0 || index > lst->len) {
+    if (index < 0 || index >= lst->len) {
         pb_index_error("bool", "set", index, lst->len, lst);
-    } else if (index == lst->len) {
-        list_bool_append(lst, value);
     } else {
         lst->data[index] = value;
     }
@@ -523,10 +508,8 @@ void list_str_init(List_str *lst) {
 }
 
 void list_str_set(List_str *lst, int64_t index, const char *value) {
-    if (index < 0 || index > lst->len) {
+    if (index < 0 || index >= lst->len) {
         pb_index_error("str", "set", index, lst->len, lst);
-    } else if (index == lst->len) {
-        list_str_append(lst, value);
     } else {
         lst->data[index] = value;  // assumes value is valid for the lifetime of lst
     }

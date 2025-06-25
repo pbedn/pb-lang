@@ -648,6 +648,10 @@ class CodeGen:
                 "set[float]": "set_float_print",
                 "set[bool]": "set_bool_print",
                 "set[str]": "set_str_print",
+                "IndexError": "pb_print_str",
+                "RuntimeError": "pb_print_str",
+                "ValueError": "pb_print_str",
+                "TypeError": "pb_print_str",
             }.get(t, "pb_print_int")  # default to int
 
         def _extract_dict_value_type(type_str: str) -> str:
@@ -662,6 +666,24 @@ class CodeGen:
                 return "int"
 
         lines: list[str] = []
+
+        if len(ce.args) > 1:
+            for idx, arg in enumerate(ce.args):
+                arg_expr = self._expr(arg)
+                t = self._get_expr_type(arg)
+                if t == "int":
+                    val = f"pb_format_int({arg_expr})"
+                elif t == "float":
+                    val = f"pb_format_double({arg_expr})"
+                elif t == "bool":
+                    val = f"({arg_expr} ? \"True\" : \"False\")"
+                else:
+                    val = arg_expr
+                if idx < len(ce.args) - 1:
+                    lines.append(f"printf(\"%s \", {val});")
+                else:
+                    lines.append(f"printf(\"%s\\n\", {val});")
+            return "\n".join(lines)
 
         for arg in ce.args:
             arg_expr = self._expr(arg)
@@ -707,13 +729,13 @@ class CodeGen:
         tgt = self._expr(st.target)
         val = self._expr(st.value)
 
-        if st.inferred_type == "list[int]":
+        if isinstance(st.target, IndexExpr) and st.inferred_type == "list[int]":
             return f"list_int_set(&{st.target.base.name}, {int(st.target.index.raw)}, {val});"
-        if st.inferred_type == "list[str]":
+        if isinstance(st.target, IndexExpr) and st.inferred_type == "list[str]":
             return f"list_str_set(&{st.target.base.name}, {int(st.target.index.raw)}, {val});"
-        if st.inferred_type == "list[float]":
+        if isinstance(st.target, IndexExpr) and st.inferred_type == "list[float]":
             return f"list_float_set(&{st.target.base.name}, {int(st.target.index.raw)}, {val});"
-        if st.inferred_type == "list[bool]":
+        if isinstance(st.target, IndexExpr) and st.inferred_type == "list[bool]":
             return f"list_bool_set(&{st.target.base.name}, {int(st.target.index.raw)}, {val});"
 
         return f"{tgt} = {val};"
@@ -1088,6 +1110,15 @@ class CodeGen:
                 arg0 = self._expr(e.args[0])
                 arg1 = self._expr(e.args[1])
                 return f"pb_open({arg0}, {arg1})"
+
+            if fn_name == "len":
+                arg = self._expr(e.args[0])
+                arg_type = e.args[0].inferred_type
+                if arg_type == "str":
+                    return f"(int64_t)strlen({arg})"
+                if arg_type.startswith("list[") or arg_type.startswith("set[") or arg_type.startswith("dict["):
+                    return f"{arg}.len"
+                raise RuntimeError(f"len() not supported for {arg_type}")
 
             # --- Built-int type conversions ---
             if fn_name == "int":

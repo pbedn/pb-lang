@@ -590,6 +590,14 @@ class TypeChecker:
                         raise TypeError(f"Function 'str' expects int, float, or str, got {arg_type}")
                     expr.inferred_type = "str"
                     return "str"
+                if fname == "len":
+                    if len(expr.args) != 1:
+                        raise TypeError("Function 'len' expects exactly one argument")
+                    arg_type = self.check_expr(expr.args[0])
+                    if arg_type == "str" or arg_type.startswith("list[") or arg_type.startswith("set[") or arg_type.startswith("dict["):
+                        expr.inferred_type = "int"
+                        return "int"
+                    raise TypeError(f"Function 'len' not supported for type {arg_type}")
                 if fname == "open":
                     if len(expr.args) != 2:
                         raise TypeError("Function 'open' expects exactly two arguments")

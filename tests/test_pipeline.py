@@ -280,6 +280,18 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn('list_int_set(&b, 0, 1);', c_code)
         self.assertIn('list_int_print(&b);', c_code)
 
+    def test_len_builtin_pipeline(self):
+        code = (
+            "def main() -> int:\n"
+            "    arr: list[int] = [1, 2, 3]\n"
+            "    x: int = len(arr)\n"
+            "    print(x)\n"
+            "    return 0\n"
+        )
+        header, c_code = self.compile_pipeline(code)
+        self.assertIn('int64_t x = arr.len;', c_code)
+        self.assertIn('pb_print_int(x);', c_code)
+
     def test_set_literal(self):
         code = (
             "def main() -> int:\n"
