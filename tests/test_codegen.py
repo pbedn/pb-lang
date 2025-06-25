@@ -1559,7 +1559,6 @@ class TestCodeGen(unittest.TestCase):
         macros = cg.generate_types_header()
         self.assertIn("PB_DECLARE_DICT(Item, struct Item *)", macros)
 
-<<<<<<< codex/fix-and-add-tests-for-list-conversions
     def test_list_conversion_functions(self):
         prog = Program(body=[
             FunctionDef(
@@ -1625,7 +1624,7 @@ class TestCodeGen(unittest.TestCase):
             "list_float_set(&arr3, 0, (double)(4));",
             "list_bool_set(&arr4, 0, (1 != 0));",
         ])
-=======
+
     def test_if_name_main_guard_codegen(self):
         prog = Program(body=[
             VarDecl("x", "int", Literal("1")),
@@ -1662,7 +1661,6 @@ class TestCodeGen(unittest.TestCase):
         self.assertIn('int64_t x = 1;', output)
         self.assertIn('pb_print_str((snprintf(__fbuf, 256, "%s", pb_format_double((x * 2.0))), __fbuf));', output)
         self.assertIn('pb_print_str((snprintf(__fbuf, 256, "%lld", (x * false)), __fbuf));', output)
->>>>>>> master
 
     def test_global_class_instances_codegen(self):
         prog = Program(body=[
