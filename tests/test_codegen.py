@@ -1400,6 +1400,84 @@ class TestCodeGen(unittest.TestCase):
             "return 0;",
         ])
 
+    def test_set_custom_type_macro(self):
+        prog = Program(body=[
+            ClassDef(name="Player", base=None, fields=[], methods=[]),
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl(
+                        "s",
+                        "set[Player]",
+                        SetExpr(elements=[], elem_type="Player", inferred_type="set[Player]")
+                    ),
+                    ReturnStmt(Literal("0"))
+                ],
+                globals_declared=None
+            )
+        ])
+
+        TypeChecker().check(prog)
+        cg = CodeGen()
+        cg.generate_header(prog)
+        cg.generate(prog)
+        macros = cg.generate_types_header()
+        self.assertIn("PB_DECLARE_SET(Player, struct Player *)", macros)
+
+    def test_list_custom_type_macro(self):
+        prog = Program(body=[
+            ClassDef(name="Enemy", base=None, fields=[], methods=[]),
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl(
+                        "lst",
+                        "list[Enemy]",
+                        ListExpr(elements=[], elem_type="Enemy", inferred_type="list[Enemy]")
+                    ),
+                    ReturnStmt(Literal("0"))
+                ],
+                globals_declared=None
+            )
+        ])
+
+        TypeChecker().check(prog)
+        cg = CodeGen()
+        cg.generate_header(prog)
+        cg.generate(prog)
+        macros = cg.generate_types_header()
+        self.assertIn("PB_DECLARE_LIST(Enemy, struct Enemy *)", macros)
+
+    def test_dict_custom_type_macro(self):
+        prog = Program(body=[
+            ClassDef(name="Item", base=None, fields=[], methods=[]),
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl(
+                        "d",
+                        "dict[str, Item]",
+                        DictExpr(keys=[], values=[], elem_type="Item", inferred_type="dict[str, Item]")
+                    ),
+                    ReturnStmt(Literal("0"))
+                ],
+                globals_declared=None
+            )
+        ])
+
+        TypeChecker().check(prog)
+        cg = CodeGen()
+        cg.generate_header(prog)
+        cg.generate(prog)
+        macros = cg.generate_types_header()
+        self.assertIn("PB_DECLARE_DICT(Item, struct Item *)", macros)
+
 
 if __name__ == "__main__":
     unittest.main()

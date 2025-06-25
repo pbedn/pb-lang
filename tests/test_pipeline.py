@@ -259,6 +259,35 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn('Set_int s = (Set_int){ .len=2, .data=__tmp_set_1 };', c_code)
         self.assertIn('set_int_print(&s);', c_code)
 
+    def test_set_str_literal(self):
+        code = (
+            "def main() -> int:\n"
+            "    s: set[str] = {'a', \"b\"}\n"
+            "    print(s)\n"
+            "    return 0\n"
+        )
+        h, c_code = self.compile_pipeline(code)
+        self.assertIn('const char * __tmp_set_1[] = {"a", "b"};', c_code)
+        self.assertIn('Set_str s = (Set_str){ .len=2, .data=__tmp_set_1 };', c_code)
+        self.assertIn('set_str_print(&s);', c_code)
+
+    def test_set_custom_type_decl(self):
+        code = (
+            "class Player:\n"
+            "    pass\n"
+            "\n"
+            "def main() -> int:\n"
+            "    s: set[Player]\n"
+            "    return 0\n"
+        )
+        h, c_code, ast, _ = compile_code_to_c_and_h(code)
+        self.assertIn('Set_Player s;', c_code)
+        cg = CodeGen()
+        cg.generate_header(ast)
+        cg.generate(ast)
+        macros = cg.generate_types_header()
+        self.assertIn('PB_DECLARE_SET(Player, struct Player *)', macros)
+
     def test_list_index_get_set(self):
         code = (
             "def main() -> int:\n"
