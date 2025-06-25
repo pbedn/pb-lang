@@ -565,6 +565,24 @@ class TestCodeGenFromSource(unittest.TestCase):
         # Should use the forwarded RuntimeError constructor
         self.assertIn('void RuntimeError____init__(struct RuntimeError * self, const char * msg)', c_code)
 
+    def test_if_name_main_guard_ignored(self):
+        code = (
+            "x: int = 1\n"
+            "def main():\n"
+            "    print(f\"{x * 2.0}\")\n"
+            "    print(f\"{x * False}\")\n"
+            "\n"
+            "def init():\n"
+            "    print(\"init runs\")\n"
+            "\n"
+            "if __name__ == \"__main__\":\n"
+            "    init()\n"
+        )
+        h, c = self.compile_pipeline(code)
+        self.assertIn('int64_t x = 1;', c)
+        self.assertIn('pb_print_str((snprintf(__fbuf, 256, "%s", pb_format_double((x * 2.0))), __fbuf));', c)
+        self.assertIn('pb_print_str((snprintf(__fbuf, 256, "%lld", (x * false)), __fbuf));', c)
+
     # global ------------------------------------------------------
 
     def test_global_variable_in_method(self):

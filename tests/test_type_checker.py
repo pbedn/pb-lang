@@ -114,6 +114,14 @@ class TestTypeCheckerInternals(unittest.TestCase):
         expr = BinOp(Literal("False"), "+", Literal("1.0"))
         self.assertEqual(self.tc.check_expr(expr), "float")
 
+    def test_binop_mul_int_and_float(self):
+        expr = BinOp(Literal("1"), "*", Literal("2.0"))
+        self.assertEqual(self.tc.check_expr(expr), "float")
+
+    def test_binop_mul_int_and_bool(self):
+        expr = BinOp(Literal("1"), "*", Literal("False"))
+        self.assertEqual(self.tc.check_expr(expr), "int")
+
     def test_binop_add_incompatible_types_raises(self):
         expr = BinOp(Literal('"hello"'), "+", Literal("3"))
         with self.assertRaises(TypeError):
