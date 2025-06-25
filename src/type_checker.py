@@ -1079,9 +1079,13 @@ class TypeChecker:
 
         # list indexing support
         elif isinstance(stmt.target, IndexExpr):
-            if getattr(stmt.target.base, "name") in self.env:
-                stmt.inferred_type = self.env[stmt.target.base.name]
-                stmt.target.base.inferred_type = self.env[stmt.target.base.name]
+            elem_type = self.check_expr(stmt.target)
+            value_type = self.check_expr(stmt.value)
+            if not types_match(value_type, elem_type):
+                raise TypeError(
+                    f"Type mismatch for indexed assignment: expected {elem_type}, got {value_type}"
+                )
+            stmt.inferred_type = stmt.target.inferred_type
             return
 
         else:

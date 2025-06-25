@@ -40,6 +40,15 @@ const char *pb_format_double(double x) {
     return bufs[i];
 }
 
+const char *pb_format_int(int64_t x) {
+    static char bufs[4][32];
+    static int i = 0;
+    i = (i + 1) % 4;
+
+    snprintf(bufs[i], sizeof(bufs[i]), "%" PRId64, x);
+    return bufs[i];
+}
+
 
 /* ------------ ERROR HANDLING ------------- */
 

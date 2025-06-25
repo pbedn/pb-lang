@@ -777,6 +777,28 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn("bool y_bool = (y != 0.0);", c)      # y to bool conversion
         self.assertIn("bool z_bool = (z != 0.0);", c)      # z to bool conversion
 
+    def test_list_conversion_functions(self):
+        code = (
+            "def main():\n"
+            "    arr: list[int] = [1, 2, 3]\n"
+            "    arr[0] = int(4.5)\n"
+            "    print(arr)\n"
+            "    arr2: list[str] = ['1', '2', '3']\n"
+            "    arr2[0] = str(4)\n"
+            "    print(arr2)\n"
+            "    arr3: list[float] = [1.1, 2.2, 3.3]\n"
+            "    arr3[0] = float(4)\n"
+            "    print(arr3)\n"
+            "    arr4: list[bool] = [True, False]\n"
+            "    arr4[0] = bool(1)\n"
+            "    print(arr4)\n"
+        )
+        h, c = self.compile_pipeline(code)
+
+        self.assertIn('list_int_set(&arr, 0, (int64_t)(4.5));', c)
+        self.assertIn('list_str_set(&arr2, 0, pb_format_int(4));', c)
+        self.assertIn('list_float_set(&arr3, 0, (double)(4));', c)
+        self.assertIn('list_bool_set(&arr4, 0, (1 != 0));', c)
     def test_fstring_expression_codegen(self):
         code = (
             "class Player:\n"
