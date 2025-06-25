@@ -89,6 +89,12 @@ class CodeGen:
 
         self._modules: set[str] = set()  # track imported module names
 
+        # Lines that should execute before main to initialize globals
+        self._global_init_lines: list[str] = []
+
+        # Names of all classes in the current program
+        self._class_names: set[str] = set()
+
     def _attr_full_name(self, expr: Expr) -> str | None:
         if isinstance(expr, Identifier):
             return expr.name
@@ -108,10 +114,12 @@ class CodeGen:
         self._needed_list_types.clear()
         self._needed_dict_types.clear()
         self._needed_set_types.clear()
+        self._global_init_lines.clear()
 
         self._classes = [d for d in program.body if isinstance(d, ClassDef)]
         self._instance_fields = getattr(program, "inferred_instance_fields", {})
         self._class_bases = {cls.name: cls.base for cls in self._classes}
+        self._class_names = {cls.name for cls in self._classes}
         self._direct_fields = {}
         for cls in self._classes:
             base_fields = set(self._instance_fields.get(cls.base, {})) if cls.base else set()
@@ -126,6 +134,7 @@ class CodeGen:
         self._emit_headers_and_runtime(include_self=True, include_runtime=False)
         self._emit_global_decls(program)
         self._emit_class_statics(program)
+        self._emit_global_init_func()
 
         # Definitions
         for stmt in program.body:
@@ -155,6 +164,7 @@ class CodeGen:
         self._classes = [d for d in program.body if isinstance(d, ClassDef)]
         self._instance_fields = getattr(program, "inferred_instance_fields", {})
         self._class_bases = {cls.name: cls.base for cls in self._classes}
+        self._class_names = {cls.name for cls in self._classes}
         self._direct_fields = {}
         for cls in self._classes:
             base_fields = set(self._instance_fields.get(cls.base, {})) if cls.base else set()
@@ -381,10 +391,20 @@ class CodeGen:
         for stmt in program.body:
             if isinstance(stmt, VarDecl):
                 c_ty = self._c_type(stmt.declared_type)
-                # initializer expression will be a constant literal or simple expr
-                init = self._expr(stmt.value)
                 name = self._mangle_global_name(stmt.name)
-                self._emit(f"{c_ty} {name} = {init};")
+                if isinstance(stmt.value, CallExpr) and isinstance(stmt.value.func, Identifier) and stmt.value.func.name in self._class_names:
+                    class_name = stmt.value.func.name
+                    self._tmp_counter += 1
+                    tmp = f"__tmp_{class_name.lower()}_{self._tmp_counter}"
+                    self._emit(f"struct {class_name} {tmp};")
+                    self._emit(f"{c_ty} {name};")
+                    args = [self._expr(a) for a in stmt.value.args]
+                    call = f"{class_name}____init__(&{tmp}{', ' if args else ''}{', '.join(args)})";
+                    self._global_init_lines.append(f"{call};")
+                    self._global_init_lines.append(f"{name} = &{tmp};")
+                else:
+                    init = self._expr(stmt.value)
+                    self._emit(f"{c_ty} {name} = {init};")
         if self._globals_emitted:
             self._emit()
 
@@ -1252,6 +1272,29 @@ class CodeGen:
                             self._emit(f'double {stmt.name}_{field.name} = {raw};')
                         else:
                             self._emit(f'int64_t {stmt.name}_{field.name} = {raw};')
+                    elif isinstance(field.value, CallExpr) and isinstance(field.value.func, Identifier) and field.value.func.name in self._class_names:
+                        class_name = field.value.func.name
+                        self._tmp_counter += 1
+                        tmp = f"__tmp_{class_name.lower()}_{self._tmp_counter}"
+                        self._emit(f"struct {class_name} {tmp};")
+                        self._emit(f"struct {class_name} * {stmt.name}_{field.name};")
+                        args = [self._expr(a) for a in field.value.args]
+                        call = f"{class_name}____init__(&{tmp}{', ' if args else ''}{', '.join(args)})";
+                        self._global_init_lines.append(f"{call};")
+                        self._global_init_lines.append(f"{stmt.name}_{field.name} = &{tmp};")
+
+    def _emit_global_init_func(self) -> None:
+        if not self._global_init_lines:
+            return
+        func_name = f"{self._get_module_name()}__init_globals"
+        self._emit(f"__attribute__((constructor)) static void {func_name}(void)")
+        self._emit("{")
+        self._indent += 1
+        for line in self._global_init_lines:
+            self._emit(line)
+        self._indent -= 1
+        self._emit("}")
+        self._emit()
 
     def _apply_defaults(self, mangled_name: str, passed_args: list[str]) -> list[str]:
         """

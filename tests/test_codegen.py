@@ -1559,6 +1559,27 @@ class TestCodeGen(unittest.TestCase):
         macros = cg.generate_types_header()
         self.assertIn("PB_DECLARE_DICT(Item, struct Item *)", macros)
 
+    def test_global_class_instances_codegen(self):
+        prog = Program(body=[
+            ClassDef(name="Empty", base=None, fields=[], methods=[]),
+            ClassDef(
+                name="ClassWithUserDefinedAttr",
+                base=None,
+                fields=[VarDecl("uda", "Empty", CallExpr(Identifier("Empty"), []))],
+                methods=[]
+            ),
+            VarDecl("e", "Empty", CallExpr(Identifier("Empty"), [])),
+            VarDecl("uda", "ClassWithUserDefinedAttr", CallExpr(Identifier("ClassWithUserDefinedAttr"), [])),
+            FunctionDef(name="main", params=[], body=[ReturnStmt(Literal("0"))], return_type="int", globals_declared=None)
+        ])
+
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "__attribute__((constructor)) static void main__init_globals",
+            "struct Empty __tmp_empty_",
+            "struct ClassWithUserDefinedAttr __tmp_classwithuserdefinedattr_",
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()

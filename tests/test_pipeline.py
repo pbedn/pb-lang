@@ -104,6 +104,25 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn("int64_t x = 0;", c_code)
         self.assertIn("x += 1;", c_code)
 
+    def test_global_class_instances(self):
+        code = (
+            "class Empty:\n"
+            "    pass\n"
+            "\n"
+            "class ClassWithUserDefinedAttr:\n"
+            "    uda: Empty = Empty()\n"
+            "\n"
+            "e: Empty = Empty()\n"
+            "uda: ClassWithUserDefinedAttr = ClassWithUserDefinedAttr()\n"
+            "\n"
+            "def main() -> int:\n"
+            "    return 0\n"
+        )
+        h, c = self.compile_pipeline(code)
+        self.assertIn("__attribute__((constructor)) static void main__init_globals", c)
+        self.assertIn("struct Empty __tmp_empty_", c)
+        self.assertIn("struct ClassWithUserDefinedAttr __tmp_classwithuserdefinedattr_", c)
+
     def test_return_stmt_from_source(self):
         code = (
             "def main() -> int:\n"
