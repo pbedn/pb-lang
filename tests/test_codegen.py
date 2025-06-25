@@ -117,6 +117,13 @@ class TestCodeGen(unittest.TestCase):
             "pb_print_int(result);",
             "return result;"
         ])
+    def test_numeric_literal_with_underscores(self):
+        prog = Program(body=[
+            VarDecl(name="x", declared_type="int", value=Literal(raw="1_234"))
+        ])
+        output = codegen_output(prog)
+        self.assertIn("int64_t x = 1234;", output)
+
 
     def test_class_with_method(self):
         prog = Program(body=[

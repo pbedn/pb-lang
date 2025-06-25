@@ -904,6 +904,20 @@ class TestCodeGenFromSource(unittest.TestCase):
             self.assertIn('#define m2 test_import.mathlib2', c)
             self.assertIn('#define pi2 PI', c)
 
+    def test_numeric_literals_with_underscores(self):
+        code = (
+            "def main() -> int:\n"
+            "    n: int = 1_0\n"
+            "    total: int = 0\n"
+            "    for i in range(n):\n"
+            "        total += i\n"
+            "    print(total)\n"
+            "    return 0\n"
+        )
+        h, c = self.compile_pipeline(code)
+        self.assertIn('int64_t n = 10;', c)
+        self.assertIn('for (int64_t i = 0; i < n; ++i)', c)
+
 
 if __name__ == "__main__":
     unittest.main()
