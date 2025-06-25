@@ -66,34 +66,34 @@ void pb_file_write(PbFile f, const char *s);
 void pb_file_close(PbFile f);
 
 /* ------------ LIST ------------- */
-typedef struct {
-    int64_t len;
-    int64_t capacity;
-    int64_t *data;
-} List_int;
 
-typedef struct {
-    int64_t len;
-    int64_t capacity;
-    double *data;
-} List_float;
+/* Generic list declaration helper. */
+#define PB_DECLARE_LIST(Name, CType)         \
+    typedef struct {                        \
+        int64_t len;                        \
+        int64_t capacity;                   \
+        CType *data;                        \
+    } List_##Name;
 
-typedef struct {
-    int64_t len;
-    int64_t capacity;
-    bool *data;
-} List_bool;
+/* Built-in list specializations */
+PB_DECLARE_LIST(int, int64_t)
+PB_DECLARE_LIST(float, double)
+PB_DECLARE_LIST(bool, bool)
+PB_DECLARE_LIST(str, const char *)
 
-typedef struct {
-    int64_t len;
-    int64_t capacity;
-    const char **data;
-} List_str;
+/* Generic set declaration helper. */
+#define PB_DECLARE_SET(Name, CType)          \
+    typedef struct {                        \
+        int64_t len;                        \
+        int64_t capacity;                   \
+        CType *data;                        \
+    } Set_##Name;
 
-typedef List_int   Set_int;
-typedef List_float Set_float;
-typedef List_bool  Set_bool;
-typedef List_str   Set_str;
+/* Built-in set specializations */
+PB_DECLARE_SET(int, int64_t)
+PB_DECLARE_SET(float, double)
+PB_DECLARE_SET(bool, bool)
+PB_DECLARE_SET(str, const char *)
 
 #define INITIAL_LIST_CAPACITY 4
 
@@ -144,49 +144,22 @@ void set_str_print(const Set_str *s);
 
 /* ------------ DICT ------------- */
 
-// Dict[str, int]
-typedef struct {
-    const char *key;
-    int64_t value;
-} Pair_str_int;
+/* Generic dict declaration helper. */
+#define PB_DECLARE_DICT(Name, CType)          \
+    typedef struct {                         \
+        const char *key;                     \
+        CType value;                         \
+    } Pair_str_##Name;                       \
+    typedef struct {                         \
+        int64_t len;                         \
+        Pair_str_##Name *data;               \
+    } Dict_str_##Name;
 
-typedef struct {
-    int64_t len;
-    Pair_str_int *data;
-} Dict_str_int;
-
-// Dict[str, float]
-typedef struct {
-    const char *key;
-    double value;
-} Pair_str_float;
-
-typedef struct {
-    int64_t len;
-    Pair_str_float *data;
-} Dict_str_float;
-
-// Dict[str, bool]
-typedef struct {
-    const char *key;
-    bool value;
-} Pair_str_bool;
-
-typedef struct {
-    int64_t len;
-    Pair_str_bool *data;
-} Dict_str_bool;
-
-// Dict[str, str]
-typedef struct {
-    const char *key;
-    const char *value;
-} Pair_str_str;
-
-typedef struct {
-    int64_t len;
-    Pair_str_str *data;
-} Dict_str_str;
+/* Built-in dict specializations */
+PB_DECLARE_DICT(int, int64_t)
+PB_DECLARE_DICT(float, double)
+PB_DECLARE_DICT(bool, bool)
+PB_DECLARE_DICT(str, const char *)
 
 // Dict lookup helpers
 int64_t pb_dict_get_str_int(Dict_str_int d, const char *key);

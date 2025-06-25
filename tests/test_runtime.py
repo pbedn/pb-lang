@@ -225,6 +225,28 @@ class TestPipelineRuntime(unittest.TestCase):
         lines = output.strip().splitlines()
         self.assertEqual(lines[0], "{1, 2}")
 
+    def test_set_str_literal_runtime(self):
+        code = (
+            "def main() -> int:\n"
+            "    s: set[str] = {'a', \"b\"}\n"
+            "    print(s)\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        lines = output.strip().splitlines()
+        self.assertEqual(lines[0], "{'a', 'b'}")
+
+    def test_set_bool_literal_runtime(self):
+        code = (
+            "def main() -> int:\n"
+            "    s: set[bool] = {True, False, True}\n"
+            "    print(s)\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        lines = output.strip().splitlines()
+        self.assertEqual(lines[0], "{True, False, True}")
+
     def test_type_conversions_and_printing(self):
         code = (
             "def main() -> int:\n"

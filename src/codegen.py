@@ -77,6 +77,11 @@ class CodeGen:
         self._tmp_dict_counter: int = 0
         self._tmp_set_counter: int = 0
 
+        # Track generic container instantiations
+        self._needed_list_types: set[tuple[str, str]] = set()
+        self._needed_dict_types: set[tuple[str, str]] = set()
+        self._needed_set_types: set[tuple[str, str]] = set()
+
         # Instance field information from the type checker
         self._instance_fields: dict[str, dict[str, str]] = {}
         self._class_bases: dict[str, Optional[str]] = {}
@@ -100,6 +105,9 @@ class CodeGen:
         self._lines.clear()
         self._indent = 0
         self._runtime_emitted = False
+        self._needed_list_types.clear()
+        self._needed_dict_types.clear()
+        self._needed_set_types.clear()
 
         self._classes = [d for d in program.body if isinstance(d, ClassDef)]
         self._instance_fields = getattr(program, "inferred_instance_fields", {})
@@ -137,6 +145,9 @@ class CodeGen:
         self._lines.clear()
         self._indent = 0
         self._runtime_emitted = False
+        self._needed_list_types.clear()
+        self._needed_dict_types.clear()
+        self._needed_set_types.clear()
         self._structs_emitted.clear()
 
         self._lines.append("#pragma once")
@@ -231,9 +242,17 @@ class CodeGen:
 
         self._emit()
 
-    @staticmethod
-    def _c_type(pb_type: Optional[str]) -> str:
-        """Map PB type to C99 type spelling."""
+    def _sanitize(self, name: str) -> str:
+        """Sanitize a PB type name for C identifiers."""
+        out = name.replace(" ", "_")
+        for ch in "[],*":
+            out = out.replace(ch, "_")
+        while "__" in out:
+            out = out.replace("__", "_")
+        return out
+
+    def _c_type(self, pb_type: Optional[str]) -> str:
+        """Map PB type to C99 type spelling and collect generics."""
         if pb_type is None or pb_type == "None":
             return "void"
 
@@ -253,26 +272,47 @@ class CodeGen:
         if pb_type in tbl:
             return tbl[pb_type]
         if pb_type.startswith("list[") and pb_type.endswith("]"):
-            return {
+            mapping = {
                 'list[int]': 'List_int',
                 'list[float]': 'List_float',
                 'list[bool]': 'List_bool',
                 'list[str]': 'List_str',
-            }[pb_type]
+            }
+            if pb_type in mapping:
+                return mapping[pb_type]
+            elem = pb_type[5:-1].strip()
+            c_elem = self._c_type(elem)
+            name = self._sanitize(elem)
+            self._needed_list_types.add((name, c_elem))
+            return f"List_{name}"
         if pb_type.startswith("set[") and pb_type.endswith("]"):
-            return {
+            mapping = {
                 'set[int]': 'Set_int',
                 'set[float]': 'Set_float',
                 'set[bool]': 'Set_bool',
                 'set[str]': 'Set_str',
-            }[pb_type]
-        if pb_type.startswith("dict[") and pb_type.endswith("]"):
-            return {
+            }
+            if pb_type in mapping:
+                return mapping[pb_type]
+            elem = pb_type[4:-1].strip()
+            c_elem = self._c_type(elem)
+            name = self._sanitize(elem)
+            self._needed_set_types.add((name, c_elem))
+            return f"Set_{name}"
+        if pb_type.startswith("dict[str,") and pb_type.endswith("]"):
+            mapping = {
                 'dict[str, int]': 'Dict_str_int',
                 'dict[str, float]': 'Dict_str_float',
                 'dict[str, bool]': 'Dict_str_bool',
                 'dict[str, str]': 'Dict_str_str',
-            }[pb_type]
+            }
+            if pb_type in mapping:
+                return mapping[pb_type]
+            val = pb_type[len("dict[str,"):-1].strip()
+            c_val = self._c_type(val)
+            name = self._sanitize(val)
+            self._needed_dict_types.add((name, c_val))
+            return f"Dict_str_{name}"
         # user class
         return f"struct {pb_type} *"
 
@@ -1111,9 +1151,9 @@ class CodeGen:
                 'bool': 'list_bool_get',
                 'str': 'list_str_get',
             }.get(etype)
-            if not func:
-                raise RuntimeError(f"Unsupported list element type: {etype}")
-            return f"{func}(&{base}, {idx})"
+            if func:
+                return f"{func}(&{base}, {idx})"
+            return f"{base}.data[{idx}]"
 
         return f"{base}.data[{idx}]"
     
@@ -1226,6 +1266,18 @@ class CodeGen:
                 )
             args.append(default)
         return args
+
+    # ------------------------------------------------------------------
+    def generate_types_header(self) -> str:
+        """Generate type specialization declarations for pb_gen_types.h."""
+        lines: list[str] = []
+        for name, c_ty in sorted(self._needed_list_types):
+            lines.append(f"PB_DECLARE_LIST({name}, {c_ty})")
+        for name, c_ty in sorted(self._needed_set_types):
+            lines.append(f"PB_DECLARE_SET({name}, {c_ty})")
+        for name, c_ty in sorted(self._needed_dict_types):
+            lines.append(f"PB_DECLARE_DICT({name}, {c_ty})")
+        return "\n".join(lines) + ("\n" if lines else "")
 
 
 if __name__ == "__main__":
