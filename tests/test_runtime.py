@@ -463,6 +463,24 @@ class TestPipelineRuntime(unittest.TestCase):
         output = compile_and_run(code)
         self.assertEqual(output.strip(), "5")
 
+    def test_global_class_instances_runtime(self):
+        code = (
+            "class Empty:\n"
+            "    pass\n"
+            "\n"
+            "class ClassWithUserDefinedAttr:\n"
+            "    uda: Empty = Empty()\n"
+            "\n"
+            "e: Empty = Empty()\n"
+            "uda: ClassWithUserDefinedAttr = ClassWithUserDefinedAttr()\n"
+            "\n"
+            "def main() -> int:\n"
+            "    print(0)\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(output.strip(), "0")
+
     def test_import_mathlib_add(self):
         modules = {
             "mathlib": (
