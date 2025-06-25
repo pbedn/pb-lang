@@ -127,6 +127,22 @@ class TestTypeCheckerInternals(unittest.TestCase):
         expr = BinOp(Literal("1"), "<", Literal("2"))
         self.assertEqual(self.tc.check_expr(expr), "bool")
 
+    def test_binop_lte(self):
+        expr = BinOp(Literal("1"), "<=", Literal("2"))
+        self.assertEqual(self.tc.check_expr(expr), "bool")
+
+    def test_binop_gt(self):
+        expr = BinOp(Literal("2"), ">", Literal("1"))
+        self.assertEqual(self.tc.check_expr(expr), "bool")
+
+    def test_binop_gte(self):
+        expr = BinOp(Literal("2"), ">=", Literal("1"))
+        self.assertEqual(self.tc.check_expr(expr), "bool")
+
+    def test_chained_comparison_type(self):
+        expr = BinOp(BinOp(Literal("1"), "<", Literal("2")), "and", BinOp(Literal("2"), "<", Literal("3")))
+        self.assertEqual(self.tc.check_expr(expr), "bool")
+
     def test_binop_is(self):
         expr = BinOp(Literal("None"), "is", Literal("None"))
         self.assertEqual(self.tc.check_expr(expr), "bool")
@@ -515,6 +531,21 @@ class TestTypeCheckerInternals(unittest.TestCase):
         with self.assertRaises(TypeError):
             self.tc.check_var_decl(decl)
 
+    def test_var_decl_optional_accepts_none(self):
+        decl = VarDecl(name="x", declared_type="int | None", value=Literal("None"))
+        self.tc.check_var_decl(decl)
+        self.assertEqual(self.tc.env["x"], "int | None")
+
+    def test_var_decl_optional_accepts_value(self):
+        decl = VarDecl(name="y", declared_type="int | None", value=Literal("1"))
+        self.tc.check_var_decl(decl)
+        self.assertEqual(self.tc.env["y"], "int | None")
+
+    def test_var_decl_optional_rejects_wrong(self):
+        decl = VarDecl(name="z", declared_type="int | None", value=StringLiteral("bad"))
+        with self.assertRaises(TypeError):
+            self.tc.check_var_decl(decl)
+
     def test_dict_expr_valid(self):
         expr = DictExpr(
             keys=[Literal('"a"'), Literal('"b"')],
@@ -750,6 +781,8 @@ class TestTypeCheckerInternals(unittest.TestCase):
 
         # Additionally: ensure sub-expression is type-checked
         self.assertEqual(lit.parts[1].expr.inferred_type, "int")
+        # And the FStringExpr itself gets the propagated type
+        self.assertEqual(lit.parts[1].inferred_type, "int")
 
     def test_print_int(self):
         call = CallExpr(func=Identifier("print"), args=[Literal("42")])

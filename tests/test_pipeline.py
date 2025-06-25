@@ -398,6 +398,18 @@ class TestCodeGenFromSource(unittest.TestCase):
         h, c = self.compile_pipeline(code)
         self.assertIn("if ((x && !(y))) {", c)
 
+    def test_chained_comparison_from_source(self):
+        code = (
+            "def main() -> int:\n"
+            "    x: int = 5\n"
+            "    if 1 < x < 10:\n"
+            "        print(\"ok\")\n"
+            "    return 0\n"
+        )
+        h, c = self.compile_pipeline(code)
+        self.assertIn("if (((1 < x) && (x < 10))) {", c)
+        self.assertIn('pb_print_str("ok");', c)
+
     # class ------------------------------------------------------
 
     def test_class_instantiation_and_method_call(self):
@@ -882,8 +894,15 @@ class TestCodeGenFromSource(unittest.TestCase):
 
             h, c, *_ = compile_code_to_c_and_h(code, module_name="imports_extended", pb_path=imports_path)
 
-            self.assertIn('#include "mathlib.h"', c)
-            self.assertIn('#include "test_import.mathlib2.h"', c)
+            # Includes should only appear once despite multiple import forms
+            self.assertEqual(c.count('#include "mathlib.h"'), 1)
+            self.assertEqual(c.count('#include "test_import.mathlib2.h"'), 1)
+
+            # Alias macros should be generated for imported modules/symbols
+            self.assertIn('#define m1 mathlib', c)
+            self.assertIn('#define mathlib2 test_import.mathlib2', c)
+            self.assertIn('#define m2 test_import.mathlib2', c)
+            self.assertIn('#define pi2 PI', c)
 
 
 if __name__ == "__main__":

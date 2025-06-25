@@ -209,19 +209,36 @@ class CodeGen:
 
     def _emit_headers_and_runtime(self, include_self: bool = False, include_runtime: bool = True) -> None:
         """Emit required #include directives for runtime and imports."""
+        seen_includes: set[str] = set()
+        seen_aliases: set[str] = set()
+
+        def emit_include(path: str) -> None:
+            if path not in seen_includes:
+                self._emit(f'#include "{path}"')
+                seen_includes.add(path)
+
         if include_runtime:
-            self._emit('#include "pb_runtime.h"')
+            emit_include("pb_runtime.h")
         if include_self:
-            self._emit(f'#include "{self._get_module_name()}.h"')
+            emit_include(f"{self._get_module_name()}.h")
 
         for stmt in self._program.body:
             if isinstance(stmt, ImportStmt):
                 mod_name = ".".join(stmt.module)
                 alias = stmt.alias if stmt.alias else mod_name
                 self._modules.add(alias)
-                self._emit(f'#include "{mod_name}.h"')
+
+                emit_include(f"{mod_name}.h")
+
+                if not stmt.names and stmt.alias and stmt.alias != mod_name:
+                    if stmt.alias not in seen_aliases:
+                        self._emit(f"#define {stmt.alias} {mod_name}")
+                        seen_aliases.add(stmt.alias)
+
                 if stmt.names and stmt.alias and stmt.alias != stmt.names[0]:
-                    self._emit(f'#define {stmt.alias} {stmt.names[0]}')
+                    if stmt.alias not in seen_aliases:
+                        self._emit(f"#define {stmt.alias} {stmt.names[0]}")
+                        seen_aliases.add(stmt.alias)
 
         self._emit()
 
@@ -238,6 +255,13 @@ class CodeGen:
         """Map PB type to C99 type spelling and collect generics."""
         if pb_type is None or pb_type == "None":
             return "void"
+
+        if "|" in pb_type:
+            parts = [p.strip() for p in pb_type.split("|") if p.strip() != "None"]
+            if len(parts) == 1:
+                pb_type = parts[0]
+            else:
+                raise NotImplementedError(f"C codegen does not support union type '{pb_type}'")
         tbl = {
             "int": "int64_t",
             "float": "double",

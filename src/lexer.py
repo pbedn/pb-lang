@@ -20,7 +20,7 @@ class TokenType(Enum):
     COLON = auto(); COMMA = auto(); LPAREN = auto(); RPAREN = auto()
     LBRACKET = auto(); RBRACKET = auto(); LBRACE = auto(); RBRACE = auto()
     ASSIGN = auto(); PLUS = auto(); MINUS = auto(); STAR = auto(); SLASH = auto()
-    PERCENT = auto(); FLOORDIV = auto(); DOT = auto(); SEMICOLON = auto()
+    PERCENT = auto(); FLOORDIV = auto(); DOT = auto(); SEMICOLON = auto(); PIPE = auto()
 
     ## augmented assignment
     PLUSEQ = auto(); MINUSEQ = auto(); STAREQ = auto(); SLASHEQ = auto()
@@ -142,6 +142,7 @@ TOKEN_REGEX = [
     (re.compile(r'<'), TokenType.LT),
     (re.compile(r'>'), TokenType.GT),
     (re.compile(r'\.'), TokenType.DOT),
+    (re.compile(r'\|'), TokenType.PIPE),
     
     # numeric literals (underscore allowed)
     (re.compile(r'\d[\d_]*\.\d[\d_]*[eE][+-]?\d[\d_]*'), TokenType.FLOAT_LIT),  # Fraction + Exponent; 12.34e5, 6.02_2e+23

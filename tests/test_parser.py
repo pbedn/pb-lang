@@ -322,6 +322,50 @@ class TestParseExpressions(ParserTestCase):
         self.assertIsInstance(expr.right, Literal)
         self.assertEqual(expr.right.raw, "42")
 
+    def test_parse_comparison_lt(self):
+        parser = self.parse_tokens("x < 5")
+        expr = parser.parse_comparison()
+
+        self.assertIsInstance(expr, BinOp)
+        self.assertEqual(expr.op, "<")
+        self.assertIsInstance(expr.left, Identifier)
+        self.assertEqual(expr.left.name, "x")
+        self.assertIsInstance(expr.right, Literal)
+        self.assertEqual(expr.right.raw, "5")
+
+    def test_parse_comparison_lte(self):
+        parser = self.parse_tokens("x <= 5")
+        expr = parser.parse_comparison()
+
+        self.assertIsInstance(expr, BinOp)
+        self.assertEqual(expr.op, "<=")
+        self.assertIsInstance(expr.left, Identifier)
+        self.assertEqual(expr.left.name, "x")
+        self.assertIsInstance(expr.right, Literal)
+        self.assertEqual(expr.right.raw, "5")
+
+    def test_parse_comparison_gt(self):
+        parser = self.parse_tokens("x > 5")
+        expr = parser.parse_comparison()
+
+        self.assertIsInstance(expr, BinOp)
+        self.assertEqual(expr.op, ">")
+        self.assertIsInstance(expr.left, Identifier)
+        self.assertEqual(expr.left.name, "x")
+        self.assertIsInstance(expr.right, Literal)
+        self.assertEqual(expr.right.raw, "5")
+
+    def test_parse_comparison_gte(self):
+        parser = self.parse_tokens("x >= 5")
+        expr = parser.parse_comparison()
+
+        self.assertIsInstance(expr, BinOp)
+        self.assertEqual(expr.op, ">=")
+        self.assertIsInstance(expr.left, Identifier)
+        self.assertEqual(expr.left.name, "x")
+        self.assertIsInstance(expr.right, Literal)
+        self.assertEqual(expr.right.raw, "5")
+
     def test_parse_not_expr(self):
         parser = self.parse_tokens("not x == y")
         expr = parser.parse_not_expr()
@@ -1096,14 +1140,23 @@ class TestParserEdgeCases(unittest.TestCase):
         self.assertEqual(expr.op, "*")
         self.assertIsInstance(expr.left, UnaryOp)
 
-    def test_chained_comparison_illegal(self):
-        """
-        We expect a ParserError only when the whole line is parsed
-        as a statement (because the trailing '< c' is left over).
-        """
-        with self.assertRaises(ParserError):
-            # parse **program**, not just expression
-            self.parse_program("a < b < c\n")
+    def test_chained_comparison(self):
+        expr = self.parse_expr("a < b < c\n")
+
+        self.assertIsInstance(expr, BinOp)
+        self.assertEqual(expr.op, "and")
+        self.assertIsInstance(expr.left, BinOp)
+        self.assertEqual(expr.left.op, "<")
+        self.assertIsInstance(expr.left.left, Identifier)
+        self.assertEqual(expr.left.left.name, "a")
+        self.assertIsInstance(expr.left.right, Identifier)
+        self.assertEqual(expr.left.right.name, "b")
+        self.assertIsInstance(expr.right, BinOp)
+        self.assertEqual(expr.right.op, "<")
+        self.assertIsInstance(expr.right.left, Identifier)
+        self.assertEqual(expr.right.left.name, "b")
+        self.assertIsInstance(expr.right.right, Identifier)
+        self.assertEqual(expr.right.right.name, "c")
 
     # `is` and `is not` -----------------------------------------------
     def test_parse_is_operator(self):
@@ -1211,9 +1264,17 @@ class TestParserEdgeCases(unittest.TestCase):
         with self.assertRaises(ParserError):
             self.parse_program(bad)
 
-    def test_chained_comparison_error(self):
-        with self.assertRaises(ParserError):
-            self.parse_program("a < b < c\n")
+    def test_chained_comparison_in_if(self):
+        code = (
+            "def f() -> None:\n"
+            "    if a < b < c:\n"
+            "        pass\n"
+        )
+        func = Parser(self.lex(code)).parse_function_def()
+        cond = func.body[0].branches[0].condition
+
+        self.assertIsInstance(cond, BinOp)
+        self.assertEqual(cond.op, "and")
 
     def test_function_call_not_allowed_in_global_scope(self):
         self.assertRaisesRegex(ParserError, "Function call", self.parse_program, "print(5)\n")
@@ -1321,6 +1382,26 @@ class TestGenericTypes(ParserTestCase):
         self.assertIsInstance(decl, VarDecl)
         self.assertEqual(decl.name, "data")
         self.assertEqual(decl.declared_type, "list[dict[str, float]]")
+
+    def test_parse_optional_type(self):
+        code = (
+            "x: int | None = None\n"
+        )
+        parser = self.parse_tokens(code)
+        prog = parser.parse()
+        decl = prog.body[0]
+        self.assertEqual(decl.declared_type, "int | None")
+
+    def test_parse_optional_param_and_return(self):
+        code = (
+            "def foo(x: int | None) -> int | None:\n"
+            "    return x\n"
+        )
+        parser = self.parse_tokens(code)
+        prog = parser.parse()
+        fn = prog.body[0]
+        self.assertEqual(fn.params[0].type, "int | None")
+        self.assertEqual(fn.return_type, "int | None")
 
 
 class TestParseLists(ParserTestCase):

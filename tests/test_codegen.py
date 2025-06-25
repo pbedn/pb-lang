@@ -694,6 +694,38 @@ class TestCodeGen(unittest.TestCase):
             "return 0;"
         ])
 
+    def test_chained_comparison_codegen(self):
+        program = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("x", "int", Literal("5")),
+                    IfStmt(branches=[
+                        IfBranch(
+                            BinOp(
+                                BinOp(Literal("1"), "<", Identifier("x")),
+                                "and",
+                                BinOp(Identifier("x"), "<", Literal("10"))
+                            ),
+                            [ExprStmt(CallExpr(Identifier("print"), [StringLiteral("ok")]))]
+                        )
+                    ]),
+                    ReturnStmt(Literal("0"))
+                ],
+                globals_declared=None
+            )
+        ])
+        output = codegen_output(program)
+        assert_contains_all(self, output, [
+            "int64_t x = 5;",
+            "if (((1 < x) && (x < 10))) {",
+            'pb_print_str("ok");',
+            "}",
+            "return 0;",
+        ])
+
     def test_class_attrs_and_dynamic_instance_attr(self):
         program = Program(body=[
             ClassDef(

@@ -163,6 +163,17 @@ class TestPipelineRuntime(unittest.TestCase):
         self.assertEqual(lines[0], "1.5")
         self.assertEqual(lines[1], "3.5")
 
+    def test_chained_comparison_runtime(self):
+        code = (
+            "def main() -> int:\n"
+            "    x: int = 5\n"
+            "    if 1 < x < 10:\n"
+            "        print(\"ok\")\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(output.strip(), "ok")
+
     def test_list_indexing_and_printing(self):
         code = (
             "def main() -> int:\n"
