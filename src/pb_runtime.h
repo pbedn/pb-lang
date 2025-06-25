@@ -18,6 +18,9 @@ void pb_print_str(const char *s);
 void pb_print_bool(bool b);      
 
 const char *pb_format_double(double x);
+char *pb_int_to_str(int64_t x);
+char *pb_float_to_str(double x);
+char *pb_bool_to_str(bool b);
 
 /* ------------ ERROR HANDLING ------------- */
 

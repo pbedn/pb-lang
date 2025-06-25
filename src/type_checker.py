@@ -1079,10 +1079,47 @@ class TypeChecker:
 
         # list indexing support
         elif isinstance(stmt.target, IndexExpr):
-            if getattr(stmt.target.base, "name") in self.env:
-                stmt.inferred_type = self.env[stmt.target.base.name]
-                stmt.target.base.inferred_type = self.env[stmt.target.base.name]
-            return
+            base_name = getattr(stmt.target.base, "name", None)
+            if base_name not in self.env:
+                raise TypeError(f"Variable '{base_name}' not defined before assignment")
+
+            container_type = self.env[base_name]
+            stmt.target.base.inferred_type = container_type
+
+            if container_type.startswith("list["):
+                elem_type = container_type[5:-1]
+                idx_type = self.check_expr(stmt.target.index)
+                if idx_type != "int":
+                    raise TypeError(f"List index must be int, got {idx_type}")
+                val_type = self.check_expr(stmt.value)
+                if not types_match(val_type, elem_type):
+                    raise TypeError(
+                        f"Type mismatch for list element: expected {elem_type}, got {val_type}"
+                    )
+                stmt.target.inferred_type = container_type
+                stmt.target.elem_type = elem_type
+                stmt.inferred_type = container_type
+                return
+
+            if container_type.startswith("dict["):
+                # only support dict[str, T]
+                if not container_type.startswith("dict[str,"):
+                    raise TypeError(f"Unsupported dict type {container_type}")
+                value_type = container_type[len("dict[str, "):-1]
+                idx_type = self.check_expr(stmt.target.index)
+                if idx_type != "str":
+                    raise TypeError(f"Dict key must be str, got {idx_type}")
+                val_type = self.check_expr(stmt.value)
+                if not types_match(val_type, value_type):
+                    raise TypeError(
+                        f"Type mismatch for dict value: expected {value_type}, got {val_type}"
+                    )
+                stmt.target.inferred_type = container_type
+                stmt.target.elem_type = value_type
+                stmt.inferred_type = container_type
+                return
+
+            raise TypeError(f"Cannot index assign into value of type '{container_type}'")
 
         else:
             raise TypeError("Unsupported assignment target")
