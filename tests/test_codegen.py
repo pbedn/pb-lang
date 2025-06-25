@@ -1490,8 +1490,6 @@ class TestCodeGen(unittest.TestCase):
                 return_type="int",
                 body=[
                     VarDecl(
-                        "s",
-                        "set[Player]",
                         SetExpr(elements=[], elem_type="Player", inferred_type="set[Player]")
                     ),
                     ReturnStmt(Literal("0"))
