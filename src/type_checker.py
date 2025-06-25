@@ -138,6 +138,17 @@ def promote_numeric_types(left: str, right: str) -> str:
     right_index = PROMOTION_ORDER.index(right)
     return PROMOTION_ORDER[max(left_index, right_index)]
 
+def types_match(actual: str, expected: str) -> bool:
+    """Return True if ``actual`` is compatible with ``expected`` including simple
+    unions using ``|`` with ``None``."""
+    if "|" in expected:
+        options = [p.strip() for p in expected.split("|")]
+        return any(types_match(actual, opt) for opt in options)
+    if "|" in actual:
+        parts = [p.strip() for p in actual.split("|")]
+        return all(types_match(p, expected) for p in parts)
+    return actual == expected
+
 def is_assignable(from_type: str, to_type: str) -> bool:
     """
     Returns True if a value of from_type can be assigned to a variable of to_type.
@@ -319,7 +330,7 @@ class TypeChecker:
         else:
             actual = self.check_expr(decl.value, expected_type=declared)
 
-            if declared != actual:
+            if not types_match(actual, declared):
                 raise TypeError(f"Type mismatch in variable '{name}': declared {declared}, got {actual}")
 
         self.env[name] = declared
@@ -339,7 +350,7 @@ class TypeChecker:
         - index: argument position (1-based) for error reporting
         - context: name of function, method, or constructor for error messages
         """
-        if actual == expected:
+        if types_match(actual, expected):
             return
 
         if expected in self.known_classes and actual in self.known_classes:
@@ -694,7 +705,7 @@ class TypeChecker:
 
             for i, (arg, expected_type) in enumerate(zip(expr.args, param_types)):
                 actual_type = self.check_expr(arg)
-                if actual_type != expected_type:
+                if not types_match(actual_type, expected_type):
                     # Allow subclassing
                     if expected_type in self.known_classes and actual_type in self.known_classes:
                         if not self.is_subclass(actual_type, expected_type):
@@ -902,7 +913,7 @@ class TypeChecker:
         # if a value is returned: it must match the function’s declared return type
         else:
             actual_type = self.check_expr(stmt.value)
-            if actual_type != self.current_return_type:
+            if not types_match(actual_type, self.current_return_type):
                 value = stmt.value.raw if stmt.value is Literal else stmt
                 raise TypeError(f"Return type mismatch: expected `{self.current_return_type}`, got `{actual_type}` "
                                 f"in function `{getattr(parent, 'name', 'Unknown Func')}`")
@@ -1059,7 +1070,7 @@ class TypeChecker:
                         f"Class '{class_type}' has no instance attribute '{field_name}'")
             else:
                 expected = instance_fields[field_name]
-                if expected != value_type:
+                if not types_match(value_type, expected):
                     raise TypeError(f"Type mismatch for instance attribute '{field_name}': expected {expected}, got {value_type}")
 
             stmt.inferred_type = value_type

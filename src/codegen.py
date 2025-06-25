@@ -219,6 +219,13 @@ class CodeGen:
         """Map PB type to C99 type spelling."""
         if pb_type is None or pb_type == "None":
             return "void"
+
+        if "|" in pb_type:
+            parts = [p.strip() for p in pb_type.split("|") if p.strip() != "None"]
+            if len(parts) == 1:
+                pb_type = parts[0]
+            else:
+                raise NotImplementedError(f"C codegen does not support union type '{pb_type}'")
         tbl = {
             "int": "int64_t",
             "float": "double",

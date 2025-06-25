@@ -1383,6 +1383,26 @@ class TestGenericTypes(ParserTestCase):
         self.assertEqual(decl.name, "data")
         self.assertEqual(decl.declared_type, "list[dict[str, float]]")
 
+    def test_parse_optional_type(self):
+        code = (
+            "x: int | None = None\n"
+        )
+        parser = self.parse_tokens(code)
+        prog = parser.parse()
+        decl = prog.body[0]
+        self.assertEqual(decl.declared_type, "int | None")
+
+    def test_parse_optional_param_and_return(self):
+        code = (
+            "def foo(x: int | None) -> int | None:\n"
+            "    return x\n"
+        )
+        parser = self.parse_tokens(code)
+        prog = parser.parse()
+        fn = prog.body[0]
+        self.assertEqual(fn.params[0].type, "int | None")
+        self.assertEqual(fn.return_type, "int | None")
+
 
 class TestParseLists(ParserTestCase):
 

@@ -531,6 +531,21 @@ class TestTypeCheckerInternals(unittest.TestCase):
         with self.assertRaises(TypeError):
             self.tc.check_var_decl(decl)
 
+    def test_var_decl_optional_accepts_none(self):
+        decl = VarDecl(name="x", declared_type="int | None", value=Literal("None"))
+        self.tc.check_var_decl(decl)
+        self.assertEqual(self.tc.env["x"], "int | None")
+
+    def test_var_decl_optional_accepts_value(self):
+        decl = VarDecl(name="y", declared_type="int | None", value=Literal("1"))
+        self.tc.check_var_decl(decl)
+        self.assertEqual(self.tc.env["y"], "int | None")
+
+    def test_var_decl_optional_rejects_wrong(self):
+        decl = VarDecl(name="z", declared_type="int | None", value=StringLiteral("bad"))
+        with self.assertRaises(TypeError):
+            self.tc.check_var_decl(decl)
+
     def test_dict_expr_valid(self):
         expr = DictExpr(
             keys=[Literal('"a"'), Literal('"b"')],

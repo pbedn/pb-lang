@@ -939,6 +939,11 @@ class Parser:
             self.expect(TokenType.RBRACKET)
             type_str += "[" + ", ".join(args) + "]"
 
+        # Optional union with None using "|" syntax
+        while self.match(TokenType.PIPE):
+            rhs = self.parse_type()
+            type_str += " | " + rhs
+
         return type_str
 
     def parse_class_def(self) -> ClassDef:
