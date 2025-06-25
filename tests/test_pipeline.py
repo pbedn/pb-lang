@@ -247,6 +247,20 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn('bool x = list_bool_get(&flags, 0);', c_code)
         self.assertIn('pb_print_bool(x);', c_code)
 
+    def test_empty_list_assignment_pipeline(self):
+        code = (
+            "def main() -> int:\n"
+            "    b: list[int] = []\n"
+            "    b[0] = 1\n"
+            "    print(b)\n"
+            "    return 0\n"
+        )
+        header, c_code = self.compile_pipeline(code)
+        self.assertIn('list_int_init(&__tmp_list_', c_code)
+        self.assertIn('List_int b = __tmp_list_', c_code)
+        self.assertIn('list_int_set(&b, 0, 1);', c_code)
+        self.assertIn('list_int_print(&b);', c_code)
+
     def test_set_literal(self):
         code = (
             "def main() -> int:\n"
