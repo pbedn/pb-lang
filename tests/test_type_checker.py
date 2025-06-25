@@ -781,6 +781,8 @@ class TestTypeCheckerInternals(unittest.TestCase):
 
         # Additionally: ensure sub-expression is type-checked
         self.assertEqual(lit.parts[1].expr.inferred_type, "int")
+        # And the FStringExpr itself gets the propagated type
+        self.assertEqual(lit.parts[1].inferred_type, "int")
 
     def test_print_int(self):
         call = CallExpr(func=Identifier("print"), args=[Literal("42")])

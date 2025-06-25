@@ -434,6 +434,7 @@ class TypeChecker:
             for part in expr.parts:
                 if isinstance(part, FStringExpr):
                     self.check_expr(part.expr)
+                    part.inferred_type = getattr(part.expr, "inferred_type", None)
             expr.inferred_type = "str"
             return "str"
 

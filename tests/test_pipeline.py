@@ -865,8 +865,15 @@ class TestCodeGenFromSource(unittest.TestCase):
 
             h, c, *_ = compile_code_to_c_and_h(code, module_name="imports_extended", pb_path=imports_path)
 
-            self.assertIn('#include "mathlib.h"', c)
-            self.assertIn('#include "test_import.mathlib2.h"', c)
+            # Includes should only appear once despite multiple import forms
+            self.assertEqual(c.count('#include "mathlib.h"'), 1)
+            self.assertEqual(c.count('#include "test_import.mathlib2.h"'), 1)
+
+            # Alias macros should be generated for imported modules/symbols
+            self.assertIn('#define m1 mathlib', c)
+            self.assertIn('#define mathlib2 test_import.mathlib2', c)
+            self.assertIn('#define m2 test_import.mathlib2', c)
+            self.assertIn('#define pi2 PI', c)
 
 
 if __name__ == "__main__":
