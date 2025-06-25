@@ -1243,7 +1243,7 @@ class TestCodeGen(unittest.TestCase):
                     )),
                     AssignStmt(
                         target=IndexExpr(Identifier("arr", inferred_type="list[str]"), Literal("0")),
-                        value=Literal("c"),
+                        value=StringLiteral("c"),
                         inferred_type="str"
                     ),
                     ExprStmt(CallExpr(Identifier("print"), [Identifier("arr", inferred_type="list[str]")])),
@@ -1256,7 +1256,7 @@ class TestCodeGen(unittest.TestCase):
         assert_contains_all(self, output, [
             'const char * __tmp_list_1[] = {"a", "b"};',
             "List_str arr = (List_str){ .len=2, .data=__tmp_list_1 };",
-            "list_str_set(&arr, 0, c);",
+            "list_str_set(&arr, 0, \"c\");",
             "list_str_print(&arr);"
         ])
 
@@ -1558,6 +1558,72 @@ class TestCodeGen(unittest.TestCase):
         cg.generate(prog)
         macros = cg.generate_types_header()
         self.assertIn("PB_DECLARE_DICT(Item, struct Item *)", macros)
+
+    def test_list_conversion_functions(self):
+        prog = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("arr", "list[int]", ListExpr(
+                        elements=[Literal("1"), Literal("2"), Literal("3")],
+                        elem_type="int",
+                        inferred_type="list[int]"
+                    )),
+                    AssignStmt(
+                        target=IndexExpr(Identifier("arr", inferred_type="list[int]"), Literal("0")),
+                        value=CallExpr(Identifier("int"), [Literal("4.5")]),
+                        inferred_type="int"
+                    ),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("arr", inferred_type="list[int]")])),
+
+                    VarDecl("arr2", "list[str]", ListExpr(
+                        elements=[StringLiteral("1"), StringLiteral("2"), StringLiteral("3")],
+                        elem_type="str",
+                        inferred_type="list[str]"
+                    )),
+                    AssignStmt(
+                        target=IndexExpr(Identifier("arr2", inferred_type="list[str]"), Literal("0")),
+                        value=CallExpr(Identifier("str"), [Literal("4")]),
+                        inferred_type="str"
+                    ),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("arr2", inferred_type="list[str]")])),
+
+                    VarDecl("arr3", "list[float]", ListExpr(
+                        elements=[Literal("1.1"), Literal("2.2"), Literal("3.3")],
+                        elem_type="float",
+                        inferred_type="list[float]"
+                    )),
+                    AssignStmt(
+                        target=IndexExpr(Identifier("arr3", inferred_type="list[float]"), Literal("0")),
+                        value=CallExpr(Identifier("float"), [Literal("4")]),
+                        inferred_type="float"
+                    ),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("arr3", inferred_type="list[float]")])),
+
+                    VarDecl("arr4", "list[bool]", ListExpr(
+                        elements=[Literal("True"), Literal("False")],
+                        elem_type="bool",
+                        inferred_type="list[bool]"
+                    )),
+                    AssignStmt(
+                        target=IndexExpr(Identifier("arr4", inferred_type="list[bool]"), Literal("0")),
+                        value=CallExpr(Identifier("bool"), [Literal("1")]),
+                        inferred_type="bool"
+                    ),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("arr4", inferred_type="list[bool]")])),
+                    ReturnStmt(Literal("0"))
+                ]
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "list_int_set(&arr, 0, (int64_t)(4.5));",
+            "list_str_set(&arr2, 0, pb_format_int(4));",
+            "list_float_set(&arr3, 0, (double)(4));",
+            "list_bool_set(&arr4, 0, (1 != 0));",
+        ])
 
     def test_global_class_instances_codegen(self):
         prog = Program(body=[
