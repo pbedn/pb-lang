@@ -18,3 +18,6 @@ def main():
     print(f"player.hp: {p.hp}")
     print(f"player get_name: {p.get_name()}")
     print(f"Player.species: {Player.species}")
+
+if __name__ == "__main__":
+    main()

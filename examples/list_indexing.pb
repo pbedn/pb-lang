@@ -1,4 +1,3 @@
-
 def main():
     arr_int: list[int] = [100]
     print(arr_int[0])
@@ -26,3 +25,6 @@ def main():
 
     arr_str2: list[str] = ["some string", 'word', 'L']
     print(arr_str2)
+
+if __name__ == "__main__":
+    main()

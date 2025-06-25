@@ -14,3 +14,6 @@ def main():
     z: int = add(x, y)
     print_int(z)
     add_in_place(x, y)
+
+if __name__ == "__main__":
+    main()

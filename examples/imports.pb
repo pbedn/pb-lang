@@ -9,3 +9,6 @@ def main():
     print(mathlib.PI)
 
     utils.helper()
+
+if __name__ == "__main__":
+    main()

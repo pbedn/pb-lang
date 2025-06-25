@@ -1,13 +1,3 @@
-class Empty:
-    pass
-
-class ClassWithUserDefinedAttr:
-    uda: Empty = Empty()
-
-e: Empty = Empty()
-uda: ClassWithUserDefinedAttr = ClassWithUserDefinedAttr()
-
-# ────────────────────────────────────────────────────────────────
 class Player:
     name: str = "P"
     BASE_HP: int = 150
@@ -59,7 +49,6 @@ def main():
     print(a.mana)              # 200  (field in level-1 base)
     print(a.hp)                # 150  (field in level-2 base → m->base.base.hp in C)
     print(a.total_power())     # 350
-
 
 if __name__ == "__main__":
     main()

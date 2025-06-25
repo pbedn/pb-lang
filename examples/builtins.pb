@@ -27,18 +27,21 @@ def main():
     print(f"z: {z}, z_bool: {z_bool}")
 
     # List int conversions
-    # arr: list[int] = [1, 2, 3]
-    # arr[0] = int(4.5)
-    # print(arr)
+    arr: list[int] = [1, 2, 3]
+    arr[0] = int(4.5)
+    print(arr)
 
-    # arr: list[str] = ["1", "2", "3"]
-    # arr[0] = str(4)
-    # print(arr)
-    #
-    # arr: list[float] = [1.1, 2.2, 3.3]
-    # arr[0] = float(4)
-    # print(arr)
-    #
-    # arr: list[bool] = [True, False]
-    # arr[0] = bool(1)
-    # print(arr)
+    arr2: list[str] = ["1", "2", "3"]
+    arr2[0] = str(4)
+    print(arr2)
+    
+    arr3: list[float] = [1.1, 2.2, 3.3]
+    arr3[0] = float(4)
+    print(arr3)
+    
+    arr4: list[bool] = [True, False]
+    arr4[0] = bool(1)
+    print(arr4)
+
+if __name__ == "__main__":
+    main()

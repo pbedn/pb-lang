@@ -6,3 +6,6 @@ def main():
     b: int = increment(5, 3)
     print(a)
     print(b)
+
+if __name__ == "__main__":
+    main()
