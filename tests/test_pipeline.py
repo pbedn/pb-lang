@@ -266,6 +266,20 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn('bool x = list_bool_get(&flags, 0);', c_code)
         self.assertIn('pb_print_bool(x);', c_code)
 
+    def test_empty_list_assignment_pipeline(self):
+        code = (
+            "def main() -> int:\n"
+            "    b: list[int] = []\n"
+            "    b[0] = 1\n"
+            "    print(b)\n"
+            "    return 0\n"
+        )
+        header, c_code = self.compile_pipeline(code)
+        self.assertIn('list_int_init(&__tmp_list_', c_code)
+        self.assertIn('List_int b = __tmp_list_', c_code)
+        self.assertIn('list_int_set(&b, 0, 1);', c_code)
+        self.assertIn('list_int_print(&b);', c_code)
+
     def test_set_literal(self):
         code = (
             "def main() -> int:\n"
@@ -922,6 +936,20 @@ class TestCodeGenFromSource(unittest.TestCase):
             self.assertIn('#define mathlib2 test_import.mathlib2', c)
             self.assertIn('#define m2 test_import.mathlib2', c)
             self.assertIn('#define pi2 PI', c)
+
+    def test_numeric_literals_with_underscores(self):
+        code = (
+            "def main() -> int:\n"
+            "    n: int = 1_0\n"
+            "    total: int = 0\n"
+            "    for i in range(n):\n"
+            "        total += i\n"
+            "    print(total)\n"
+            "    return 0\n"
+        )
+        h, c = self.compile_pipeline(code)
+        self.assertIn('int64_t n = 10;', c)
+        self.assertIn('for (int64_t i = 0; i < n; ++i)', c)
 
 
 if __name__ == "__main__":
