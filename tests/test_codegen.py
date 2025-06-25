@@ -117,6 +117,13 @@ class TestCodeGen(unittest.TestCase):
             "pb_print_int(result);",
             "return result;"
         ])
+    def test_numeric_literal_with_underscores(self):
+        prog = Program(body=[
+            VarDecl(name="x", declared_type="int", value=Literal(raw="1_234"))
+        ])
+        output = codegen_output(prog)
+        self.assertIn("int64_t x = 1234;", output)
+
 
     def test_class_with_method(self):
         prog = Program(body=[
@@ -456,10 +463,12 @@ class TestCodeGen(unittest.TestCase):
             "List_bool arr = (List_bool){ .len=2, .data=__tmp_list_1 };",
             "const char * __tmp_list_2[] = {\"true\", \"true\"};",
             "List_str arr2 = (List_str){ .len=2, .data=__tmp_list_2 };",
-            "int64_t __tmp_list_3[1] = {0};",
-            "List_int arr3 = (List_int){ .len=0, .data=__tmp_list_3 };",
-            "const char * __tmp_list_4[1] = {0};",
-            "List_str arr4 = (List_str){ .len=0, .data=__tmp_list_4 };",
+            "List_int __tmp_list_3;",
+            "list_int_init(&__tmp_list_3);",
+            "List_int arr3 = __tmp_list_3;",
+            "List_str __tmp_list_4;",
+            "list_str_init(&__tmp_list_4);",
+            "List_str arr4 = __tmp_list_4;",
             "pb_print_bool(list_bool_get(&arr, 0));",
             "pb_print_str(list_str_get(&arr2, 1));",
             "return 0;"
@@ -1243,11 +1252,51 @@ class TestCodeGen(unittest.TestCase):
             )
         ])
         output = codegen_output(prog)
+
         assert_contains_all(self, output, [
             'const char * __tmp_list_1[] = {"a", "b"};',
             "List_str arr = (List_str){ .len=2, .data=__tmp_list_1 };",
             "list_str_set(&arr, 0, \"c\");",
             "list_str_print(&arr);"
+        ])
+
+    def test_empty_list_assignment(self):
+        prog = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("a", "list[int]", ListExpr(elements=[Literal("0")], elem_type="int", inferred_type="list[int]")),
+                    AssignStmt(target=IndexExpr(Identifier("a", inferred_type="list[int]"), Literal("0")), value=Literal("10"), inferred_type="int"),
+                    VarDecl("x", "int", IndexExpr(Identifier("a", inferred_type="list[int]"), Literal("0", inferred_type="int"))),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("a", inferred_type="list[int]")])),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("x", inferred_type="int")])),
+                    VarDecl("b", "list[int]", ListExpr(elements=[], elem_type="int", inferred_type="list[int]")),
+                    AssignStmt(target=IndexExpr(Identifier("b", inferred_type="list[int]"), Literal("0")), value=Literal("1"), inferred_type="int"),
+                    VarDecl("y", "int", IndexExpr(Identifier("b", inferred_type="list[int]"), Literal("0", inferred_type="int"))),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("b", inferred_type="list[int]")])),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("y", inferred_type="int")])),
+                    ReturnStmt(Literal("0"))
+                ],
+                globals_declared=None
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "int64_t __tmp_list_1[] = {0};",
+            "List_int a = (List_int){ .len=1, .data=__tmp_list_1 };",
+            "list_int_set(&a, 0, 10);",
+            "int64_t x = list_int_get(&a, 0);",
+            "list_int_print(&a);",
+            "pb_print_int(x);",
+            "List_int __tmp_list_2;",
+            "list_int_init(&__tmp_list_2);",
+            "List_int b = __tmp_list_2;",
+            "list_int_set(&b, 0, 1);",
+            "int64_t y = list_int_get(&b, 0);",
+            "list_int_print(&b);",
+            "pb_print_int(y);",
         ])
 
     def test_int_to_float_conversion(self):
@@ -1509,6 +1558,27 @@ class TestCodeGen(unittest.TestCase):
         cg.generate(prog)
         macros = cg.generate_types_header()
         self.assertIn("PB_DECLARE_DICT(Item, struct Item *)", macros)
+
+    def test_global_class_instances_codegen(self):
+        prog = Program(body=[
+            ClassDef(name="Empty", base=None, fields=[], methods=[]),
+            ClassDef(
+                name="ClassWithUserDefinedAttr",
+                base=None,
+                fields=[VarDecl("uda", "Empty", CallExpr(Identifier("Empty"), []))],
+                methods=[]
+            ),
+            VarDecl("e", "Empty", CallExpr(Identifier("Empty"), [])),
+            VarDecl("uda", "ClassWithUserDefinedAttr", CallExpr(Identifier("ClassWithUserDefinedAttr"), [])),
+            FunctionDef(name="main", params=[], body=[ReturnStmt(Literal("0"))], return_type="int", globals_declared=None)
+        ])
+
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "__attribute__((constructor)) static void main__init_globals",
+            "struct Empty __tmp_empty_",
+            "struct ClassWithUserDefinedAttr __tmp_classwithuserdefinedattr_",
+        ])
 
 
 if __name__ == "__main__":

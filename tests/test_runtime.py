@@ -214,6 +214,28 @@ class TestPipelineRuntime(unittest.TestCase):
         # Assertions for arr_bool
         self.assertEqual(lines[7], "[False]")          # arr_bool after assignment
 
+    def test_empty_list_assignment_runtime(self):
+        code = (
+            "def main() -> int:\n"
+            "    a: list[int] = [0]\n"
+            "    a[0] = 10\n"
+            "    x: int = a[0]\n"
+            "    print(a)\n"
+            "    print(x)\n"
+            "    b: list[int] = []\n"
+            "    b[0] = 1\n"
+            "    y: int = b[0]\n"
+            "    print(b)\n"
+            "    print(y)\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        lines = output.strip().splitlines()
+        self.assertEqual(lines[0], "[10]")
+        self.assertEqual(lines[1], "10")
+        self.assertEqual(lines[2], "[1]")
+        self.assertEqual(lines[3], "1")
+
     def test_set_literal_runtime(self):
         code = (
             "def main() -> int:\n"
@@ -487,6 +509,24 @@ class TestPipelineRuntime(unittest.TestCase):
         output = compile_and_run(code)
         self.assertEqual(output.strip(), "5")
 
+    def test_global_class_instances_runtime(self):
+        code = (
+            "class Empty:\n"
+            "    pass\n"
+            "\n"
+            "class ClassWithUserDefinedAttr:\n"
+            "    uda: Empty = Empty()\n"
+            "\n"
+            "e: Empty = Empty()\n"
+            "uda: ClassWithUserDefinedAttr = ClassWithUserDefinedAttr()\n"
+            "\n"
+            "def main() -> int:\n"
+            "    print(0)\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(output.strip(), "0")
+
     def test_import_mathlib_add(self):
         modules = {
             "mathlib": (
@@ -630,6 +670,20 @@ class TestImportUtilsHelper(unittest.TestCase):
         }
         output = _compile_and_run_modules(modules)
         self.assertEqual(output.splitlines(), expected)
+
+class TestNumericLiteralUnderscoreRuntime(unittest.TestCase):
+    def test_numeric_literal_underscores_runtime(self):
+        code = (
+            "def main() -> int:\n"
+            "    n: int = 1_0\n"
+            "    total: int = 0\n"
+            "    for i in range(n):\n"
+            "        total += i\n"
+            "    print(total)\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(output.strip(), "45")
 
 
 if __name__ == "__main__":
