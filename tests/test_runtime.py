@@ -420,6 +420,22 @@ class TestPipelineRuntime(unittest.TestCase):
         self.assertEqual(lines[0], "6")
         self.assertEqual(lines[1], "8")
 
+    def test_if_name_main_guard_runtime(self):
+        code = (
+            "x: int = 1\n"
+            "def main():\n"
+            "    print(f\"{x * 2.0}\")\n"
+            "    print(f\"{x * False}\")\n"
+            "\n"
+            "def init():\n"
+            "    print(\"init runs\")\n"
+            "\n"
+            "if __name__ == \"__main__\":\n"
+            "    init()\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(output.strip().splitlines(), ["2.0", "0"])
+
     def test_classes(self):
         code = (
             "# Class can be empty\n"

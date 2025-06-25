@@ -125,16 +125,38 @@ class Parser:
                 self.advance()
                 continue
             # print(f"[DEBUG]: Peek next token: {self.peek()}")
+
             stmt = self.parse_statement()
             if isinstance(stmt, ExprStmt):
-                raise ParserError(f"Function call `{stmt.expr.func.name}` not allowed in global scope.")
-            if isinstance(stmt, (
-                IfStmt, WhileStmt, ForStmt, TryExceptStmt, RaiseStmt, AssertStmt, PassStmt)
+                raise ParserError(
+                    f"Function call `{stmt.expr.func.name}` not allowed in global scope."
+                )
+
+            if isinstance(
+                stmt,
+                (WhileStmt, ForStmt, TryExceptStmt, RaiseStmt, AssertStmt, PassStmt),
             ):
-                raise ParserError(f"Statement `{stmt.__class__.__name__[:-4]}` not allowed in global scope.")
+                raise ParserError(
+                    f"Statement `{stmt.__class__.__name__[:-4]}` not allowed in global scope."
+                )
+
+            if isinstance(stmt, IfStmt):
+                if (
+                    len(stmt.branches) == 1
+                    and isinstance(stmt.branches[0].condition, BinOp)
+                    and stmt.branches[0].condition.op == "=="
+                    and isinstance(stmt.branches[0].condition.left, Identifier)
+                    and stmt.branches[0].condition.left.name == "__name__"
+                    and isinstance(stmt.branches[0].condition.right, StringLiteral)
+                    and stmt.branches[0].condition.right.value == "__main__"
+                ):
+                    # Ignore this Python-style entry point guard.
+                    continue
+                raise ParserError(
+                    f"Statement `{stmt.__class__.__name__[:-4]}` not allowed in global scope."
+                )
 
             body.append(stmt)
-
         return Program(body)
 
     # ───────────────────────── expressions ─────────────────────────

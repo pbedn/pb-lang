@@ -1559,6 +1559,43 @@ class TestCodeGen(unittest.TestCase):
         macros = cg.generate_types_header()
         self.assertIn("PB_DECLARE_DICT(Item, struct Item *)", macros)
 
+    def test_if_name_main_guard_codegen(self):
+        prog = Program(body=[
+            VarDecl("x", "int", Literal("1")),
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="None",
+                body=[
+                    ExprStmt(
+                        CallExpr(
+                            Identifier("print"),
+                            [FStringLiteral(parts=[FStringExpr(BinOp(Identifier("x"), "*", Literal("2.0")))])],
+                        )
+                    ),
+                    ExprStmt(
+                        CallExpr(
+                            Identifier("print"),
+                            [FStringLiteral(parts=[FStringExpr(BinOp(Identifier("x"), "*", Literal("False")))])],
+                        )
+                    ),
+                ],
+                globals_declared=None,
+            ),
+            FunctionDef(
+                name="init",
+                params=[],
+                return_type="None",
+                body=[ExprStmt(CallExpr(Identifier("print"), [StringLiteral("init runs")]))],
+                globals_declared=None,
+            ),
+        ])
+
+        output = codegen_output(prog)
+        self.assertIn('int64_t x = 1;', output)
+        self.assertIn('pb_print_str((snprintf(__fbuf, 256, "%s", pb_format_double((x * 2.0))), __fbuf));', output)
+        self.assertIn('pb_print_str((snprintf(__fbuf, 256, "%lld", (x * false)), __fbuf));', output)
+
     def test_global_class_instances_codegen(self):
         prog = Program(body=[
             ClassDef(name="Empty", base=None, fields=[], methods=[]),
