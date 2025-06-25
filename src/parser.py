@@ -395,59 +395,57 @@ class Parser:
         return left
 
     def parse_comparison(self) -> Expr:
-        """Handle comparison expressions
+        """Handle comparison expressions, including chaining.
 
-        Supports single comparisons only (no chaining).
-        
-        a == b
-        a != b
-        a < b
-        a is b
+        Examples::
 
-        Grammar fragment:
-        Comparison ::= ArithExpr [ ( \"==\" | \"!=\" | \"<\" | \"<=\" | \">\" | \">=\" | \"is\" ) ArithExpr ]
-        AST target: BinOp(left, op, right)
+            a == b
+            a != b
+            a < b
+            a is b
+            1 < x < 10
+
+        Grammar fragment::
+
+            Comparison ::= ArithExpr ( ("==" | "!=" | "<" | "<=" | ">" | ">=" | "is" | "is not") ArithExpr )*
+
+        AST target: nested ``BinOp`` expressions combined with ``and`` for chained comparisons.
         """
         left = self.parse_arith_expr()
 
-        # special-case "is not" (two tokens)
-        if self.current().type == TokenType.IS and self.peek().type == TokenType.NOT:
-            self.advance()            # 'is'
-            self.advance()            # 'not'
-            right = self.parse_arith_expr()
+        ops: list[str] = []
+        comparators: list[Expr] = [left]
 
-            # Reject chained comparisons (a < b < c)
-            if self.current().type in (
-                TokenType.EQ, TokenType.NOTEQ, TokenType.LT, TokenType.LTE,
-                TokenType.GT, TokenType.GTE, TokenType.IS
+        while True:
+            if self.current().type == TokenType.IS and self.peek().type == TokenType.NOT:
+                self.advance()  # 'is'
+                self.advance()  # 'not'
+                ops.append("is not")
+            elif self.current().type in (
+                TokenType.EQ,
+                TokenType.NOTEQ,
+                TokenType.LT,
+                TokenType.LTE,
+                TokenType.GT,
+                TokenType.GTE,
+                TokenType.IS,
             ):
-                raise ParserError("chained comparisons are not supported "
-                                  f"at {self.current().line},{self.current().column}")
-            return BinOp(left, "is not", right)
+                op_token = self.current()
+                self.advance()
+                ops.append(op_token.value)
+            else:
+                break
 
-        if self.current().type in (
-            TokenType.EQ,
-            TokenType.NOTEQ,
-            TokenType.LT,
-            TokenType.LTE,
-            TokenType.GT,
-            TokenType.GTE,
-            TokenType.IS,
-        ):
-            op_token = self.current()
-            self.advance()
-            right = self.parse_arith_expr()
+            comparators.append(self.parse_arith_expr())
 
-            # Reject chained comparisons (a < b < c)
-            if self.current().type in (
-                TokenType.EQ, TokenType.NOTEQ, TokenType.LT, TokenType.LTE,
-                TokenType.GT, TokenType.GTE, TokenType.IS, TokenType.NOT
-            ):
-                raise ParserError("chained comparisons are not supported "
-                                  f"at {self.current().line},{self.current().column}")
-            return BinOp(left, op_token.value, right)
+        if not ops:
+            return left
 
-        return left
+        expr = BinOp(comparators[0], ops[0], comparators[1])
+        for i in range(1, len(ops)):
+            expr = BinOp(expr, "and", BinOp(comparators[i], ops[i], comparators[i + 1]))
+
+        return expr
 
     def parse_not_expr(self) -> Expr:
         """Handle logical negation
