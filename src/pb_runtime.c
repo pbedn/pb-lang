@@ -29,6 +29,32 @@ const char *pb_format_double(double x) {
     return bufs[i];
 }
 
+static char *pb_strdup(const char *s)
+{
+    size_t n = strlen(s) + 1;
+    char *p = malloc(n);
+    if (!p) pb_fail("Out of memory in pb_strdup");
+    memcpy(p, s, n);
+    return p;
+}
+
+char *pb_int_to_str(int64_t x)
+{
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%" PRId64, x);
+    return pb_strdup(buf);
+}
+
+char *pb_float_to_str(double x)
+{
+    return pb_strdup(pb_format_double(x));
+}
+
+char *pb_bool_to_str(bool b)
+{
+    return pb_strdup(b ? "True" : "False");
+}
+
 
 /* ------------ ERROR HANDLING ------------- */
 
@@ -219,7 +245,7 @@ void pb_index_error(const char *type, const char *op, int64_t index, int64_t len
             index, type, len
         );
     }
-    pb_raise_obj("IndexError", strdup(buf));
+    pb_raise_obj("IndexError", pb_strdup(buf));
 }
 
 /* ------------ LIST ------------- */

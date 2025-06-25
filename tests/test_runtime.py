@@ -291,6 +291,30 @@ class TestPipelineRuntime(unittest.TestCase):
         self.assertEqual(lines[5], "y: 1.0, y_bool: True")    # y to bool
         self.assertEqual(lines[6], "z: 0.0, z_bool: False")    # z to bool
 
+    def test_list_conversions_runtime(self):
+        code = (
+            "def main() -> int:\n"
+            "    arr: list[int] = [1, 2, 3]\n"
+            "    arr[0] = int(4.5)\n"
+            "    print(arr)\n"
+            "    arr2: list[str] = ['1', '2', '3']\n"
+            "    arr2[0] = str(4)\n"
+            "    print(arr2)\n"
+            "    arr3: list[float] = [1.1, 2.2, 3.3]\n"
+            "    arr3[0] = float(4)\n"
+            "    print(arr3)\n"
+            "    arr4: list[bool] = [True, False]\n"
+            "    arr4[0] = bool(1)\n"
+            "    print(arr4)\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        lines = output.strip().splitlines()
+        self.assertEqual(lines[0], "[4, 2, 3]")
+        self.assertEqual(lines[1], "['4', '2', '3']")
+        self.assertEqual(lines[2], "[4, 2.2, 3.3]")
+        self.assertEqual(lines[3], "[True, False]")
+
     def test_fstring_expression_variants(self):
         code = (
             "class Player:\n"
