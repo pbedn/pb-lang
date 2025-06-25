@@ -1168,8 +1168,9 @@ class CodeGen:
         list_c_type = self._c_type(e.inferred_type)
 
         if not e.elements:
-            self._emit(f"{elem_c_type} {buf_name}[1] = {{0}};")
-            return f"({list_c_type}){{ .len=0, .data={buf_name} }}"
+            self._emit(f"{list_c_type} {buf_name};")
+            self._emit(f"list_{e.elem_type}_init(&{buf_name});")
+            return buf_name
         else:
             elems = ", ".join(self._expr(x) for x in e.elements)
             self._emit(f"{elem_c_type} {buf_name}[] = {{{elems}}};")
