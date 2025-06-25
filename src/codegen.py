@@ -882,7 +882,10 @@ class CodeGen:
     def _generate_Literal(self, e: Literal) -> str:
         if e.raw == "True": return "true"
         if e.raw == "False": return "false"
-        return e.raw
+        raw = e.raw
+        if raw and raw[0].isdigit():
+            raw = raw.replace("_", "")
+        return raw
 
     def _c_escape(self, text: str) -> str:
         """Escape a Python string for inclusion in C source."""

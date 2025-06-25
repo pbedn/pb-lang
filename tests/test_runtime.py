@@ -629,6 +629,20 @@ class TestImportUtilsHelper(unittest.TestCase):
         output = _compile_and_run_modules(modules)
         self.assertEqual(output.splitlines(), expected)
 
+class TestNumericLiteralUnderscoreRuntime(unittest.TestCase):
+    def test_numeric_literal_underscores_runtime(self):
+        code = (
+            "def main() -> int:\n"
+            "    n: int = 1_0\n"
+            "    total: int = 0\n"
+            "    for i in range(n):\n"
+            "        total += i\n"
+            "    print(total)\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(output.strip(), "45")
+
 
 if __name__ == "__main__":
     unittest.main()
