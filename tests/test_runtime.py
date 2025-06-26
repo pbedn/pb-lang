@@ -104,6 +104,80 @@ def compile_modules_and_run_main(modules: dict[str, str]) -> str:
     return _compile_and_run_modules(modules)
 
 
+class TestRefLangOutput(unittest.TestCase):
+    """Runtime test for the reference program."""
+
+    def test_ref_lang_runtime_output(self):
+        base = os.path.join(os.path.dirname(__file__), "..", "ref")
+        with open(os.path.join(base, "lang.pb")) as f:
+            lang_src = f.read()
+        with open(os.path.join(base, "lang_expected_output.out")) as f:
+            expected_lines = f.read().splitlines()
+
+        output = _compile_and_run_modules({"lang": lang_src})
+
+        def safe_eval(line):
+            try:
+                return ast.literal_eval(line)
+            except Exception:
+                return line
+
+        actual_lines = [safe_eval(line) for line in output.splitlines()]
+        expected_lines = [safe_eval(line) for line in expected_lines]
+
+        self.assertEqual(actual_lines, expected_lines)
+
+
+class TestImportUtilsHelper(unittest.TestCase):
+    """Runtime test for the imports."""
+
+    def test_import_utils_runtime_output(self):
+        base = os.path.join(os.path.dirname(__file__), "samples")
+        with open(os.path.join(base, "imports.pb")) as f:
+            imports_src = f.read()
+        with open(os.path.join(base, "mathlib.pb")) as f:
+            mathlib_src = f.read()
+        with open(os.path.join(base, "utils.pb")) as f:
+            utils_src = f.read()
+        expected_lines = [
+            "9", "9", "3.1415",
+            "Runinng helper from imported utils.pb file"
+        ]
+        output = _compile_and_run_modules({"imports": imports_src, "mathlib": mathlib_src, "utils": utils_src})
+        self.assertEqual(output.splitlines(), expected_lines)
+
+    def test_extended_imports_runtime_output(self):
+        base = os.path.join(os.path.dirname(__file__), "samples")
+        with open(os.path.join(base, "imports_extended.pb")) as f:
+            imports_src = f.read()
+        with open(os.path.join(base, "mathlib.pb")) as f:
+            mathlib_src = f.read()
+        with open(os.path.join(base, "utils.pb")) as f:
+            utils_src = f.read()
+        with open(os.path.join(base, "test_import", "mathlib2.pb")) as f:
+            mathlib2_src = f.read()
+        expected = [
+            "9",
+            "9",
+            "import mathlib: 3.1415",
+            "import mathlib as m1: 3.1415",
+            "import test_import.mathlib2: 3.1415",
+            "from test_import import mathlib2: 3.1415",
+            "from test_import import mathlib2: 3.1415",
+            "from test_import.mathlib2 import PI: 3.1415",
+            "from test_import.mathlib2 import PI as pi: 3.1415",
+            "Runinng helper from imported utils.pb file",
+        ]
+        modules = {
+            "imports_extended": imports_src,
+            "mathlib": mathlib_src,
+            "utils": utils_src,
+            "test_import.mathlib2": mathlib2_src,
+        }
+        output = _compile_and_run_modules(modules)
+        self.assertEqual(output.splitlines(), expected)
+
+
 class TestPipelineRuntime(unittest.TestCase):
 
     def test_global_runtime_update(self):
@@ -667,81 +741,16 @@ class TestPipelineRuntime(unittest.TestCase):
         self.assertEqual(lines[1], "hello")
         self.assertEqual(lines[2], "    world")
 
+    def test_len_builtin_runtime(self):
+        code = (
+            "def main() -> int:\n"
+            "    arr: list[int] = [1, 2, 3]\n"
+            "    print(len(arr))\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(output.strip(), "3")
 
-class TestRefLangOutput(unittest.TestCase):
-    """Runtime test for the reference program."""
-
-    def test_ref_lang_runtime_output(self):
-        base = os.path.join(os.path.dirname(__file__), "..", "ref")
-        with open(os.path.join(base, "lang.pb")) as f:
-            lang_src = f.read()
-        with open(os.path.join(base, "lang_expected_output.out")) as f:
-            expected_lines = f.read().splitlines()
-
-        output = _compile_and_run_modules({"lang": lang_src})
-
-        def safe_eval(line):
-            try:
-                return ast.literal_eval(line)
-            except Exception:
-                return line
-
-        actual_lines = [safe_eval(line) for line in output.splitlines()]
-        expected_lines = [safe_eval(line) for line in expected_lines]
-
-        self.assertEqual(actual_lines, expected_lines)
-
-
-class TestImportUtilsHelper(unittest.TestCase):
-    """Runtime test for the imports."""
-
-    def test_import_utils_runtime_output(self):
-        base = os.path.join(os.path.dirname(__file__), "samples")
-        with open(os.path.join(base, "imports.pb")) as f:
-            imports_src = f.read()
-        with open(os.path.join(base, "mathlib.pb")) as f:
-            mathlib_src = f.read()
-        with open(os.path.join(base, "utils.pb")) as f:
-            utils_src = f.read()
-        expected_lines = [
-            "9", "9", "3.1415",
-            "Runinng helper from imported utils.pb file"
-        ]
-        output = _compile_and_run_modules({"imports": imports_src, "mathlib": mathlib_src, "utils": utils_src})
-        self.assertEqual(output.splitlines(), expected_lines)
-
-    def test_extended_imports_runtime_output(self):
-        base = os.path.join(os.path.dirname(__file__), "samples")
-        with open(os.path.join(base, "imports_extended.pb")) as f:
-            imports_src = f.read()
-        with open(os.path.join(base, "mathlib.pb")) as f:
-            mathlib_src = f.read()
-        with open(os.path.join(base, "utils.pb")) as f:
-            utils_src = f.read()
-        with open(os.path.join(base, "test_import", "mathlib2.pb")) as f:
-            mathlib2_src = f.read()
-        expected = [
-            "9",
-            "9",
-            "import mathlib: 3.1415",
-            "import mathlib as m1: 3.1415",
-            "import test_import.mathlib2: 3.1415",
-            "from test_import import mathlib2: 3.1415",
-            "from test_import import mathlib2: 3.1415",
-            "from test_import.mathlib2 import PI: 3.1415",
-            "from test_import.mathlib2 import PI as pi: 3.1415",
-            "Runinng helper from imported utils.pb file",
-        ]
-        modules = {
-            "imports_extended": imports_src,
-            "mathlib": mathlib_src,
-            "utils": utils_src,
-            "test_import.mathlib2": mathlib2_src,
-        }
-        output = _compile_and_run_modules(modules)
-        self.assertEqual(output.splitlines(), expected)
-
-class TestNumericLiteralUnderscoreRuntime(unittest.TestCase):
     def test_numeric_literal_underscores_runtime(self):
         code = (
             "def main() -> int:\n"

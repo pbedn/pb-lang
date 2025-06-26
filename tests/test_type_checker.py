@@ -2621,3 +2621,11 @@ class TestTypeCheckerProgramLevel(unittest.TestCase):
             ExprStmt(CallExpr(AttributeExpr(Identifier("f"), "close"), []))
         ])
         TypeChecker().check(prog)
+
+    def test_len_builtin(self):
+        prog = Program(body=[
+            VarDecl("arr", "list[int]", ListExpr(elements=[Literal("1"), Literal("2"), Literal("3")])),
+            VarDecl("n", "int", CallExpr(Identifier("len"), [Identifier("arr")]))
+        ])
+        checker = TypeChecker().check(prog)
+        self.assertEqual(checker.body[1].inferred_type, "int")

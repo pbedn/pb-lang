@@ -1031,6 +1031,18 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn('int64_t n = 10;', c)
         self.assertIn('for (int64_t i = 0; i < n; ++i)', c)
 
+    def test_len_builtin_pipeline(self):
+        code = (
+            "def main() -> int:\n"
+            "    arr: list[int] = [1, 2, 3]\n"
+            "    x: int = len(arr)\n"
+            "    print(x)\n"
+            "    return 0\n"
+        )
+        header, c_code = self.compile_pipeline(code)
+        self.assertIn('int64_t x = arr.len;', c_code)
+        self.assertIn('pb_print_int(x);', c_code)
+
 
 if __name__ == "__main__":
     unittest.main()

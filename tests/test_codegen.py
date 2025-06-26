@@ -1810,6 +1810,29 @@ class TestCodeGen(unittest.TestCase):
             "struct ClassWithUserDefinedAttr __tmp_classwithuserdefinedattr_",
         ])
 
+    def test_len_builtin(self):
+        prog = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("arr", "list[int]", ListExpr(elements=[Literal("1"), Literal("2"), Literal("3")], elem_type="int", inferred_type="list[int]")),
+                    VarDecl("l", "int", CallExpr(Identifier("len"), [Identifier("arr", inferred_type="list[int]")])),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("l", inferred_type="int")])),
+                    ReturnStmt(Literal("0"))
+                ],
+                globals_declared=None
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "int64_t __tmp_list_1[] = {1, 2, 3};",
+            "List_int arr = (List_int){ .len=3, .data=__tmp_list_1 };",
+            "int64_t l = arr.len;",
+            "pb_print_int(l);",
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()

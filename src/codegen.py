@@ -728,17 +728,27 @@ class CodeGen:
         return "\n".join(lines)
 
     def _generate_AssignStmt(self, st: AssignStmt) -> str:
+        if not isinstance(st.target, (Identifier, AttributeExpr, IndexExpr)):
+            raise RuntimeError(f"Unsupported assignment target: {type(st.target).__name__}")
+
         tgt = self._expr(st.target)
         val = self._expr(st.value)
 
-        if st.inferred_type == "list[int]":
-            return f"list_int_set(&{st.target.base.name}, {int(st.target.index.raw)}, {val});"
-        if st.inferred_type == "list[str]":
-            return f"list_str_set(&{st.target.base.name}, {int(st.target.index.raw)}, {val});"
-        if st.inferred_type == "list[float]":
-            return f"list_float_set(&{st.target.base.name}, {int(st.target.index.raw)}, {val});"
-        if st.inferred_type == "list[bool]":
-            return f"list_bool_set(&{st.target.base.name}, {int(st.target.index.raw)}, {val});"
+        # target is list
+        # x = [1]
+        if isinstance(st.target, IndexExpr):
+            list_type = st.inferred_type
+            base_name = st.target.base.name
+            index_val = self._expr(st.target.index)
+
+            if list_type == "list[int]":
+                return f"list_int_set(&{base_name}, {index_val}, {val});"
+            if list_type == "list[str]":
+                return f"list_str_set(&{base_name}, {index_val}, {val});"
+            if list_type == "list[float]":
+                return f"list_float_set(&{base_name}, {index_val}, {val});"
+            if list_type == "list[bool]":
+                return f"list_bool_set(&{base_name}, {index_val}, {val});"
 
         return f"{tgt} = {val};"
 
@@ -1112,6 +1122,15 @@ class CodeGen:
                 arg0 = self._expr(e.args[0])
                 arg1 = self._expr(e.args[1])
                 return f"pb_open({arg0}, {arg1})"
+
+            if fn_name == "len":
+                arg = self._expr(e.args[0])
+                arg_type = e.args[0].inferred_type
+                if arg_type == "str":
+                    return f"(int64_t)strlen({arg})"
+                if arg_type.startswith("list[") or arg_type.startswith("set[") or arg_type.startswith("dict["):
+                    return f"{arg}.len"
+                raise RuntimeError(f"len() not supported for {arg_type}")
 
             # --- Built-int type conversions ---
             if fn_name == "int":

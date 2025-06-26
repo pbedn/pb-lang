@@ -599,6 +599,16 @@ class TypeChecker:
                         raise TypeError("Function 'open' expects (str, str)")
                     expr.inferred_type = "file"
                     return "file"
+
+                if fname == "len":
+                    if len(expr.args) != 1:
+                        raise TypeError("Function 'len' expects exactly one argument")
+                    arg_type = self.check_expr(expr.args[0])
+                    if arg_type == "str" or arg_type.startswith("list[") or arg_type.startswith("set[") or arg_type.startswith("dict["):
+                        expr.inferred_type = "int"
+                        return "int"
+                    raise TypeError(f"Function 'len' not supported for type {arg_type}")
+
                 if fname not in self.functions:
                     raise TypeError(f"Call to undefined function '{fname}'")
                 param_types, return_type, num_required = self.functions[fname]
