@@ -223,18 +223,37 @@ class TestPipelineRuntime(unittest.TestCase):
             "    print(a)\n"
             "    print(x)\n"
             "    b: list[int] = []\n"
-            "    b[0] = 1\n"
-            "    y: int = b[0]\n"
-            "    print(b)\n"
-            "    print(y)\n"
+            "    try:\n"
+            "        b[0] = 1\n"
+            "    except IndexError:\n"
+            "        print('caught')\n"
             "    return 0\n"
         )
         output = compile_and_run(code)
         lines = output.strip().splitlines()
         self.assertEqual(lines[0], "[10]")
         self.assertEqual(lines[1], "10")
-        self.assertEqual(lines[2], "[1]")
-        self.assertEqual(lines[3], "1")
+        self.assertEqual(lines[2], "caught")
+
+    def test_list_assignment_out_of_bounds_runtime(self):
+        code = (
+            "def main() -> int:\n"
+            "    arr: list[str] = ['a', 'b']\n"
+            "    print(arr[0])\n"
+            "    try:\n"
+            "        arr[2] = 'c'\n"
+            "    except IndexError:\n"
+            "        print('caught')\n"
+            "    print(arr[0])\n"
+            "    print(arr)\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        lines = output.strip().splitlines()
+        self.assertEqual(lines[0], 'a')
+        self.assertEqual(lines[1], 'caught')
+        self.assertEqual(lines[2], 'a')
+        self.assertEqual(lines[3], "['a', 'b']")
 
     def test_set_literal_runtime(self):
         code = (
