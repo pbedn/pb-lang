@@ -769,27 +769,29 @@ class TypeChecker:
                 if class_type not in self.instance_fields:
                     raise TypeError(f"'{obj_name}' has unknown type '{class_type}'")
                 fields = self.instance_fields[class_type]
-                if expr.attr not in fields:
-                    raise TypeError(f"Instance `{obj_name}` for class '{class_type}' has no attribute '{expr.attr}'")
+                if expr.attr in fields:
+                    expr.inferred_type = fields[expr.attr]
+                    return expr.inferred_type
 
-                # Todo: think if allowing setting from class attrs here make sense, if yes then propagate that in other places
-                #     if expr.attr not in self.class_attrs[class_type]:
-                #         raise TypeError(f"Instance `{obj_name}` for class '{class_type}' has no attribute '{expr.attr}'")
-                #     else:
-                #         expr.inferred_type = self.class_attrs[class_type][expr.attr]
-                # else:
-                #     expr.inferred_type = fields[expr.attr]
-                expr.inferred_type = fields[expr.attr]
-                return expr.inferred_type
+                class_attr_type = self.lookup_class_attr(class_type, expr.attr)
+                if class_attr_type is not None:
+                    expr.inferred_type = class_attr_type
+                    return class_attr_type
+
+                raise TypeError(
+                    f"Instance `{obj_name}` for class '{class_type}' has no attribute '{expr.attr}'"
+                )
 
             # --- static class-attribute (e.g. Player.species) ---
             if obj_name in self.class_attrs:
-                fields = self.class_attrs[obj_name]
                 expr.obj.inferred_type = obj_name
-                if expr.attr not in fields:
-                    raise TypeError(f"Class '{obj_name}' has no class attribute '{expr.attr}'")
-                expr.inferred_type = fields[expr.attr]
-                return expr.inferred_type
+                class_attr_type = self.lookup_class_attr(obj_name, expr.attr)
+                if class_attr_type is None:
+                    raise TypeError(
+                        f"Class '{obj_name}' has no class attribute '{expr.attr}'"
+                    )
+                expr.inferred_type = class_attr_type
+                return class_attr_type
 
             # neither a variable nor a class
             raise TypeError(f"Variable, module or class '{obj_name}' is not defined")
@@ -1242,6 +1244,15 @@ class TypeChecker:
             sub = self.class_bases[sub]
         return sub == sup
 
+    def lookup_class_attr(self, class_name: str, attr: str) -> str | None:
+        """Return the type of a class attribute by walking the inheritance chain."""
+        c = class_name
+        while c:
+            if attr in self.class_attrs.get(c, {}):
+                return self.class_attrs[c][attr]
+            c = self.class_bases.get(c)
+        return None
+
     def check_class_def(self, cls: ClassDef):
         """
         Type-check a class definition with optional base class, fields, and methods.
@@ -1287,12 +1298,18 @@ class TypeChecker:
         self.class_attrs[name] = {}
         self.methods[name] = {}
 
-        # Validate fields
+        # Inherit class attributes from base class first
+        if cls.base:
+            if cls.base not in self.class_attrs:
+                raise TypeError(f"Base class '{cls.base}' has no class attributes")
+            for k, v in self.class_attrs[cls.base].items():
+                self.class_attrs[name][k] = v
+
+        # Validate fields and register as class attributes
         for field in cls.fields:
             if not isinstance(field, VarDecl):
                 raise TypeError(f"Invalid field in class '{name}'")
             self.check_var_decl(field)
-            # Assume all top-level fields are class attributes
             self.class_attrs[name][field.name] = field.declared_type
 
         # Inherit instance fields from base class

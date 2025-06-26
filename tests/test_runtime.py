@@ -560,6 +560,43 @@ class TestPipelineRuntime(unittest.TestCase):
         output = compile_and_run(code)
         self.assertEqual(output.strip(), "0")
 
+    def test_class_attr_inheritance_runtime(self):
+        code = (
+            "class Player:\n"
+            "    name: str = 'P'\n"
+            "    BASE_HP: int = 150\n"
+            "    def __init__(self) -> None:\n"
+            "        self.hp = 150\n"
+            "\n"
+            "class Mage(Player):\n"
+            "    DEFAULT_MANA: int = 200\n"
+            "    def __init__(self) -> None:\n"
+            "        Player.__init__(self)\n"
+            "        self.mana = 200\n"
+            "    def total_power(self, bonus: int = 10) -> int:\n"
+            "        return self.hp + self.mana + bonus\n"
+            "\n"
+            "class ArchMage(Mage):\n"
+            "    pass\n"
+            "\n"
+            "def main() -> int:\n"
+            "    p: Player = Player()\n"
+            "    print(p.name)\n"
+            "    m: Mage = Mage()\n"
+            "    print(m.name)\n"
+            "    print(Mage.name)\n"
+            "    a: ArchMage = ArchMage()\n"
+            "    print(a.mana)\n"
+            "    print(a.hp)\n"
+            "    print(a.total_power())\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(
+            output.strip().splitlines(),
+            ["P", "P", "P", "200", "150", "360"],
+        )
+
     def test_import_mathlib_add(self):
         modules = {
             "mathlib": (
