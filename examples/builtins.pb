@@ -1,3 +1,30 @@
+# python .\examples\builtins.pb
+# x: 10, x_float: 10.0
+# b: '1.0', b_float: 1.0
+# y: 1.0, y_int: 1
+# a: '1', a_int: 1
+# x: 10, x_bool: True
+# y: 1.0, y_bool: True
+# z: 0.0, z_bool: False
+# [4, 2, 3]
+# ['4', '2', '3']
+# [4.0, 2.2, 3.3]
+# [True, False]
+
+# PB
+# python run.py run .\examples\builtins.pb
+# x: 10, x_float: 10.0
+# b: '1.0', b_float: 1.0
+# y: 1.0, y_int: 1
+# a: '1', a_int: 1
+# x: 10, x_bool: True
+# y: 1.0, y_bool: True
+# z: 0.0, z_bool: False
+# [4, 2, 3]
+# ['4', '2', '3']
+# [4, 2.2, 3.3]
+# [True, False]
+
 def main():
     x: int = 10
     y: float = 1.0

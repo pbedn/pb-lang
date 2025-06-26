@@ -1,4 +1,7 @@
-class RuntimeError(BaseException):
+# python examples\exception.pb
+# division by zero
+
+class RuntimeError(BaseException): # PB -> TypeError: Base class 'BaseException' not defined before 'RuntimeError'
     pass
 
 def crash():

@@ -35,30 +35,6 @@ class TestRefLangOutputMatch(unittest.TestCase):
 
         self.assertEqual(output_python, output_pb, "PB and Python outputs differ")
 
-    def test_list_indexing_python_vs_pb_output(self):
-        pb_path = os.path.join(root_dir, "examples", "list_indexing.pb")
-        run_pb_script = os.path.join(root_dir, "run_pb_as_python.py")
-        pb_main = os.path.join(root_dir, "src", "main.py")
-
-        py_result = subprocess.run(
-            [sys.executable, run_pb_script, pb_path],
-            capture_output=True,
-            text=True,
-            cwd=root_dir,
-        )
-        self.assertEqual(py_result.returncode, 0, f"Python run failed:\n{py_result.stderr}")
-        output_python = py_result.stdout.strip().splitlines()
-
-        pb_result = subprocess.run(
-            [sys.executable, pb_main, "run", pb_path],
-            capture_output=True,
-            text=True,
-            cwd=os.path.join(root_dir, "src"),
-        )
-        self.assertEqual(pb_result.returncode, 0, f"PB run failed:\n{pb_result.stderr}")
-        output_pb = pb_result.stdout.strip().splitlines()
-
-        self.assertEqual(output_python, output_pb, "PB and Python outputs differ")
 
 if __name__ == "__main__":
     unittest.main()

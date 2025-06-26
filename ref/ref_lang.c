@@ -359,5 +359,4 @@ int main(void)
     Mage__heal(mage, 40);
     pb_print_str((snprintf(__fbuf, 256, "HP after healing: %lld", mage->base.hp), __fbuf));
     pb_print_str((snprintf(__fbuf, 256, "MP after healing: %lld", mage->mp), __fbuf));
-    return 0;
 }

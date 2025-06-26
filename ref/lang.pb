@@ -76,7 +76,8 @@ def is_even(n: int) -> bool:
         return False
 
 # === Main function showcasing all features ===
-def main() -> int:
+# since main is entrypoint, function type and return can be skipped
+def main():
     print("=== F-String Interpolation ===")
     value: int = 42
     name: str = "Alice"
@@ -321,5 +322,6 @@ def main() -> int:
     print(f"HP after healing: {mage.hp}")
     print(f"MP after healing: {mage.mp}")
 
-    # Return statement to indicate success
-    return 0
+
+if __name__ == "__main__":
+    main()

@@ -1,3 +1,11 @@
+# python .\examples\exceptions2.pb
+# Caught ValueError: Damage must be non-negative
+# Caught RuntimeError: Not enough mana!
+# Caught ZeroDivisionError: integer division or modulo by zero
+# Caught AttributeError: 'Mage' object has no attribute 'undefined_attr'
+
+# PB -> AttributeError: 'CallExpr' object has no attribute 'name'
+
 class Player:
     name: str = "P"
 
