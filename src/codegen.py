@@ -87,6 +87,9 @@ class CodeGen:
         self._class_bases: dict[str, Optional[str]] = {}
         self._direct_fields: dict[str, set[str]] = {}
 
+        # Map class name to ClassDef for attribute lookups
+        self._class_map: dict[str, ClassDef] = {}
+
         self._modules: set[str] = set()  # track imported module names
 
         # Lines that should execute before main to initialize globals
@@ -105,6 +108,16 @@ class CodeGen:
             return f"{base}.{expr.attr}"
         return None
 
+    def _find_class_attr_origin(self, class_name: str, attr: str) -> Optional[str]:
+        """Return the class that defines ``attr`` by walking bases."""
+        c = class_name
+        while c:
+            cls_def = self._class_map.get(c)
+            if cls_def and any(f.name == attr for f in cls_def.fields):
+                return c
+            c = self._class_bases.get(c)
+        return None
+
     def generate(self, program: Program) -> str:
         """Generate the complete C source for ``program``."""
         self._program = program
@@ -120,6 +133,7 @@ class CodeGen:
         self._instance_fields = getattr(program, "inferred_instance_fields", {})
         self._class_bases = {cls.name: cls.base for cls in self._classes}
         self._class_names = {cls.name for cls in self._classes}
+        self._class_map = {cls.name: cls for cls in self._classes}
         self._direct_fields = {}
         for cls in self._classes:
             base_fields = set(self._instance_fields.get(cls.base, {})) if cls.base else set()
@@ -165,6 +179,7 @@ class CodeGen:
         self._instance_fields = getattr(program, "inferred_instance_fields", {})
         self._class_bases = {cls.name: cls.base for cls in self._classes}
         self._class_names = {cls.name for cls in self._classes}
+        self._class_map = {cls.name: cls for cls in self._classes}
         self._direct_fields = {}
         for cls in self._classes:
             base_fields = set(self._instance_fields.get(cls.base, {})) if cls.base else set()
@@ -583,17 +598,26 @@ class CodeGen:
                 for m in sorted({m.name for m in base.methods} - own):
                     if m == "__init__":
                         continue  # skip generating a wrapper for inherited __init__
-                    ret_c = self._c_type(
-                        next(mm for mm in base.methods if mm.name == m).return_type
-                    )
-                    # record PB return type so print() picks the right helper
-                    ret_pb = next(mm for mm in base.methods if mm.name == m).return_type
+                    method = next(mm for mm in base.methods if mm.name == m)
+                    ret_c = self._c_type(method.return_type)
+                    ret_pb = method.return_type
                     self._function_returns[f"{cls.name}__{m}"] = ret_pb
 
-                    self._emit(f"static inline {ret_c} {cls.name}__{m}(")
-                    self._emit(f"    struct {cls.name} * self) {{")
+                    params = [p for p in method.params if p.name != "self"]
+                    params_code = ", ".join(f"{self._c_type(p.type)} {p.name}" for p in params)
+
+                    mangled = f"{cls.name}__{m}"
+                    self._function_defaults[mangled] = [
+                        (p.default.raw if p.default else None) for p in method.params
+                    ]
+                    self._function_params[mangled] = [p.name for p in method.params]
+                    self._emit(
+                        f"static inline {ret_c} {cls.name}__{m}(")
+                    self._emit(
+                        f"    struct {cls.name} * self{', ' if params_code else ''}{params_code}) {{")
                     self._indent += 1
-                    call = f"{base.name}__{m}((struct {base.name} *)self)"
+                    call_args = ", ".join([f"(struct {base.name} *)self"] + [p.name for p in params])
+                    call = f"{base.name}__{m}({call_args})"
                     self._emit(f"return {call};" if ret_c != "void" else f"{call};")
                     self._indent -= 1
                     self._emit("}")
@@ -1139,7 +1163,12 @@ class CodeGen:
             class_type = self._get_expr_type(e.func.obj)
             if class_type:
                 mangled = f"{class_type}__{method_name}"
-                args = ", ".join([obj_expr] + [self._expr(arg) for arg in e.args])
+                passed_args = [obj_expr] + [self._expr(arg) for arg in e.args]
+                if mangled in self._function_params:
+                    all_args = self._apply_defaults(mangled, passed_args)
+                else:
+                    all_args = passed_args
+                args = ", ".join(all_args)
                 return f"{mangled}({args})"
 
         # Fallback: general function call expression
@@ -1148,10 +1177,10 @@ class CodeGen:
         return f"{fn}({args})"
 
     def _generate_AttributeExpr(self, e: AttributeExpr) -> str:
-        # --- FIRST:   class attribute  ---------------------------
-        if isinstance(e.obj, Identifier) and e.obj.name in self._structs_emitted:
-            #   Player.species   →   Player_species
-            return f"{e.obj.name}_{e.attr}"
+        if isinstance(e.obj, Identifier) and e.obj.name in self._class_map:
+            origin = self._find_class_attr_origin(e.obj.name, e.attr)
+            if origin:
+                return f"{origin}_{e.attr}"
 
         obj = self._expr(e.obj)
         attr = e.attr
@@ -1165,8 +1194,23 @@ class CodeGen:
                 return attr
 
             cls = self._get_expr_type(e.obj)
-            if cls in self._direct_fields and attr not in self._direct_fields[cls]:
-                return f"{obj}->base.{attr}"
+            if cls:
+                depth = 0
+                c = cls
+                while c:
+                    if attr in self._direct_fields.get(c, set()):
+                        if depth == 0:
+                            return f"{obj}->{attr}"
+                        prefix = obj + "->base"
+                        for i in range(1, depth):
+                            prefix += ".base"
+                        return f"{prefix}.{attr}"
+                    c = self._class_bases.get(c)
+                    depth += 1
+
+                origin = self._find_class_attr_origin(cls, attr)
+                if origin:
+                    return f"{origin}_{attr}"
 
         return f"{obj}->{attr}"
 

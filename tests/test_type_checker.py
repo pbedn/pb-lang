@@ -730,6 +730,29 @@ class TestTypeCheckerInternals(unittest.TestCase):
         with self.assertRaises(TypeError):
             self.tc.check_expr(expr)
 
+    def test_instance_accesses_class_attr(self):
+        self.tc.env["p"] = "Player"
+        self.tc.known_classes.add("Player")
+        self.tc.instance_fields["Player"] = {}
+        self.tc.class_attrs["Player"] = {"name": "str"}
+        expr = AttributeExpr(Identifier("p"), "name")
+        typ = self.tc.check_expr(expr)
+        self.assertEqual(typ, "str")
+
+    def test_subclass_inherits_class_attr(self):
+        self.tc.env["m"] = "Mage"
+        self.tc.known_classes.update({"Player", "Mage"})
+        self.tc.class_bases["Mage"] = "Player"
+        self.tc.instance_fields["Player"] = {}
+        self.tc.instance_fields["Mage"] = {}
+        self.tc.class_attrs["Player"] = {"name": "str"}
+        self.tc.class_attrs["Mage"] = {"name": "str"}
+
+        expr1 = AttributeExpr(Identifier("Mage"), "name")
+        expr2 = AttributeExpr(Identifier("m"), "name")
+        self.assertEqual(self.tc.check_expr(expr1), "str")
+        self.assertEqual(self.tc.check_expr(expr2), "str")
+
     def test_is_subclass(self):
         self.tc.known_classes.update({"Player", "Mage", "Wizard", "object"})
         self.tc.class_bases["Mage"] = "Player"

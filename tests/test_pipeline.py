@@ -555,6 +555,46 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn("pb_print_int(m->mana);", c)
         self.assertIn("pb_print_int(Mage__get_hp(m));", c)
 
+    def test_class_attr_inheritance_pipeline(self):
+        code = (
+            "class Player:\n"
+            "    name: str = \"P\"\n"
+            "    BASE_HP: int = 150\n"
+            "    def __init__(self):\n"
+            "        self.hp = 150\n"
+            "\n"
+            "class Mage(Player):\n"
+            "    DEFAULT_MANA: int = 200\n"
+            "    def __init__(self):\n"
+            "        Player.__init__(self)\n"
+            "        self.mana = 200\n"
+            "    def total_power(self, bonus: int = 10) -> int:\n"
+            "        return self.hp + self.mana + bonus\n"
+            "\n"
+            "class ArchMage(Mage):\n"
+            "    pass\n"
+            "\n"
+            "def main() -> int:\n"
+            "    p: Player = Player()\n"
+            "    print(p.name)\n"
+            "    m: Mage = Mage()\n"
+            "    print(m.name)\n"
+            "    print(Mage.name)\n"
+            "    a: ArchMage = ArchMage()\n"
+            "    print(a.mana)\n"
+            "    print(a.hp)\n"
+            "    print(a.total_power())\n"
+            "    return 0\n"
+        )
+        h, c = self.compile_pipeline(code)
+        self.assertIn("pb_print_str(Player_name);", c)
+        self.assertIn("pb_print_str(Player_name);", c)  # via Mage.name
+        self.assertIn("int64_t Player_BASE_HP = 150;", c)
+        self.assertIn("int64_t Mage_DEFAULT_MANA = 200;", c)
+        self.assertIn("pb_print_int(a->base.mana);", c)
+        self.assertIn("pb_print_int(a->base.base.hp);", c)
+        self.assertIn("pb_print_int(ArchMage__total_power(a, 10));", c)
+
     def test_class_inheritance_and_override(self):
         """type checker doesn't allow calling constructors for subclasses
         unless __init__ is defined on that class directly."""

@@ -935,6 +935,133 @@ class TestCodeGen(unittest.TestCase):
             "pb_print_int(Mage__get_hp(m));"
         ])
 
+    def test_codegen_class_attr_inheritance(self):
+        # Equivalent PB code:
+        #   class Player:
+        #       name: str = 'P'
+        #       BASE_HP: int = 150
+        #       def __init__(self):
+        #           self.hp = 150
+        #
+        #   class Mage(Player):
+        #       DEFAULT_MANA: int = 200
+        #       def __init__(self):
+        #           Player.__init__(self)
+        #           self.mana = 200
+        #       def total_power(self, bonus: int = 10) -> int:
+        #           return self.hp + self.mana + bonus
+        #
+        #   class ArchMage(Mage):
+        #       pass
+        #
+        #   def main() -> int:
+        #       p: Player = Player()
+        #       print(p.name)
+        #       m: Mage = Mage()
+        #       print(m.name)
+        #       print(Mage.name)
+        #       a: ArchMage = ArchMage()
+        #       print(a.mana)
+        #       print(a.hp)
+        #       print(a.total_power())
+        #       return 0
+
+        program = Program(body=[
+            ClassDef(
+                name="Player",
+                base=None,
+                fields=[
+                    VarDecl("name", "str", StringLiteral("P")),
+                    VarDecl("BASE_HP", "int", Literal("150")),
+                ],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[Parameter("self", "Player")],
+                        return_type="None",
+                        body=[
+                            AssignStmt(
+                                target=AttributeExpr(Identifier("self"), "hp"),
+                                value=Literal("150"),
+                            )
+                        ],
+                    )
+                ],
+            ),
+            ClassDef(
+                name="Mage",
+                base="Player",
+                fields=[VarDecl("DEFAULT_MANA", "int", Literal("200"))],
+                methods=[
+                    FunctionDef(
+                        name="__init__",
+                        params=[Parameter("self", "Mage")],
+                        return_type="None",
+                        body=[
+                            ExprStmt(
+                                CallExpr(
+                                    func=AttributeExpr(Identifier("Player"), "__init__"),
+                                    args=[Identifier("self")],
+                                )
+                            ),
+                            AssignStmt(
+                                target=AttributeExpr(Identifier("self"), "mana"),
+                                value=Literal("200"),
+                            ),
+                        ],
+                    ),
+                    FunctionDef(
+                        name="total_power",
+                        params=[
+                            Parameter("self", "Mage"),
+                            Parameter("bonus", "int", Literal("10")),
+                        ],
+                        return_type="int",
+                        body=[
+                            ReturnStmt(
+                                BinOp(
+                                    BinOp(
+                                        AttributeExpr(Identifier("self"), "hp"),
+                                        "+",
+                                        AttributeExpr(Identifier("self"), "mana"),
+                                    ),
+                                    "+",
+                                    Identifier("bonus"),
+                                )
+                            )
+                        ],
+                    ),
+                ],
+            ),
+            ClassDef(name="ArchMage", base="Mage", fields=[], methods=[]),
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("p", "Player", CallExpr(Identifier("Player"), [])),
+                    ExprStmt(CallExpr(Identifier("print"), [AttributeExpr(Identifier("p"), "name")])),
+                    VarDecl("m", "Mage", CallExpr(Identifier("Mage"), [])),
+                    ExprStmt(CallExpr(Identifier("print"), [AttributeExpr(Identifier("m"), "name")])),
+                    ExprStmt(CallExpr(Identifier("print"), [AttributeExpr(Identifier("Mage"), "name")])),
+                    VarDecl("a", "ArchMage", CallExpr(Identifier("ArchMage"), [])),
+                    ExprStmt(CallExpr(Identifier("print"), [AttributeExpr(Identifier("a"), "mana")])),
+                    ExprStmt(CallExpr(Identifier("print"), [AttributeExpr(Identifier("a"), "hp")])),
+                    ExprStmt(
+                        CallExpr(
+                            Identifier("print"),
+                            [CallExpr(AttributeExpr(Identifier("a"), "total_power"), [])],
+                        )
+                    ),
+                    ReturnStmt(Literal("0")),
+                ],
+            ),
+        ])
+
+        c = codegen_output(program)
+        self.assertIn("pb_print_str(Player_name);", c)
+        self.assertIn("pb_print_int(a->base.base.hp);", c)
+
     def test_exception_inheritance_codegen(self):
         prog = Program(body=[
             ClassDef(
