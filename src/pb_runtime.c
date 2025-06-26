@@ -267,10 +267,8 @@ void list_int_init(List_int *lst) {
 }
 
 void list_int_set(List_int *lst, int64_t index, int64_t value) {
-    if (index < 0 || index > lst->len) {
+    if (index < 0 || index >= lst->len) {
         pb_index_error("int", "set", index, lst->len, lst);
-    } else if (index == lst->len) {
-        list_int_append(lst, value);
     } else {
         lst->data[index] = value;
     }
@@ -353,10 +351,8 @@ void list_float_init(List_float *lst) {
 }
 
 void list_float_set(List_float *lst, int64_t index, double value) {
-    if (index < 0 || index > lst->len) {
+    if (index < 0 || index >= lst->len) {
         pb_index_error("float", "set", index, lst->len, lst);
-    } else if (index == lst->len) {
-        list_float_append(lst, value);
     } else {
         lst->data[index] = value;
     }
@@ -438,10 +434,8 @@ void list_bool_init(List_bool *lst) {
 }
 
 void list_bool_set(List_bool *lst, int64_t index, bool value) {
-    if (index < 0 || index > lst->len) {
+    if (index < 0 || index >= lst->len) {
         pb_index_error("bool", "set", index, lst->len, lst);
-    } else if (index == lst->len) {
-        list_bool_append(lst, value);
     } else {
         lst->data[index] = value;
     }
@@ -523,10 +517,8 @@ void list_str_init(List_str *lst) {
 }
 
 void list_str_set(List_str *lst, int64_t index, const char *value) {
-    if (index < 0 || index > lst->len) {
+    if (index < 0 || index >= lst->len) {
         pb_index_error("str", "set", index, lst->len, lst);
-    } else if (index == lst->len) {
-        list_str_append(lst, value);
     } else {
         lst->data[index] = value;  // assumes value is valid for the lifetime of lst
     }
