@@ -426,7 +426,7 @@ class TestPipelineRuntime(unittest.TestCase):
         lines = output.strip().splitlines()
         self.assertEqual(lines[0], "[4, 2, 3]")
         self.assertEqual(lines[1], "['4', '2', '3']")
-        self.assertEqual(lines[2], "[4, 2.2, 3.3]")
+        self.assertEqual(lines[2], "[4.0, 2.2, 3.3]")
         self.assertEqual(lines[3], "[True, False]")
     def test_fstring_expression_variants(self):
         code = (

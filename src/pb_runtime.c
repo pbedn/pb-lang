@@ -406,7 +406,12 @@ void list_float_print(const List_float *lst) {
     printf("[");
     for (int64_t i = 0; i < lst->len; ++i) {
         if (i > 0) printf(", ");
-        printf("%g", lst->data[i]);
+        double x = lst->data[i];
+        if (x == (int64_t)x) {
+            printf("%.1f", x);  // 50.0 (preserve .0)
+        } else {
+            printf("%.15g", x); // Python-like float precision
+        }
     }
     printf("]\n");
 }

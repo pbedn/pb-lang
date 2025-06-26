@@ -55,12 +55,11 @@ class TestExamplesPythonVsPb(RuntimeHelper):
         out_pb = self._run_pb(path)
         self.assertEqual(out_py, out_pb)
 
-    # def test_builtins(self):
-    #     path = os.path.join(examples_dir, "builtins.pb")
-    #     with self.subTest(example="builtins.pb"):
-    #         out_py = self._run_python(path)
-    #         out_pb = self._run_pb(path)
-    #         self.assertEqual(out_py, out_pb)
+    def test_builtins(self):
+        path = os.path.join(examples_dir, "builtins.pb")
+        out_py = self._run_python(path)
+        out_pb = self._run_pb(path)
+        self.assertEqual(out_py, out_pb)
 
     def test_classes(self):
         path = os.path.join(examples_dir, "classes.pb")
