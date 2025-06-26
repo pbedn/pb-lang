@@ -105,6 +105,12 @@ class TestExamplesPythonVsPb(RuntimeHelper):
         out_pb = self._run_pb(path)
         self.assertEqual(out_py, out_pb)
 
+    def test_list_methods(self):
+        path = os.path.join(examples_dir, "list_methods.pb")
+        out_py = self._run_python(path)
+        out_pb = self._run_pb(path)
+        self.assertEqual(out_py, out_pb)
+
     def test_test(self):
         path = os.path.join(examples_dir, "test.pb")
         out_py = self._run_python(path)

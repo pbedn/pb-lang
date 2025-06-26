@@ -1833,6 +1833,32 @@ class TestCodeGen(unittest.TestCase):
             "pb_print_int(l);",
         ])
 
+    def test_list_methods_codegen(self):
+        prog = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("arr", "list[int]", ListExpr(elements=[Literal("1"), Literal("2")], elem_type="int", inferred_type="list[int]")),
+                    ExprStmt(CallExpr(AttributeExpr(Identifier("arr"), "append"), [Literal("3")])),
+                    VarDecl("x", "int", CallExpr(AttributeExpr(Identifier("arr"), "pop"), [])),
+                    VarDecl("r", "bool", CallExpr(AttributeExpr(Identifier("arr"), "remove"), [Literal("1")])),
+                    ReturnStmt(Literal("0"))
+                ],
+                globals_declared=None
+            )
+        ])
+        output = codegen_output(prog)
+        assert_contains_all(self, output, [
+            "int64_t __tmp_list_1[] = {1, 2};",
+            "List_int arr = (List_int){ .len=2, .data=__tmp_list_1 };",
+            "list_int_append(&arr, 3);",
+            "int64_t x = list_int_pop(&arr);",
+            "bool r = list_int_remove(&arr, 1);",
+            "return 0;",
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()
