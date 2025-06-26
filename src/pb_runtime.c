@@ -247,13 +247,26 @@ void pb_index_error(const char *type, const char *op, int64_t index, int64_t len
 void list_int_grow_if_needed(List_int *lst) {
     if (lst->len >= lst->capacity) {
         int64_t new_capacity = (lst->capacity == 0) ? INITIAL_LIST_CAPACITY : (lst->capacity * 2);
-        int64_t *new_data = (int64_t *)realloc(lst->data, new_capacity * sizeof(int64_t));
-        if (!new_data) {
-            char buf[128];
-            snprintf(buf, sizeof(buf),
-                "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64,
-                "int", lst->capacity);
-            pb_fail(buf);
+        int64_t *new_data;
+        if (lst->capacity == 0 && lst->data != NULL) {
+            new_data = (int64_t *)malloc(new_capacity * sizeof(int64_t));
+            if (!new_data) {
+                char buf[128];
+                snprintf(buf, sizeof(buf),
+                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64,
+                    "int", lst->capacity);
+                pb_fail(buf);
+            }
+            memcpy(new_data, lst->data, lst->len * sizeof(int64_t));
+        } else {
+            new_data = (int64_t *)realloc(lst->data, new_capacity * sizeof(int64_t));
+            if (!new_data) {
+                char buf[128];
+                snprintf(buf, sizeof(buf),
+                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64,
+                    "int", lst->capacity);
+                pb_fail(buf);
+            }
         }
         lst->data = new_data;
         lst->capacity = new_capacity;
@@ -332,12 +345,24 @@ void list_int_print(const List_int *lst) {
 void list_float_grow_if_needed(List_float *lst) {
     if (lst->len >= lst->capacity) {
         int64_t new_capacity = (lst->capacity == 0) ? INITIAL_LIST_CAPACITY : (lst->capacity * 2);
-        double *new_data = (double *)realloc(lst->data, new_capacity * sizeof(double));
-        if (!new_data) {
-            char buf[128];
-            snprintf(buf, sizeof(buf),
-                "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
-            pb_fail(buf);
+        double *new_data;
+        if (lst->capacity == 0 && lst->data != NULL) {
+            new_data = (double *)malloc(new_capacity * sizeof(double));
+            if (!new_data) {
+                char buf[128];
+                snprintf(buf, sizeof(buf),
+                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
+                pb_fail(buf);
+            }
+            memcpy(new_data, lst->data, lst->len * sizeof(double));
+        } else {
+            new_data = (double *)realloc(lst->data, new_capacity * sizeof(double));
+            if (!new_data) {
+                char buf[128];
+                snprintf(buf, sizeof(buf),
+                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
+                pb_fail(buf);
+            }
         }
         lst->data = new_data;
         lst->capacity = new_capacity;
@@ -420,12 +445,24 @@ void list_float_print(const List_float *lst) {
 void list_bool_grow_if_needed(List_bool *lst) {
     if (lst->len >= lst->capacity) {
         int64_t new_capacity = (lst->capacity == 0) ? INITIAL_LIST_CAPACITY : (lst->capacity * 2);
-        bool *new_data = (bool *)realloc(lst->data, new_capacity * sizeof(bool));
-        if (!new_data) {
-            char buf[128];
-            snprintf(buf, sizeof(buf),
-                "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
-            pb_fail(buf);
+        bool *new_data;
+        if (lst->capacity == 0 && lst->data != NULL) {
+            new_data = (bool *)malloc(new_capacity * sizeof(bool));
+            if (!new_data) {
+                char buf[128];
+                snprintf(buf, sizeof(buf),
+                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
+                pb_fail(buf);
+            }
+            memcpy(new_data, lst->data, lst->len * sizeof(bool));
+        } else {
+            new_data = (bool *)realloc(lst->data, new_capacity * sizeof(bool));
+            if (!new_data) {
+                char buf[128];
+                snprintf(buf, sizeof(buf),
+                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
+                pb_fail(buf);
+            }
         }
         lst->data = new_data;
         lst->capacity = new_capacity;
@@ -503,12 +540,24 @@ void list_bool_print(const List_bool *lst) {
 void list_str_grow_if_needed(List_str *lst) {
     if (lst->len >= lst->capacity) {
         int64_t new_capacity = (lst->capacity == 0) ? INITIAL_LIST_CAPACITY : (lst->capacity * 2);
-        const char **new_data = (const char **)realloc(lst->data, new_capacity * sizeof(const char *));
-        if (!new_data) {
-            char buf[128];
-            snprintf(buf, sizeof(buf),
-                "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
-            pb_fail(buf);
+        const char **new_data;
+        if (lst->capacity == 0 && lst->data != NULL) {
+            new_data = (const char **)malloc(new_capacity * sizeof(const char *));
+            if (!new_data) {
+                char buf[128];
+                snprintf(buf, sizeof(buf),
+                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
+                pb_fail(buf);
+            }
+            memcpy(new_data, lst->data, lst->len * sizeof(const char *));
+        } else {
+            new_data = (const char **)realloc(lst->data, new_capacity * sizeof(const char *));
+            if (!new_data) {
+                char buf[128];
+                snprintf(buf, sizeof(buf),
+                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
+                pb_fail(buf);
+            }
         }
         lst->data = new_data;
         lst->capacity = new_capacity;

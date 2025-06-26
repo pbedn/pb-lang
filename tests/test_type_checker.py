@@ -2629,3 +2629,15 @@ class TestTypeCheckerProgramLevel(unittest.TestCase):
         ])
         checker = TypeChecker().check(prog)
         self.assertEqual(checker.body[1].inferred_type, "int")
+
+    def test_list_methods(self):
+        prog = Program(body=[
+            VarDecl("arr", "list[int]", ListExpr(elements=[Literal("1"), Literal("2")])),
+            ExprStmt(CallExpr(AttributeExpr(Identifier("arr"), "append"), [Literal("3")])),
+            VarDecl("x", "int", CallExpr(AttributeExpr(Identifier("arr"), "pop"), [])),
+            VarDecl("r", "bool", CallExpr(AttributeExpr(Identifier("arr"), "remove"), [Literal("1")])),
+        ])
+        checker = TypeChecker().check(prog)
+        self.assertEqual(checker.body[1].expr.inferred_type, "None")
+        self.assertEqual(checker.body[2].inferred_type, "int")
+        self.assertEqual(checker.body[3].inferred_type, "bool")

@@ -662,6 +662,32 @@ class TypeChecker:
                         return "None"
                     raise TypeError(f"File object has no method '{attr}'")
 
+                try:
+                    base_type = self.check_expr(base)
+                except TypeError:
+                    base_type = None
+                if base_type and base_type.startswith("list[") and base_type.endswith("]"):
+                    elem_type = base_type[5:-1]
+                    if attr == "append":
+                        if len(expr.args) != 1:
+                            raise TypeError("List.append expects one argument")
+                        arg_ty = self.check_expr(expr.args[0])
+                        self.check_arg_compatibility(arg_ty, elem_type, 1, "append")
+                        expr.inferred_type = "None"
+                        return "None"
+                    if attr == "pop":
+                        if len(expr.args) != 0:
+                            raise TypeError("List.pop expects no arguments")
+                        expr.inferred_type = elem_type
+                        return elem_type
+                    if attr == "remove":
+                        if len(expr.args) != 1:
+                            raise TypeError("List.remove expects one argument")
+                        arg_ty = self.check_expr(expr.args[0])
+                        self.check_arg_compatibility(arg_ty, elem_type, 1, "remove")
+                        expr.inferred_type = "bool"
+                        return "bool"
+
                 # --- INSTANCE OR STATIC CLASS METHOD CALL ---
                 obj = base
                 if isinstance(obj, Identifier) and obj.name in self.env:

@@ -10,7 +10,7 @@ def main():
         b[0] = 1
     except IndexError:
          print("IndexError")
-         b = [1]
+         b.append(1)
     y: int = b[0] 
     print(b)
     print(y)

@@ -1030,6 +1030,7 @@ class CodeGen:
         if isinstance(e.func, AttributeExpr):
             obj = e.func.obj
             attr = e.func.attr
+            obj_expr = self._expr(obj)
 
             obj_full = self._attr_full_name(obj)
 
@@ -1043,6 +1044,36 @@ class CodeGen:
                 else:
                     args = ", ".join(passed_args)
                     return f"{mangled}({args})"
+
+            obj_type = self._get_expr_type(obj)
+            if obj_type and obj_type.startswith("list[") and obj_type.endswith("]"):
+                elem = obj_type[5:-1]
+                if attr == "append":
+                    func = {
+                        'int': 'list_int_append',
+                        'float': 'list_float_append',
+                        'bool': 'list_bool_append',
+                        'str': 'list_str_append',
+                    }[elem]
+                    arg = self._expr(e.args[0])
+                    return f"{func}(&{obj_expr}, {arg})"
+                if attr == "pop":
+                    func = {
+                        'int': 'list_int_pop',
+                        'float': 'list_float_pop',
+                        'bool': 'list_bool_pop',
+                        'str': 'list_str_pop',
+                    }[elem]
+                    return f"{func}(&{obj_expr})"
+                if attr == "remove":
+                    func = {
+                        'int': 'list_int_remove',
+                        'float': 'list_float_remove',
+                        'bool': 'list_bool_remove',
+                        'str': 'list_str_remove',
+                    }[elem]
+                    arg = self._expr(e.args[0])
+                    return f"{func}(&{obj_expr}, {arg})"
 
             # Special case: Class.__init__ → Class____init__
             if attr == "__init__" and isinstance(obj, Identifier):
