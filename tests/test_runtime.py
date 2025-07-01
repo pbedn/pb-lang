@@ -360,7 +360,7 @@ class TestPipelineRuntime(unittest.TestCase):
         )
         output = compile_and_run(code)
         lines = output.strip().splitlines()
-        self.assertEqual(lines[0], "{True, False, True}")
+        self.assertEqual(lines[0], "{True, False}")
 
     def test_type_conversions_and_printing(self):
         code = (
