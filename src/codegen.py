@@ -1310,9 +1310,17 @@ class CodeGen:
             self._emit(f"{elem_c_type} {buf_name}[1] = {{0}};")
             return f"({set_c_type}){{ .len=0, .data={buf_name} }}"
         else:
-            elems = ", ".join(self._expr(x) for x in e.elements)
+            unique_codes = []
+            seen = set()
+            for el in e.elements:
+                code = self._expr(el)
+                if code not in seen:
+                    seen.add(code)
+                    unique_codes.append(code)
+
+            elems = ", ".join(unique_codes)
             self._emit(f"{elem_c_type} {buf_name}[] = {{{elems}}};")
-            return f"({set_c_type}){{ .len={len(e.elements)}, .data={buf_name} }}"
+            return f"({set_c_type}){{ .len={len(unique_codes)}, .data={buf_name} }}"
 
     def _generate_DictExpr(self, e: DictExpr) -> str:
         self._tmp_dict_counter += 1
