@@ -39,6 +39,7 @@ from lang_ast import (
     ListExpr,
     SetExpr,
     DictExpr,
+    EllipsisLiteral,
     ImportStmt,
 )
 
@@ -307,6 +308,9 @@ class Parser:
 
         if tok.type == TokenType.IDENTIFIER:
             return self.parse_identifier()
+        elif tok.type == TokenType.ELLIPSIS:
+            self.advance()
+            return EllipsisLiteral()
         elif tok.type in (TokenType.INT_LIT, TokenType.FLOAT_LIT, TokenType.STRING_LIT, TokenType.FSTRING_START, TokenType.TRUE, TokenType.FALSE, TokenType.NONE):
             return self.parse_literal()
         elif tok.type == TokenType.LPAREN:
@@ -671,9 +675,13 @@ class Parser:
         declared_type = self.parse_type()
         value: Optional[Expr] = None
         if self.match(TokenType.ASSIGN):
-            value = self.parse_expr()
+            if self.match(TokenType.ELLIPSIS):
+                value = EllipsisLiteral()
+            else:
+                value = self.parse_expr()
         self.expect(TokenType.NEWLINE)
-        return VarDecl(name, declared_type, value)
+        extern = isinstance(value, EllipsisLiteral)
+        return VarDecl(name, declared_type, value, is_extern=extern)
 
     def parse_assign_stmt(self) -> AssignStmt:
         """Parse an assignment statement
@@ -892,6 +900,10 @@ class Parser:
             return_type = self.expect_type_name()
 
         self.expect(TokenType.COLON)
+        if self.match(TokenType.ELLIPSIS):
+            self.expect(TokenType.NEWLINE)
+            return FunctionDef(name, params, [], return_type, is_stub=True)
+
         self.expect(TokenType.NEWLINE)
         while self.match(TokenType.NEWLINE):
             pass
