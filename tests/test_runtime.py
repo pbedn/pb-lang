@@ -177,6 +177,23 @@ class TestImportUtilsHelper(unittest.TestCase):
         output = _compile_and_run_modules(modules)
         self.assertEqual(output.splitlines(), expected)
 
+    def test_star_imports_runtime_output(self):
+        base = os.path.join(os.path.dirname(__file__), "samples")
+        with open(os.path.join(base, "imports_star.pb")) as f:
+            star_src = f.read()
+        with open(os.path.join(base, "mathlib.pb")) as f:
+            mathlib_src = f.read()
+        with open(os.path.join(base, "utils.pb")) as f:
+            utils_src = f.read()
+        expected = ["9", "3.1415", "Runinng helper from imported utils.pb file"]
+        modules = {
+            "imports_star": star_src,
+            "mathlib": mathlib_src,
+            "utils": utils_src,
+        }
+        output = _compile_and_run_modules(modules)
+        self.assertEqual(output.splitlines(), expected)
+
 
 class TestPipelineRuntime(unittest.TestCase):
 
