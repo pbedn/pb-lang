@@ -180,12 +180,14 @@ class ModuleSymbol:
         path: str | None = None,
         exports: dict | None = None,
         functions: dict | None = None,
+        vendor_metadata=None,
     ):
         self.name = name
         self.path = path  # Optional: absolute path to module file
         self.exports = exports if exports is not None else {}
         self.functions = functions if functions is not None else {}
         self.program: Program | None = program
+        self.vendor_metadata: dict | None = vendor_metadata
 
 
 class TypeError(Exception):

@@ -21,12 +21,30 @@ TYPE_MAP = {
 def map_c_type(c_type):
     """Map a C type to a PB type."""
     c_type = c_type.replace("const ", "").strip()
+    # Normalize all unsigned variants
+    c_type = re.sub(r'\bunsigned\s+int\b', 'int', c_type)
+    c_type = re.sub(r'\bunsigned\s+char\b', 'int', c_type)
+    c_type = re.sub(r'\bunsigned\s+short\b', 'int', c_type)
+    c_type = re.sub(r'\bunsigned\b', 'int', c_type)
+    c_type = re.sub(r'\bsigned\s+int\b', 'int', c_type)
+    c_type = re.sub(r'\bsigned\b', '', c_type)
     if c_type.endswith("*"):
-        # Treat all pointers as int for simplicity, unless it's char*
         if "char" in c_type:
             return "str"
         return "int"
-    return TYPE_MAP.get(c_type, c_type)  # For structs: use same name
+    return TYPE_MAP.get(c_type, c_type)
+
+def parse_type_aliases(header):
+    """Parse typedef aliases such as: typedef Foo Bar;"""
+    aliases = []
+    # Pattern: typedef [struct|enum]?(type) (alias);
+    for m in re.finditer(r"typedef\s+(?:struct\s+|enum\s+)?([a-zA-Z0-9_]+)\s+([a-zA-Z0-9_]+)\s*;", header):
+        orig, alias = m.groups()
+        # skip struct definitions (those are handled elsewhere)
+        if orig == alias:
+            continue
+        aliases.append(f"{alias} = {orig}")
+    return aliases
 
 def parse_functions(header):
     """Parse C functions from header file."""
@@ -93,7 +111,6 @@ def parse_constants(header):
                 enums.append(f"{name}: int = ...")
     return constants + enums
 
-
 def parse_structs(header):
     """Parse typedef structs as PB classes, group fields per line, strip comments, remove pointers/arrays and C type prefix in names."""
     structs = []
@@ -112,25 +129,32 @@ def parse_structs(header):
             line = line.rstrip(";").strip()
             if not line:
                 continue
-            # Parse type and field list
-            m = re.match(r"(.+?)\s+(.+)", line)
+            
+            # Split into type and variable name(s) at the last space
+            if ";" in line:
+                line = line[:line.index(";")]
+            type_and_names = line.strip()
+            if not type_and_names:
+                continue
+            # Find last whitespace not inside [], to split type and names robustly
+            m = re.match(r"(.+?)\s+([^\s][^;]*)$", type_and_names)
             if not m:
                 continue
             c_type = m.group(1).replace('const ', '').strip()
             names_str = m.group(2).strip().rstrip(',')
-            # Fix C unsigned type notation
-            c_type = c_type.replace("unsigned int", "int").replace("unsigned char", "int").replace("unsigned short", "int").replace("unsigned", "int")
+            # Remove type keywords that could be left at the front (e.g., char r)
+            names_str = re.sub(r"^(char|int|float|double|bool|short|long|struct)\b\s*", "", names_str)
+            # Now continue as before
             pb_type = map_c_type(c_type.replace('*', '').strip())
-            # Split all names by ','
             name_list = [n.strip().rstrip(',') for n in names_str.split(",") if n.strip()]
-            for i, raw_name in enumerate(name_list):
-                # Remove any pointer or array syntax
+            for raw_name in name_list:
                 clean_name = re.sub(r'^\*+', '', raw_name)  # Remove *
                 clean_name = re.sub(r'\[.*?\]', '', clean_name)  # Remove [N]
                 clean_name = clean_name.strip()
                 if not clean_name:
                     continue
                 fields.append(f"    {clean_name}: {pb_type}")
+
         if fields:
             struct_def = f"class {struct_name}:\n" + "\n".join(fields)
         else:
@@ -144,6 +168,7 @@ def main():
 
     constants = parse_constants(header)
     structs = parse_structs(header)
+    aliases = parse_type_aliases(header)
     functions = parse_functions(header)
 
     with open(PB_OUTPUT_PATH, "w", encoding="utf-8") as f:
@@ -153,6 +178,8 @@ def main():
         f.write("\n")
         for struct in structs:
             f.write(struct + "\n")
+        for alias in aliases:
+            f.write(alias + "\n")
         f.write("\n")
         for fn in functions:
             f.write(fn + "\n")

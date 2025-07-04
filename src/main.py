@@ -94,6 +94,8 @@ def build(source_code: str, pb_path: str, output_file: str, verbose: bool = Fals
         # build_runtime_library(verbose=verbose, debug=debug)    
     build_runtime_library(verbose=verbose, debug=debug)    
 
+    include_dirs, lib_dirs, link_flags = collect_vendor_build_info(loaded_modules)
+
     compile_cmd = [
         "gcc", "-std=c99",
         "-Wall",        # common warnings
@@ -103,6 +105,9 @@ def build(source_code: str, pb_path: str, output_file: str, verbose: bool = Fals
         *module_c_files,
         "-o", exe_file,
         "-I", build_dir,
+        *["-I" + idir for idir in include_dirs],
+        *["-L" + ldir for ldir in lib_dirs],
+        *link_flags,
         runtime_lib
     ]
     if verbose: print("Compile command:", " ".join(compile_cmd))
@@ -221,6 +226,19 @@ def check_gcc_installed(verbose):
     except subprocess.CalledProcessError:
         if verbose: print("GCC is available, but an error occurred while running it.")
         return False
+
+
+def collect_vendor_build_info(loaded_modules):
+    include_dirs = set()
+    lib_dirs = set()
+    link_flags = set()
+    for mod in loaded_modules.values():
+        md = getattr(mod, "vendor_metadata", None)
+        if md:
+            include_dirs.update(md.get("include_dirs", []))
+            lib_dirs.update(md.get("lib_dirs", []))
+            link_flags.update(md.get("link_flags", []))
+    return include_dirs, lib_dirs, link_flags
 
 
 def main():

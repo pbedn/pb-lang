@@ -1,4 +1,5 @@
 import os
+import toml
 from lexer import Lexer
 from parser import Parser
 from lang_ast import ImportStmt, ImportFromStmt, FunctionDef, ClassDef, VarDecl
@@ -15,6 +16,15 @@ def get_std_vendor_paths():
     stdlib = os.path.join(root, "stdlib")
     vendor = os.path.join(root, "vendor")
     return [stdlib, vendor]
+
+
+def load_vendor_metadata(module_path: str):
+    vendor_dir = os.path.dirname(module_path)
+    metadata_path = os.path.join(vendor_dir, "metadata.toml")
+    if os.path.isfile(metadata_path):
+        with open(metadata_path, "r", encoding="utf-8") as f:
+            return toml.load(f)
+    return None
 
 
 class ModuleNotFoundError(Exception):
@@ -38,13 +48,19 @@ def resolve_module(module_name: list[str], search_paths: list[str] = None) -> st
     if search_paths is None:
         search_paths = [os.getcwd()]
     rel_path = os.path.join(*module_name) + ".pb"
+    rel_path2 = os.path.join(*module_name, module_name[-1] + ".pb")
     for base in search_paths:
         candidate = os.path.join(base, rel_path)
+        candidate2 = os.path.join(base, rel_path2)
         if os.path.isfile(candidate):
             return os.path.abspath(candidate)
+        if os.path.isfile(candidate2):
+            return os.path.abspath(candidate2)
+    paths = [os.path.join(base, rel_path) for base in search_paths]
+    paths2 = [os.path.join(base, rel_path2) for base in search_paths]
     raise ModuleNotFoundError(
         f"Module {'.'.join(module_name)} not found. "
-        f"Paths tried: {', '.join(os.path.join(base, rel_path) for base in search_paths)}"
+        f"Paths tried: {', '.join(paths + paths2)}"
     )
 
 
@@ -142,6 +158,10 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
         elif isinstance(stmt, VarDecl):
             exports[stmt.name] = stmt.declared_type
 
+    vendor_metadata = None
+    if "vendor" in filepath.split(os.sep):
+        vendor_metadata = load_vendor_metadata(filepath)
+
     program.module_name = ".".join(module_name)
     mod_symbol = ModuleSymbol(
         name=".".join(module_name),
@@ -149,6 +169,7 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
         path=filepath,
         exports=exports,
         functions=functions,
+        vendor_metadata=vendor_metadata,
     )
     loaded_modules[name_tuple] = mod_symbol
     return mod_symbol
