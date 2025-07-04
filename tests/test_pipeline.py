@@ -1068,6 +1068,26 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn('int64_t n = 10;', c)
         self.assertIn('for (int64_t i = 0; i < n; ++i)', c)
 
+    def test_hex_builtin_codegen(self):
+        code = (
+            "def main() -> int:\n"
+            "    x: int = 0x00000008\n"
+            "    print(hex(x))\n"
+            "    return 0\n"
+        )
+        h, c = self.compile_pipeline(code)
+        self.assertIn('pb_format_hex(x)', c)
+
+    def test_hex_negative_codegen(self):
+        code = (
+            "def main() -> int:\n"
+            "    x: int = -10\n"
+            "    print(hex(x))\n"
+            "    return 0\n"
+        )
+        h, c = self.compile_pipeline(code)
+        self.assertIn('pb_format_hex(x)', c)
+
     def test_len_builtin_pipeline(self):
         code = (
             "def main() -> int:\n"

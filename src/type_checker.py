@@ -111,6 +111,7 @@ from lang_ast import (
     ListExpr,
     SetExpr,
     DictExpr,
+    EllipsisLiteral,
     AssertStmt,
     RaiseStmt,
     GlobalStmt,
@@ -430,6 +431,10 @@ class TypeChecker:
             expr.inferred_type = "str"
             return "str"
 
+        elif isinstance(expr, EllipsisLiteral):
+            expr.inferred_type = expected_type or "Any"
+            return expr.inferred_type
+
         elif isinstance(expr, FStringLiteral):
             for part in expr.parts:
                 if isinstance(part, FStringExpr):
@@ -588,6 +593,14 @@ class TypeChecker:
                     arg_type = self.check_expr(expr.args[0])
                     if arg_type not in {"int", "float", "str"}:
                         raise TypeError(f"Function 'str' expects int, float, or str, got {arg_type}")
+                    expr.inferred_type = "str"
+                    return "str"
+                if fname == "hex":
+                    if len(expr.args) != 1:
+                        raise TypeError("Function 'hex' expects exactly one argument")
+                    arg_type = self.check_expr(expr.args[0])
+                    if arg_type != "int":
+                        raise TypeError(f"Function 'hex' expects int, got {arg_type}")
                     expr.inferred_type = "str"
                     return "str"
                 if fname == "open":

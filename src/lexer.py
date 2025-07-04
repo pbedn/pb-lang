@@ -20,7 +20,8 @@ class TokenType(Enum):
     COLON = auto(); COMMA = auto(); LPAREN = auto(); RPAREN = auto()
     LBRACKET = auto(); RBRACKET = auto(); LBRACE = auto(); RBRACE = auto()
     ASSIGN = auto(); PLUS = auto(); MINUS = auto(); STAR = auto(); SLASH = auto()
-    PERCENT = auto(); FLOORDIV = auto(); DOT = auto(); SEMICOLON = auto(); PIPE = auto()
+    PERCENT = auto(); FLOORDIV = auto(); DOT = auto(); SEMICOLON = auto(); PIPE = auto();
+    ELLIPSIS = auto()
 
     ## augmented assignment
     PLUSEQ = auto(); MINUSEQ = auto(); STAREQ = auto(); SLASHEQ = auto()
@@ -122,8 +123,9 @@ TOKEN_REGEX = [
     (re.compile(r'/='), TokenType.SLASHEQ),
     (re.compile(r'%='), TokenType.PERCENTEQ),
     (re.compile(r'//'), TokenType.FLOORDIV),
-    
+
     # single-char punctuation
+    (re.compile(r'\.\.\.'), TokenType.ELLIPSIS),
     (re.compile(r'\('), TokenType.LPAREN),
     (re.compile(r'\)'), TokenType.RPAREN),
     (re.compile(r'\['), TokenType.LBRACKET),
@@ -145,6 +147,7 @@ TOKEN_REGEX = [
     (re.compile(r'\|'), TokenType.PIPE),
     
     # numeric literals (underscore allowed)
+    (re.compile(r"0[xX][0-9a-fA-F][0-9a-fA-F_]*"), TokenType.INT_LIT),
     (re.compile(r'\d[\d_]*\.\d[\d_]*[eE][+-]?\d[\d_]*'), TokenType.FLOAT_LIT),  # Fraction + Exponent; 12.34e5, 6.02_2e+23
     (re.compile(r'\d[\d_]*[eE][+-]?\d[\d_]*'), TokenType.FLOAT_LIT),            # Integer + Exponent; 10e-3, 1_6e2
     (re.compile(r'\d[\d_]*\.\d[\d_]*'), TokenType.FLOAT_LIT),                   # Simple Fraction (no exponent); 3.1415, 0.5, 2_5.0

@@ -84,6 +84,10 @@ class TestLexer(unittest.TestCase):
         for aug in ["PLUSEQ", "MINUSEQ", "STAREQ", "SLASHEQ", "PERCENTEQ"]:
             self.assertIn(aug, types)
 
+    def test_ellipsis_token(self):
+        tokens = Lexer("...").tokenize()
+        self.assertEqual(tokens[0].type, TokenType.ELLIPSIS)
+
     def test_global_keyword(self):
         code = 'global x, y'
         types = [t.type.name for t in Lexer(code).tokenize()]
@@ -546,6 +550,11 @@ class TestFStringLexing(unittest.TestCase):
         comments = [t for t in tokens if t.type == TokenType.COMMENT]
         self.assertEqual(len(comments), 1)
         self.assertEqual(comments[0].value, "# important")
+
+    def test_hex_integer_literal(self):
+        tokens = Lexer('value = 0x00000008').tokenize()
+        values = [t.value for t in tokens if t.type == TokenType.INT_LIT]
+        self.assertIn('0x00000008', values)
 
 if __name__ == "__main__":
     unittest.main()
