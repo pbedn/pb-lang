@@ -6,7 +6,7 @@ from type_checker import TypeChecker, TypeError
 from codegen import CodeGen
 from lang_ast import ImportStmt, ImportFromStmt, ImportAlias, Program, Stmt
 from module_loader import load_module, ModuleNotFoundError
-from module_loader import get_std_vendor_paths
+from module_loader import get_std_vendor_paths, is_native_binding
 
 
 def process_imports(ast: Program, pb_path: str, verbose: bool = False):
@@ -127,6 +127,9 @@ def compile_code_to_c_and_h(
     )
     if ast is None:
         return None, None, None, loaded_modules
+    if pb_path and is_native_binding(pb_path):
+        # Skip code generation for native bindings
+        return None, None, ast, loaded_modules
     codegen = CodeGen()
     h_code = codegen.generate_header(ast)
     c_code = codegen.generate(ast)

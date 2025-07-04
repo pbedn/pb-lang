@@ -18,6 +18,18 @@ def get_std_vendor_paths():
     return [stdlib, vendor]
 
 
+def is_native_binding(pb_path: str) -> bool:
+    """Return True if the given PB file is marked as a native binding."""
+    try:
+        with open(pb_path, "r", encoding="utf-8") as f:
+            for _ in range(4):
+                if "# PB_MODULE_KIND: NATIVE_BINDING" in f.readline():
+                    return True
+    except FileNotFoundError:
+        pass
+    return False
+
+
 def load_vendor_metadata(module_path: str):
     vendor_dir = os.path.dirname(module_path)
     metadata_path = os.path.join(vendor_dir, "metadata.toml")
@@ -86,6 +98,8 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
         filepath = resolve_module(module_name, search_paths)
     except ModuleNotFoundError as e:
         raise ModuleNotFoundError(f"While importing {'.'.join(module_name)}: {e}")
+
+    native = is_native_binding(filepath)
 
     # Step 2: Parse file
     with open(filepath, "r", encoding="utf-8") as f:
@@ -170,6 +184,7 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
         exports=exports,
         functions=functions,
         vendor_metadata=vendor_metadata,
+        native_binding=native,
     )
     loaded_modules[name_tuple] = mod_symbol
     return mod_symbol

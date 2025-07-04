@@ -77,7 +77,8 @@ def build(source_code: str, pb_path: str, output_file: str, verbose: bool = Fals
         if not hasattr(mod, "program"):
             continue  # Defensive: only process modules with AST
         c_file = write_module_code_files(mod, build_dir, verbose, debug)
-        module_c_files.append(c_file)
+        if c_file:
+            module_c_files.append(c_file)
 
     c_path = get_build_output_path(f"{output_file}.c")
     module_c_files.append(c_path)
@@ -142,6 +143,11 @@ def get_build_output_path(output_file: str) -> str:
 
 
 def write_module_code_files(mod_symbol, build_dir, verbose: bool = False, debug: bool = False):
+    if getattr(mod_symbol, "native_binding", False):
+        if verbose:
+            print(f"Skipping code generation for native binding module: {mod_symbol.name}")
+        return None
+
     # Derive path: e.g. "foo/bar" -> "build/foo/bar.h", "build/foo/bar.c"
     rel_path = mod_symbol.name.replace(".", os.sep)
     mod_dir = os.path.join(build_dir, os.path.dirname(rel_path))
