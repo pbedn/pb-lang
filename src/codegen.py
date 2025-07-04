@@ -91,7 +91,7 @@ class CodeGen:
         # Map class name to ClassDef for attribute lookups
         self._class_map: dict[str, ClassDef] = {}
 
-        self._modules: set[str] = set()  # track imported module names
+        self._modules: dict[str, str] = {}  # alias -> real module name
 
         # Lines that should execute before main to initialize globals
         self._global_init_lines: list[str] = []
@@ -122,6 +122,7 @@ class CodeGen:
     def generate(self, program: Program) -> str:
         """Generate the complete C source for ``program``."""
         self._program = program
+        self._modules = getattr(program, "import_aliases", {}).copy()
         self._lines.clear()
         self._indent = 0
         self._runtime_emitted = False
@@ -166,6 +167,7 @@ class CodeGen:
     def generate_header(self, program: Program) -> str:
         """Generate a C header file (.h) for a given PB module AST."""
         self._program = program
+        self._modules = getattr(program, "import_aliases", {}).copy()
         self._lines.clear()
         self._indent = 0
         self._runtime_emitted = False
@@ -254,7 +256,7 @@ class CodeGen:
                 emit_include(f"{mod_name}.h")
 
                 alias = stmt.alias or mod_name
-                self._modules.add(alias)
+                self._modules[alias] = getattr(self._program, "import_aliases", {}).get(alias, mod_name)
                 if alias != mod_name and alias not in seen_aliases:
                     self._emit(f"#define {alias} {mod_name}")
                     seen_aliases.add(alias)
@@ -1040,7 +1042,8 @@ class CodeGen:
             obj_full = self._attr_full_name(obj)
 
             if obj_full and obj_full in self._modules:
-                mangled = f"{obj_full.replace('.', '_')}_{attr}"
+                real = self._modules[obj_full]
+                mangled = f"{real.replace('.', '_')}_{attr}"
                 passed_args = [self._expr(arg) for arg in e.args]
                 if mangled in self._function_params:
                     all_args = self._apply_defaults(mangled, passed_args)

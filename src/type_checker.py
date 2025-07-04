@@ -272,6 +272,7 @@ class TypeChecker:
             self.check_stmt(stmt)
 
         program.inferred_instance_fields = dict(self.instance_fields)
+        program.import_aliases = {alias: mod.name for alias, mod in self.modules.items()}
         return program
 
     def check_stmt(self, stmt: Stmt, parent: Stmt | None = None):
