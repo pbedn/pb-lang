@@ -39,6 +39,7 @@ from lang_ast import (
     ListExpr,
     SetExpr,
     DictExpr,
+    EllipsisLiteral,
     ImportStmt,
 )
 
@@ -307,6 +308,9 @@ class Parser:
 
         if tok.type == TokenType.IDENTIFIER:
             return self.parse_identifier()
+        elif tok.type == TokenType.ELLIPSIS:
+            self.advance()
+            return EllipsisLiteral()
         elif tok.type in (TokenType.INT_LIT, TokenType.FLOAT_LIT, TokenType.STRING_LIT, TokenType.FSTRING_START, TokenType.TRUE, TokenType.FALSE, TokenType.NONE):
             return self.parse_literal()
         elif tok.type == TokenType.LPAREN:

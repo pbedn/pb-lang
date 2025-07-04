@@ -187,6 +187,11 @@ class StringLiteral:
 
 
 @dataclass
+class EllipsisLiteral:
+    inferred_type: Optional[str] = None
+
+
+@dataclass
 class FStringLiteral:
     parts: List[Union[FStringText, FStringExpr]]
     inferred_type: Optional[str] = None
@@ -306,4 +311,5 @@ Expr = Union[
     ListExpr,
     SetExpr,
     DictExpr,
+    EllipsisLiteral,
 ]

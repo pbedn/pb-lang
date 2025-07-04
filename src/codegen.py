@@ -9,7 +9,7 @@ from lang_ast import (
     ImportStmt,
     Expr, Identifier, Literal, StringLiteral, FStringLiteral, FStringText, FStringExpr,
     BinOp, UnaryOp, CallExpr, AttributeExpr, IndexExpr,
-    ListExpr, SetExpr, DictExpr,
+    ListExpr, SetExpr, DictExpr, EllipsisLiteral,
     Parameter, FunctionDef, PassStmt,
 )
 
@@ -920,6 +920,7 @@ class CodeGen:
         if isinstance(e, StringLiteral): return self._generate_StringLiteral(e)
         if isinstance(e, FStringLiteral): return self._generate_FStringLiteral(e)
         if isinstance(e, Identifier): return self._generate_Identifier(e)
+        if isinstance(e, EllipsisLiteral): return "0"
         if isinstance(e, BinOp): return self._generate_BinOp(e)
         if isinstance(e, UnaryOp): return self._generate_UnaryOp(e)
         if isinstance(e, CallExpr): return self._generate_CallExpr(e)

@@ -111,6 +111,7 @@ from lang_ast import (
     ListExpr,
     SetExpr,
     DictExpr,
+    EllipsisLiteral,
     AssertStmt,
     RaiseStmt,
     GlobalStmt,
@@ -429,6 +430,10 @@ class TypeChecker:
         elif isinstance(expr, StringLiteral):
             expr.inferred_type = "str"
             return "str"
+
+        elif isinstance(expr, EllipsisLiteral):
+            expr.inferred_type = expected_type or "Any"
+            return expr.inferred_type
 
         elif isinstance(expr, FStringLiteral):
             for part in expr.parts:

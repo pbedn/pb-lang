@@ -20,7 +20,8 @@ class TokenType(Enum):
     COLON = auto(); COMMA = auto(); LPAREN = auto(); RPAREN = auto()
     LBRACKET = auto(); RBRACKET = auto(); LBRACE = auto(); RBRACE = auto()
     ASSIGN = auto(); PLUS = auto(); MINUS = auto(); STAR = auto(); SLASH = auto()
-    PERCENT = auto(); FLOORDIV = auto(); DOT = auto(); SEMICOLON = auto(); PIPE = auto()
+    PERCENT = auto(); FLOORDIV = auto(); DOT = auto(); SEMICOLON = auto(); PIPE = auto();
+    ELLIPSIS = auto()
 
     ## augmented assignment
     PLUSEQ = auto(); MINUSEQ = auto(); STAREQ = auto(); SLASHEQ = auto()
@@ -122,8 +123,9 @@ TOKEN_REGEX = [
     (re.compile(r'/='), TokenType.SLASHEQ),
     (re.compile(r'%='), TokenType.PERCENTEQ),
     (re.compile(r'//'), TokenType.FLOORDIV),
-    
+
     # single-char punctuation
+    (re.compile(r'\.\.\.'), TokenType.ELLIPSIS),
     (re.compile(r'\('), TokenType.LPAREN),
     (re.compile(r'\)'), TokenType.RPAREN),
     (re.compile(r'\['), TokenType.LBRACKET),
