@@ -1,5 +1,0 @@
-name = "raylib"
-version = "5.5"
-include_dirs = ["include"]
-link_flags = ["-lraylib", "-lgdi32", "-lwinmm"]
-lib_dirs = ["lib/windows"]

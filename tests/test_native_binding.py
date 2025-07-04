@@ -11,11 +11,10 @@ def create_binding_module(tmpdir):
     os.makedirs(mod_dir, exist_ok=True)
     pb_path = os.path.join(mod_dir, "testlib.pb")
     with open(pb_path, "w") as f:
-        f.write("# PB_MODULE_KIND: NATIVE_BINDING\n")
         f.write("def add(x: int, y: int) -> int:\n    return 0\n")
-    meta_path = os.path.join(mod_dir, "metadata.toml")
+    meta_path = os.path.join(mod_dir, "metadata.json")
     with open(meta_path, "w") as f:
-        f.write("link_flags = ['-ltest']\n")
+        f.write('{"link_flags": ["-ltest"], "native": true}')
     return pb_path, mod_dir
 
 
@@ -36,7 +35,7 @@ def test_load_module_binding_metadata():
         loaded = {}
         mod = load_module(["testlib"], [mod_dir], loaded)
         assert mod.native_binding
-        assert mod.vendor_metadata == {"link_flags": ["-ltest"]}
+        assert mod.vendor_metadata == {"link_flags": ["-ltest"], "native": True}
         inc, lib, flags = collect_vendor_build_info(loaded)
         assert "-ltest" in flags
         # write_module_code_files should return None

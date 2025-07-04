@@ -96,13 +96,13 @@ def compile_code_to_ast(
     if debug and pprint:
         print("PARSER AST:\n"); pprint(ast); print(f"{'-'*80}\n")
 
-    checker = TypeChecker()
+    checker = TypeChecker(native_module=is_native_binding(pb_path) if pb_path else False)
     loaded_modules = {}
 
     if import_support and pb_path is not None:
         checker, loaded_modules = process_imports(ast, pb_path, verbose=verbose)
     else:
-        checker = TypeChecker()
+        checker = TypeChecker(native_module=is_native_binding(pb_path) if pb_path else False)
         loaded_modules = {}
 
     checker.check(ast)
