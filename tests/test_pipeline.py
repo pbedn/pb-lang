@@ -1100,6 +1100,16 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn('int64_t x = arr.len;', c_code)
         self.assertIn('pb_print_int(x);', c_code)
 
+    def test_native_module_function_call_no_prefix(self):
+        code = (
+            "from raylib import InitWindow\n"
+            "def main() -> int:\n"
+            "    InitWindow(800, 600, \"Hello\")\n"
+            "    return 0\n"
+        )
+        header, c_code = self.compile_pipeline(code, pb_path="test.pb")
+        self.assertIn('InitWindow(800, 600, "Hello");', c_code)
+
 
 if __name__ == "__main__":
     unittest.main()
