@@ -41,6 +41,8 @@ from lang_ast import (
     DictExpr,
     EllipsisLiteral,
     ImportStmt,
+    ImportFromStmt,
+    ImportAlias,
 )
 
 
@@ -1134,12 +1136,12 @@ class Parser:
 
         return TryExceptStmt(try_body, except_blocks, finally_body)
 
-    def parse_import_stmt(self) -> ImportStmt:
-        """Parse an import statement or from-import statement.
+    def parse_import_stmt(self) -> Stmt:
+        """Parse an import or from-import statement.
 
         Grammar:
-        ImportStmt ::= "import" Identifier { "." Identifier } [ "as" Identifier ] NEWLINE
-        FromImport ::= "from" Identifier { "." Identifier } "import" (Identifier | "*") [ "as" Identifier ] NEWLINE
+        ImportStmt      ::= "import" Identifier { "." Identifier } [ "as" Identifier ] NEWLINE
+        ImportFromStmt  ::= "from" Identifier { "." Identifier } "import" (Identifier | "*") [ "as" Identifier ] {"," Identifier ["as" Identifier]} NEWLINE
         """
         if self.match(TokenType.FROM):
             module = [self.expect(TokenType.IDENTIFIER).value]
@@ -1150,27 +1152,27 @@ class Parser:
             if self.match(TokenType.STAR):
                 self.expect(TokenType.NEWLINE)
                 loc = (self.tokens[self.pos-1].line, self.tokens[self.pos-1].column)
-                return ImportStmt(module=module, alias_map={"*": "*"}, loc=loc)
+                return ImportFromStmt(module=module, names=None, is_wildcard=True, loc=loc)
 
-            alias_map: dict[str, str] = {}
+            names: list[ImportAlias] = []
 
             name = self.expect(TokenType.IDENTIFIER).value
-            alias = name
+            asname = None
             if self.match(TokenType.AS):
-                alias = self.expect(TokenType.IDENTIFIER).value
-            alias_map[name] = alias
+                asname = self.expect(TokenType.IDENTIFIER).value
+            names.append(ImportAlias(name, asname))
 
             while self.match(TokenType.COMMA):
                 name = self.expect(TokenType.IDENTIFIER).value
-                alias = name
+                asname = None
                 if self.match(TokenType.AS):
-                    alias = self.expect(TokenType.IDENTIFIER).value
-                alias_map[name] = alias
+                    asname = self.expect(TokenType.IDENTIFIER).value
+                names.append(ImportAlias(name, asname))
 
             self.expect(TokenType.NEWLINE)
             loc = (self.tokens[self.pos-1].line, self.tokens[self.pos-1].column)
 
-            return ImportStmt(module=module, alias_map=alias_map, loc=loc)
+            return ImportFromStmt(module=module, names=names, is_wildcard=False, loc=loc)
 
         self.expect(TokenType.IMPORT)
         module = [self.expect(TokenType.IDENTIFIER).value]
@@ -1178,14 +1180,14 @@ class Parser:
         while self.match(TokenType.DOT):
             module.append(self.expect(TokenType.IDENTIFIER).value)
 
-        alias = ".".join(module)
+        alias = None
         if self.match(TokenType.AS):
             alias = self.expect(TokenType.IDENTIFIER).value
 
         self.expect(TokenType.NEWLINE)
 
         loc = (self.tokens[self.pos-1].line, self.tokens[self.pos-1].column)
-        return ImportStmt(module=module, alias_map={".".join(module): alias}, loc=loc)
+        return ImportStmt(module=module, alias=alias, loc=loc)
 
 
 if __name__ == "__main__":

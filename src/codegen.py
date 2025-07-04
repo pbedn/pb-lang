@@ -7,6 +7,7 @@ from lang_ast import (
     IfStmt, WhileStmt, ForStmt, ReturnStmt, ExprStmt, GlobalStmt,
     TryExceptStmt, RaiseStmt, AssertStmt, BreakStmt, ContinueStmt,
     ImportStmt,
+    ImportFromStmt,
     Expr, Identifier, Literal, StringLiteral, FStringLiteral, FStringText, FStringExpr,
     BinOp, UnaryOp, CallExpr, AttributeExpr, IndexExpr,
     ListExpr, SetExpr, DictExpr, EllipsisLiteral,
@@ -252,14 +253,18 @@ class CodeGen:
                 mod_name = ".".join(stmt.module)
                 emit_include(f"{mod_name}.h")
 
-                if mod_name in stmt.alias_map:
-                    alias = stmt.alias_map[mod_name]
-                    self._modules.add(alias)
-                    if alias != mod_name and alias not in seen_aliases:
-                        self._emit(f"#define {alias} {mod_name}")
-                        seen_aliases.add(alias)
-                else:
-                    for name, alias in stmt.alias_map.items():
+                alias = stmt.alias or mod_name
+                self._modules.add(alias)
+                if alias != mod_name and alias not in seen_aliases:
+                    self._emit(f"#define {alias} {mod_name}")
+                    seen_aliases.add(alias)
+            elif isinstance(stmt, ImportFromStmt):
+                mod_name = ".".join(stmt.module)
+                emit_include(f"{mod_name}.h")
+                if not stmt.is_wildcard:
+                    for alias_obj in stmt.names or []:
+                        name = alias_obj.name
+                        alias = alias_obj.asname or name
                         if alias != name and alias not in seen_aliases:
                             self._emit(f"#define {alias} {name}")
                             seen_aliases.add(alias)
@@ -1131,16 +1136,13 @@ class CodeGen:
             # Try to detect imported functions
             imported_from = None
             for stmt in getattr(self._program, "body", []):
-                if isinstance(stmt, ImportStmt):
-                    mod_name = ".".join(stmt.module)
-                    if mod_name in stmt.alias_map:
-                        alias = stmt.alias_map[mod_name]
-                        if alias in self._modules and mangled not in self._function_params:
-                            imported_from = stmt.module[0]
-                    else:
-                        for name, alias in stmt.alias_map.items():
-                            if fn_name == name or fn_name == alias:
-                                imported_from = stmt.module[0]
+                if isinstance(stmt, ImportFromStmt):
+                    mod_prefix = "_".join(stmt.module)
+                    for alias_obj in stmt.names or []:
+                        alias_name = alias_obj.asname or alias_obj.name
+                        if fn_name == alias_name:
+                            imported_from = mod_prefix
+                            break
             if imported_from:
                 mangled = f"{imported_from}_{fn_name}"
 

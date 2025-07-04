@@ -40,6 +40,7 @@ from lang_ast import (
     ExceptBlock,
     ExprStmt,
     ImportStmt,
+    ImportFromStmt,
 )
 
 
@@ -974,7 +975,7 @@ class TestTypeCheckerInternals(unittest.TestCase):
 
     def test_attribute_access_on_module(self):
         # Simulate: import foo as bar
-        import_stmt = ImportStmt(module=["foo"], alias_map={"foo": "bar"})
+        import_stmt = ImportStmt(module=["foo"], alias="bar")
         self.tc.check_stmt(import_stmt)
 
         # Simulate: bar.some_func

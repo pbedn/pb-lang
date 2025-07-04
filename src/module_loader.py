@@ -1,7 +1,7 @@
 import os
 from lexer import Lexer
 from parser import Parser
-from lang_ast import ImportStmt, FunctionDef, ClassDef, VarDecl
+from lang_ast import ImportStmt, ImportFromStmt, FunctionDef, ClassDef, VarDecl
 from type_checker import TypeChecker, ModuleSymbol
 
 
@@ -77,12 +77,40 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
     # Register imports (recursive)
     for stmt in program.body:
         if isinstance(stmt, ImportStmt):
-            key, alias = next(iter(stmt.alias_map.items())) if stmt.alias_map else (None, None)
-            mod_symbol = load_module(stmt.module, child_search_paths, loaded_modules)
-            alias_name = alias if alias else stmt.module[0]
+            alias_name = stmt.alias or ".".join(stmt.module)
+            mod_symbol = load_module(stmt.module, child_search_paths, loaded_modules, verbose)
             if verbose:
                 print(f"Loaded module: {alias_name}, exports: {mod_symbol.exports}")
             checker.modules[alias_name] = mod_symbol
+        elif isinstance(stmt, ImportFromStmt):
+            mod_symbol = None
+            if stmt.is_wildcard:
+                mod_symbol = load_module(stmt.module, child_search_paths, loaded_modules, verbose)
+                for name, kind in mod_symbol.exports.items():
+                    if kind == "function" and name in mod_symbol.functions:
+                        checker.functions[name] = mod_symbol.functions[name]
+                    else:
+                        checker.env[name] = kind
+            else:
+                for alias_obj in stmt.names or []:
+                    name = alias_obj.name
+                    asname = alias_obj.asname or name
+                    try:
+                        sub_mod = load_module(stmt.module + [name], child_search_paths, loaded_modules, verbose)
+                    except ModuleNotFoundError:
+                        if mod_symbol is None:
+                            mod_symbol = load_module(stmt.module, child_search_paths, loaded_modules, verbose)
+                        if name not in mod_symbol.exports:
+                            raise ModuleNotFoundError(
+                                f"Module '{'.'.join(stmt.module)}' has no export '{name}'"
+                            )
+                        kind = mod_symbol.exports[name]
+                        if kind == "function" and name in mod_symbol.functions:
+                            checker.functions[asname] = mod_symbol.functions[name]
+                        else:
+                            checker.env[asname] = kind
+                    else:
+                        checker.modules[asname] = sub_mod
 
     checker.check(program)
 

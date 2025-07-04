@@ -156,9 +156,23 @@ class ExprStmt:
 
 
 @dataclass
+class ImportAlias:
+    name: str
+    asname: Optional[str] = None
+
+
+@dataclass
 class ImportStmt:
     module: List[str]
-    alias_map: dict[str, str]
+    alias: Optional[str] = None
+    loc: Optional[tuple] = None
+
+
+@dataclass
+class ImportFromStmt:
+    module: List[str]
+    names: Optional[List[ImportAlias]] = None
+    is_wildcard: bool = False
     loc: Optional[tuple] = None
 
 
@@ -293,6 +307,7 @@ Stmt = Union[
     PassStmt,
     ExprStmt,
     ImportStmt,
+    ImportFromStmt,
 ]
 
 Expr = Union[
