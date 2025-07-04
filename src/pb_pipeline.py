@@ -6,6 +6,7 @@ from type_checker import TypeChecker, TypeError
 from codegen import CodeGen
 from lang_ast import ImportStmt, ImportFromStmt, ImportAlias, Program, Stmt
 from module_loader import load_module, ModuleNotFoundError
+from module_loader import get_std_vendor_paths
 
 
 def process_imports(ast: Program, pb_path: str, verbose: bool = False):
@@ -17,9 +18,9 @@ def process_imports(ast: Program, pb_path: str, verbose: bool = False):
     loaded_modules = {}
     checker = TypeChecker()
     entry_dir = os.path.dirname(os.path.abspath(pb_path))
-    search_paths = [entry_dir]
-
+    search_paths = get_std_vendor_paths() + [entry_dir]
     expanded: list[Stmt] = []
+
     for stmt in getattr(ast, "body", []):
         if isinstance(stmt, ImportFromStmt) and not stmt.is_wildcard:
             for alias_obj in stmt.names or []:

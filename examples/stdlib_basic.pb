@@ -1,9 +1,10 @@
 import random as r
 from random import randint, random
 
-r.seed(1)
 
 def main():
+    r.seed(1)
+    
     # test var decl
     x: int = randint(1, 10)
     print(f"randint: {x}")

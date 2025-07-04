@@ -5,6 +5,18 @@ from lang_ast import ImportStmt, ImportFromStmt, FunctionDef, ClassDef, VarDecl
 from type_checker import TypeChecker, ModuleSymbol
 
 
+root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+def get_std_vendor_paths():
+    """
+    Returns the absolute paths to stdlib and vendor directories at the repo root.
+    """
+    stdlib = os.path.join(root, "stdlib")
+    vendor = os.path.join(root, "vendor")
+    return [stdlib, vendor]
+
+
 class ModuleNotFoundError(Exception):
     """Raised when a PB module cannot be found in any search path."""
     pass
@@ -68,10 +80,13 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
     # Step 3: Type check, including imports
     checker = TypeChecker()
 
-    # For recursive imports, always put *this* module's directory first in the search_paths
+    base_search_paths = get_std_vendor_paths()
     this_module_dir = os.path.dirname(filepath)
-    # Compose new search_paths: this module's directory first, then the rest (no duplicates)
-    child_search_paths = [this_module_dir] + [p for p in search_paths if p != this_module_dir]
+    # Compose new search_paths: stdlib, vendor, this module dir, then rest (no duplicates)
+    child_search_paths = []
+    for p in base_search_paths + [this_module_dir] + search_paths:
+        if p not in child_search_paths:
+            child_search_paths.append(p)
     if verbose: print(f"Loading: {module_name} from {search_paths} -> {filepath}")
 
     # Register imports (recursive)
