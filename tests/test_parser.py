@@ -881,7 +881,7 @@ class TestParseStatements(ParserTestCase):
         # Expected: ImportStmt(module=["foo"], alias=None)
         self.assertIsInstance(stmt, ImportStmt)
         self.assertEqual(stmt.module, ["foo"])
-        self.assertIsNone(stmt.alias)
+        self.assertEqual(stmt.alias_map, {"foo": "foo"})
 
     def test_parse_import_dotted(self):
         parser = self.parse_tokens("import foo.bar\n")
@@ -890,7 +890,7 @@ class TestParseStatements(ParserTestCase):
         # Expected: ImportStmt(module=["foo", "bar"], alias=None)
         self.assertIsInstance(stmt, ImportStmt)
         self.assertEqual(stmt.module, ["foo", "bar"])
-        self.assertIsNone(stmt.alias)
+        self.assertEqual(stmt.alias_map, {"foo.bar": "foo.bar"})
 
     def test_parse_import_with_alias(self):
         parser = self.parse_tokens("import foo as xyz\n")
@@ -899,7 +899,7 @@ class TestParseStatements(ParserTestCase):
         # Expected: ImportStmt(module=["foo"], alias="xyz")
         self.assertIsInstance(stmt, ImportStmt)
         self.assertEqual(stmt.module, ["foo"])
-        self.assertEqual(stmt.alias, "xyz")
+        self.assertEqual(stmt.alias_map, {"foo": "xyz"})
 
     def test_parse_import_dotted_with_alias(self):
         parser = self.parse_tokens("import foo.bar as xyz\n")
@@ -908,7 +908,7 @@ class TestParseStatements(ParserTestCase):
         # Expected: ImportStmt(module=["foo", "bar"], alias="xyz")
         self.assertIsInstance(stmt, ImportStmt)
         self.assertEqual(stmt.module, ["foo", "bar"])
-        self.assertEqual(stmt.alias, "xyz")
+        self.assertEqual(stmt.alias_map, {"foo.bar": "xyz"})
 
     def test_parse_from_import(self):
         parser = self.parse_tokens("from foo import bar\n")
@@ -916,7 +916,7 @@ class TestParseStatements(ParserTestCase):
 
         self.assertIsInstance(stmt, ImportStmt)
         self.assertEqual(stmt.module, ["foo"])
-        self.assertEqual(stmt.names, ["bar"])
+        self.assertEqual(stmt.alias_map, {"bar": "bar"})
 
     def test_parse_from_import_alias(self):
         parser = self.parse_tokens("from foo import bar as baz\n")
@@ -924,8 +924,7 @@ class TestParseStatements(ParserTestCase):
 
         self.assertIsInstance(stmt, ImportStmt)
         self.assertEqual(stmt.module, ["foo"])
-        self.assertEqual(stmt.names, ["bar"])
-        self.assertEqual(stmt.alias, "baz")
+        self.assertEqual(stmt.alias_map, {"bar": "baz"})
 
     def test_parse_from_import_star(self):
         parser = self.parse_tokens("from foo import *\n")
@@ -933,7 +932,23 @@ class TestParseStatements(ParserTestCase):
 
         self.assertIsInstance(stmt, ImportStmt)
         self.assertEqual(stmt.module, ["foo"])
-        self.assertEqual(stmt.names, ["*"])
+        self.assertEqual(stmt.alias_map, {"*": "*"})
+
+    def test_parse_from_import_multiple(self):
+        parser = self.parse_tokens("from foo import bar, baz\n")
+        stmt = parser.parse_import_stmt()
+
+        self.assertIsInstance(stmt, ImportStmt)
+        self.assertEqual(stmt.module, ["foo"])
+        self.assertEqual(stmt.alias_map, {"bar": "bar", "baz": "baz"})
+
+    def test_parse_from_import_multiple_alias(self):
+        parser = self.parse_tokens("from foo import bar as b, baz as z\n")
+        stmt = parser.parse_import_stmt()
+
+        self.assertIsInstance(stmt, ImportStmt)
+        self.assertEqual(stmt.module, ["foo"])
+        self.assertEqual(stmt.alias_map, {"bar": "b", "baz": "z"})
 
 
 class TestParseComplexStmtAndExpr(ParserTestCase):
