@@ -26,12 +26,10 @@ def resolve_module(module_name: list[str], search_paths: list[str] = None) -> st
     if search_paths is None:
         search_paths = [os.getcwd()]
     rel_path = os.path.join(*module_name) + ".pb"
-    vendor_rel_path = os.path.join("vendor", *module_name) + ".pb"
     for base in search_paths:
-        for rel in (rel_path, vendor_rel_path):
-            candidate = os.path.join(base, rel)
-            if os.path.isfile(candidate):
-                return os.path.abspath(candidate)
+        candidate = os.path.join(base, rel_path)
+        if os.path.isfile(candidate):
+            return os.path.abspath(candidate)
     raise ModuleNotFoundError(
         f"Module {'.'.join(module_name)} not found. "
         f"Paths tried: {', '.join(os.path.join(base, rel_path) for base in search_paths)}"
@@ -64,16 +62,6 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
     # Step 2: Parse file
     with open(filepath, "r", encoding="utf-8") as f:
         source = f.read()
-
-    is_vendor = False
-    headers: list[str] = []
-    for line in source.splitlines()[:5]:
-        text = line.strip()
-        if text.startswith("# vendor"):
-            is_vendor = True
-        if text.startswith("# headers:"):
-            hdrs = text.split(":", 1)[1]
-            headers = [h.strip() for h in hdrs.split() if h.strip()]
     tokens = Lexer(source).tokenize()
     program = Parser(tokens).parse()
 
@@ -111,15 +99,12 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
             exports[stmt.name] = stmt.declared_type
 
     program.module_name = ".".join(module_name)
-    program.is_vendor = is_vendor
     mod_symbol = ModuleSymbol(
         name=".".join(module_name),
         program=program,
         path=filepath,
         exports=exports,
         functions=functions,
-        is_vendor=is_vendor,
-        headers=headers,
     )
     loaded_modules[name_tuple] = mod_symbol
     return mod_symbol

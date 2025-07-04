@@ -43,6 +43,7 @@ from lang_ast import (
     ListExpr,
     SetExpr,
     DictExpr,
+    EllipsisLiteral,
 )
 
 class ParserTestCase(unittest.TestCase):
@@ -277,6 +278,12 @@ class TestParseExpressions(ParserTestCase):
         # Expected: Literal("42")
         self.assertIsInstance(expr, Literal)
         self.assertEqual(expr.raw, "42")
+
+    def test_parse_ellipsis_literal(self):
+        parser = self.parse_tokens("...")
+        expr = parser.parse_primary()
+
+        self.assertIsInstance(expr, EllipsisLiteral)
 
     def test_parse_term_multiplication(self):
         parser = self.parse_tokens("a * b")

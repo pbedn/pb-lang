@@ -155,8 +155,6 @@ class CodeGen:
             if isinstance(stmt, ClassDef):
                 self._emit_class_def(stmt)
             elif isinstance(stmt, FunctionDef):
-                if stmt.is_stub:
-                    continue
                 if stmt.name == "main":
                     self._emit_main(stmt)
                 else:
@@ -204,8 +202,6 @@ class CodeGen:
         """Emit extern declarations for global variables."""
         for stmt in program.body:
             if isinstance(stmt, VarDecl):
-                if stmt.is_extern:
-                    continue
                 c_ty = self._c_type(stmt.declared_type)
                 name = self._mangle_global_name(stmt.name)
                 self._emit(f"extern {c_ty} {name};")
@@ -257,12 +253,7 @@ class CodeGen:
                 alias = stmt.alias if stmt.alias else mod_name
                 self._modules.add(alias)
 
-                if getattr(stmt, "is_vendor", False):
-                    hdrs = stmt.headers or [f"{mod_name}.h"]
-                    for h in hdrs:
-                        emit_include(h)
-                else:
-                    emit_include(f"{mod_name}.h")
+                emit_include(f"{mod_name}.h")
 
                 if not stmt.names and stmt.alias and stmt.alias != mod_name:
                     if stmt.alias not in seen_aliases:
@@ -414,8 +405,6 @@ class CodeGen:
         self._globals_emitted = True
         for stmt in program.body:
             if isinstance(stmt, VarDecl):
-                if stmt.is_extern:
-                    continue
                 c_ty = self._c_type(stmt.declared_type)
                 name = self._mangle_global_name(stmt.name)
                 if isinstance(stmt.value, CallExpr) and isinstance(stmt.value.func, Identifier) and stmt.value.func.name in self._class_names:
@@ -438,7 +427,7 @@ class CodeGen:
         """Emit prototypes for every function the code-gen will create."""
         # — top-level (non-main) functions —
         for stmt in program.body:
-            if isinstance(stmt, FunctionDef) and stmt.name != "main" and not stmt.is_stub:
+            if isinstance(stmt, FunctionDef) and stmt.name != "main":
                 self._emit(self._func_proto(stmt) + ";")
 
         # — methods of every class —

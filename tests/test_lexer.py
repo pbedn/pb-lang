@@ -84,6 +84,10 @@ class TestLexer(unittest.TestCase):
         for aug in ["PLUSEQ", "MINUSEQ", "STAREQ", "SLASHEQ", "PERCENTEQ"]:
             self.assertIn(aug, types)
 
+    def test_ellipsis_token(self):
+        tokens = Lexer("...").tokenize()
+        self.assertEqual(tokens[0].type, TokenType.ELLIPSIS)
+
     def test_global_keyword(self):
         code = 'global x, y'
         types = [t.type.name for t in Lexer(code).tokenize()]

@@ -675,13 +675,9 @@ class Parser:
         declared_type = self.parse_type()
         value: Optional[Expr] = None
         if self.match(TokenType.ASSIGN):
-            if self.match(TokenType.ELLIPSIS):
-                value = EllipsisLiteral()
-            else:
-                value = self.parse_expr()
+            value = self.parse_expr()
         self.expect(TokenType.NEWLINE)
-        extern = isinstance(value, EllipsisLiteral)
-        return VarDecl(name, declared_type, value, is_extern=extern)
+        return VarDecl(name, declared_type, value)
 
     def parse_assign_stmt(self) -> AssignStmt:
         """Parse an assignment statement
@@ -900,10 +896,6 @@ class Parser:
             return_type = self.expect_type_name()
 
         self.expect(TokenType.COLON)
-        if self.match(TokenType.ELLIPSIS):
-            self.expect(TokenType.NEWLINE)
-            return FunctionDef(name, params, [], return_type, is_stub=True)
-
         self.expect(TokenType.NEWLINE)
         while self.match(TokenType.NEWLINE):
             pass

@@ -42,16 +42,12 @@ def process_imports(ast: Program, pb_path: str, verbose: bool = False):
                     stmt.module = stmt.module + [name]
                     stmt.names = None
                     stmt.alias = alias
-                    stmt.is_vendor = sub_mod.is_vendor
-                    stmt.headers = sub_mod.headers
             else:
                 mod_symbol = load_module(stmt.module, search_paths, loaded_modules, verbose)
                 alias = stmt.alias if stmt.alias else ".".join(stmt.module)
                 if verbose:
                     print(f"Registering module '{alias}' with exports: {mod_symbol.exports}")
                 checker.modules[alias] = mod_symbol
-                stmt.is_vendor = mod_symbol.is_vendor
-                stmt.headers = mod_symbol.headers
     return checker, loaded_modules
 
 

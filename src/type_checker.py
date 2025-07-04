@@ -179,16 +179,12 @@ class ModuleSymbol:
         path: str | None = None,
         exports: dict | None = None,
         functions: dict | None = None,
-        is_vendor: bool = False,
-        headers: list[str] | None = None,
     ):
         self.name = name
         self.path = path  # Optional: absolute path to module file
         self.exports = exports if exports is not None else {}
         self.functions = functions if functions is not None else {}
         self.program: Program | None = program
-        self.is_vendor = is_vendor
-        self.headers = headers or []
 
 
 class TypeError(Exception):
@@ -330,9 +326,7 @@ class TypeChecker:
         """
         name = decl.name
         declared = decl.declared_type
-        if decl.is_extern:
-            actual = declared
-        elif decl.value is None:
+        if decl.value is None:
             actual = declared
         else:
             actual = self.check_expr(decl.value, expected_type=declared)
@@ -341,7 +335,7 @@ class TypeChecker:
                 raise TypeError(f"Type mismatch in variable '{name}': declared {declared}, got {actual}")
 
         self.env[name] = declared
-        if self.current_return_type is None and not decl.is_extern:
+        if self.current_return_type is None:
             self.global_env[name] = declared
 
         decl.inferred_type = actual
@@ -1025,10 +1019,6 @@ class TypeChecker:
         ret_type = fn.return_type
         fn.inferred_return_type = ret_type
         self.functions[fname] = (param_types, ret_type, num_required)
-
-        if fn.is_stub:
-            self.inside_method = False
-            return
 
         old_env = self.env.copy()
         self.env = old_env.copy()

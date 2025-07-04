@@ -20,7 +20,6 @@ from typing import List, Tuple, Union, Optional, Set
 class Program:
     body: List[Stmt]
     module_name: str | None = None
-    is_vendor: bool = False
 
     #  class_name → field_name → pb_type
     inferred_instance_fields: dict[str, dict[str, str]] = field(default_factory=dict)
@@ -44,7 +43,6 @@ class FunctionDef:
     return_type: Optional[str]                   # None => void
     globals_declared: Optional[Set[str]] = None  #  filled in by parser/type-checker
     inferred_return_type: Optional[str] = None
-    is_stub: bool = False
 
 
 @dataclass
@@ -66,7 +64,6 @@ class VarDecl:
     declared_type: str
     value: Optional[Expr] = None
     inferred_type: Optional[str] = None
-    is_extern: bool = False
 
 
 @dataclass
@@ -164,8 +161,6 @@ class ImportStmt:
     alias: Optional[str] = None
     names: Optional[List[str]] = None
     loc: Optional[tuple] = None
-    is_vendor: bool = False
-    headers: Optional[List[str]] = None
 
 
 # ---------------------------------------------------------------------------
