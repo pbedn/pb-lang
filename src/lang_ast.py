@@ -158,8 +158,7 @@ class ExprStmt:
 @dataclass
 class ImportStmt:
     module: List[str]
-    alias: Optional[str] = None
-    names: Optional[List[str]] = None
+    alias_map: dict[str, str]
     loc: Optional[tuple] = None
 
 

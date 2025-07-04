@@ -250,20 +250,19 @@ class CodeGen:
         for stmt in self._program.body:
             if isinstance(stmt, ImportStmt):
                 mod_name = ".".join(stmt.module)
-                alias = stmt.alias if stmt.alias else mod_name
-                self._modules.add(alias)
-
                 emit_include(f"{mod_name}.h")
 
-                if not stmt.names and stmt.alias and stmt.alias != mod_name:
-                    if stmt.alias not in seen_aliases:
-                        self._emit(f"#define {stmt.alias} {mod_name}")
-                        seen_aliases.add(stmt.alias)
-
-                if stmt.names and stmt.alias and stmt.alias != stmt.names[0]:
-                    if stmt.alias not in seen_aliases:
-                        self._emit(f"#define {stmt.alias} {stmt.names[0]}")
-                        seen_aliases.add(stmt.alias)
+                if mod_name in stmt.alias_map:
+                    alias = stmt.alias_map[mod_name]
+                    self._modules.add(alias)
+                    if alias != mod_name and alias not in seen_aliases:
+                        self._emit(f"#define {alias} {mod_name}")
+                        seen_aliases.add(alias)
+                else:
+                    for name, alias in stmt.alias_map.items():
+                        if alias != name and alias not in seen_aliases:
+                            self._emit(f"#define {alias} {name}")
+                            seen_aliases.add(alias)
 
         self._emit()
 
@@ -1132,11 +1131,15 @@ class CodeGen:
             imported_from = None
             for stmt in getattr(self._program, "body", []):
                 if isinstance(stmt, ImportStmt):
-                    if not stmt.names and stmt.module[0] in self._modules:
-                        if mangled not in self._function_params:
+                    mod_name = ".".join(stmt.module)
+                    if mod_name in stmt.alias_map:
+                        alias = stmt.alias_map[mod_name]
+                        if alias in self._modules and mangled not in self._function_params:
                             imported_from = stmt.module[0]
-                    if stmt.names and fn_name in stmt.names:
-                        imported_from = stmt.module[0]
+                    else:
+                        for name, alias in stmt.alias_map.items():
+                            if fn_name == name or fn_name == alias:
+                                imported_from = stmt.module[0]
             if imported_from:
                 mangled = f"{imported_from}_{fn_name}"
 

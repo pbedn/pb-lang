@@ -1036,6 +1036,24 @@ class TestCodeGenFromSource(unittest.TestCase):
             self.assertIn('#include "mathlib.h"', c)
             self.assertIn('#include "utils.h"', c)
 
+    def test_pipeline_from_import_multiple(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            base = os.path.join(os.path.dirname(__file__), "samples")
+            for name in ["mathlib.pb", "imports_multi.pb"]:
+                src_path = os.path.join(base, name)
+                dst_path = os.path.join(tempdir, name)
+                os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+                with open(src_path) as fsrc, open(dst_path, "w") as fdst:
+                    fdst.write(fsrc.read())
+
+            multi_path = os.path.join(tempdir, "imports_multi.pb")
+            with open(multi_path) as f:
+                code = f.read()
+
+            h, c, *_ = compile_code_to_c_and_h(code, module_name="imports_multi", pb_path=multi_path)
+
+            self.assertIn('#include "mathlib.h"', c)
+
     def test_numeric_literals_with_underscores(self):
         code = (
             "def main() -> int:\n"

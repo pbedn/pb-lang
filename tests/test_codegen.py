@@ -216,7 +216,7 @@ class TestCodeGen(unittest.TestCase):
 
     def test_include_dotted_module_header(self):
         prog = Program(body=[
-            ImportStmt(module=["pkg", "sub"])
+            ImportStmt(module=["pkg", "sub"], alias_map={"pkg.sub": "pkg.sub"})
         ])
         output = codegen_output(prog)
         self.assertIn('#include "pkg.sub.h"', output)

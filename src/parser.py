@@ -1142,32 +1142,46 @@ class Parser:
             while self.match(TokenType.DOT):
                 module.append(self.expect(TokenType.IDENTIFIER).value)
             self.expect(TokenType.IMPORT)
-            alias = None
+
             if self.match(TokenType.STAR):
                 self.expect(TokenType.NEWLINE)
                 loc = (self.tokens[self.pos-1].line, self.tokens[self.pos-1].column)
-                return ImportStmt(module=module, names=["*"], alias=None, loc=loc)
+                return ImportStmt(module=module, alias_map={"*": "*"}, loc=loc)
+
+            alias_map: dict[str, str] = {}
+
             name = self.expect(TokenType.IDENTIFIER).value
+            alias = name
             if self.match(TokenType.AS):
                 alias = self.expect(TokenType.IDENTIFIER).value
+            alias_map[name] = alias
+
+            while self.match(TokenType.COMMA):
+                name = self.expect(TokenType.IDENTIFIER).value
+                alias = name
+                if self.match(TokenType.AS):
+                    alias = self.expect(TokenType.IDENTIFIER).value
+                alias_map[name] = alias
+
             self.expect(TokenType.NEWLINE)
             loc = (self.tokens[self.pos-1].line, self.tokens[self.pos-1].column)
-            return ImportStmt(module=module, names=[name], alias=alias, loc=loc)
+
+            return ImportStmt(module=module, alias_map=alias_map, loc=loc)
 
         self.expect(TokenType.IMPORT)
-        names = [self.expect(TokenType.IDENTIFIER).value]
+        module = [self.expect(TokenType.IDENTIFIER).value]
 
         while self.match(TokenType.DOT):
-            names.append(self.expect(TokenType.IDENTIFIER).value)
+            module.append(self.expect(TokenType.IDENTIFIER).value)
 
-        alias = None
+        alias = ".".join(module)
         if self.match(TokenType.AS):
             alias = self.expect(TokenType.IDENTIFIER).value
 
         self.expect(TokenType.NEWLINE)
 
         loc = (self.tokens[self.pos-1].line, self.tokens[self.pos-1].column)
-        return ImportStmt(module=names, alias=alias, loc=loc)
+        return ImportStmt(module=module, alias_map={".".join(module): alias}, loc=loc)
 
 
 if __name__ == "__main__":

@@ -77,11 +77,12 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
     # Register imports (recursive)
     for stmt in program.body:
         if isinstance(stmt, ImportStmt):
-            # Recursively load imported module
+            key, alias = next(iter(stmt.alias_map.items())) if stmt.alias_map else (None, None)
             mod_symbol = load_module(stmt.module, child_search_paths, loaded_modules)
-            alias = stmt.alias if stmt.alias else stmt.module[0]
-            if verbose: print(f"Loaded module: {alias}, exports: {mod_symbol.exports}")
-            checker.modules[alias] = mod_symbol
+            alias_name = alias if alias else stmt.module[0]
+            if verbose:
+                print(f"Loaded module: {alias_name}, exports: {mod_symbol.exports}")
+            checker.modules[alias_name] = mod_symbol
 
     checker.check(program)
 
