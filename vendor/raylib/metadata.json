@@ -1,0 +1,8 @@
+{
+  "name": "raylib",
+  "version": "5.5",
+  "include_dirs": ["include"],
+  "lib_dirs": ["lib/windows"],
+  "link_flags": ["-lraylib", "-lgdi32", "-lwinmm"],
+  "native": true
+}

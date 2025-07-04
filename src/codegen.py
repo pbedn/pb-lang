@@ -123,6 +123,7 @@ class CodeGen:
         """Generate the complete C source for ``program``."""
         self._program = program
         self._modules = getattr(program, "import_aliases", {}).copy()
+        self._native_modules = getattr(program, "native_modules", {})
         self._lines.clear()
         self._indent = 0
         self._runtime_emitted = False
@@ -168,6 +169,7 @@ class CodeGen:
         """Generate a C header file (.h) for a given PB module AST."""
         self._program = program
         self._modules = getattr(program, "import_aliases", {}).copy()
+        self._native_modules = getattr(program, "native_modules", {})
         self._lines.clear()
         self._indent = 0
         self._runtime_emitted = False
@@ -1043,7 +1045,10 @@ class CodeGen:
 
             if obj_full and obj_full in self._modules:
                 real = self._modules[obj_full]
-                mangled = f"{real.replace('.', '_')}_{attr}"
+                if self._native_modules.get(real, False):
+                    mangled = attr
+                else:
+                    mangled = f"{real.replace('.', '_')}_{attr}"
                 passed_args = [self._expr(arg) for arg in e.args]
                 if mangled in self._function_params:
                     all_args = self._apply_defaults(mangled, passed_args)
@@ -1147,7 +1152,11 @@ class CodeGen:
                             imported_from = mod_prefix
                             break
             if imported_from:
-                mangled = f"{imported_from}_{fn_name}"
+                mod_name = imported_from.replace("_", ".")
+                if self._native_modules.get(mod_name, False):
+                    mangled = fn_name
+                else:
+                    mangled = f"{imported_from}_{fn_name}"
 
             if mangled in self._function_params:
                 passed_args = [self._expr(arg) for arg in e.args]

@@ -204,7 +204,8 @@ class TypeChecker:
         checker = TypeChecker()
         checker.check(program)  # where `program` is a Program node
     """
-    def __init__(self):
+    def __init__(self, native_module: bool = False):
+        self.native_module = native_module
         self.modules: Dict[str, ModuleSymbol] = {}  # import alias/module name → ModuleSymbol
 
         # Symbol table: variable/function names → declared type
@@ -277,6 +278,8 @@ class TypeChecker:
 
         program.inferred_instance_fields = dict(self.instance_fields)
         program.import_aliases = {alias: mod.name for alias, mod in self.modules.items()}
+        program.native_modules = {mod.name: mod.native_binding for mod in self.modules.values()}
+        program.native_imports = {alias: mod.native_binding for alias, mod in self.modules.items()}
         return program
 
     def check_stmt(self, stmt: Stmt, parent: Stmt | None = None):
@@ -1060,7 +1063,7 @@ class TypeChecker:
         #     or all(hasattr(s, "value") and isinstance(getattr(s, "value", None), EllipsisLiteral) for s in fn.body)
         # )
         # if fn.return_type != "None" and not is_stub_or_native:
-        if fn.return_type != "None":
+        if not self.native_module and fn.return_type != "None":
             def contains_return(stmts):
                 for s in stmts:
                     if isinstance(s, ReturnStmt):

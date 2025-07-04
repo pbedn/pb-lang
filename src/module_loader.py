@@ -1,5 +1,5 @@
 import os
-import toml
+import json
 from lexer import Lexer
 from parser import Parser
 from lang_ast import ImportStmt, ImportFromStmt, FunctionDef, ClassDef, VarDecl
@@ -19,23 +19,26 @@ def get_std_vendor_paths():
 
 
 def is_native_binding(pb_path: str) -> bool:
-    """Return True if the given PB file is marked as a native binding."""
-    try:
-        with open(pb_path, "r", encoding="utf-8") as f:
-            for _ in range(4):
-                if "# PB_MODULE_KIND: NATIVE_BINDING" in f.readline():
-                    return True
-    except FileNotFoundError:
-        pass
+    """Return True if the module's metadata declares it as a native binding."""
+    vendor_dir = os.path.dirname(pb_path)
+    meta_path = os.path.join(vendor_dir, "metadata.json")
+    if os.path.isfile(meta_path):
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict) and data.get("native") is True:
+                return True
+        except Exception:
+            pass
     return False
 
 
 def load_vendor_metadata(module_path: str):
     vendor_dir = os.path.dirname(module_path)
-    metadata_path = os.path.join(vendor_dir, "metadata.toml")
+    metadata_path = os.path.join(vendor_dir, "metadata.json")
     if os.path.isfile(metadata_path):
         with open(metadata_path, "r", encoding="utf-8") as f:
-            return toml.load(f)
+            return json.load(f)
     return None
 
 
@@ -108,7 +111,7 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
     program = Parser(tokens).parse()
 
     # Step 3: Type check, including imports
-    checker = TypeChecker()
+    checker = TypeChecker(native_module=native)
 
     base_search_paths = get_std_vendor_paths()
     this_module_dir = os.path.dirname(filepath)
