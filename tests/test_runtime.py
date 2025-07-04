@@ -781,6 +781,26 @@ class TestPipelineRuntime(unittest.TestCase):
         output = compile_and_run(code)
         self.assertEqual(output.strip(), "45")
 
+    def test_hex_literal_and_format(self):
+        code = (
+            "def main() -> int:\n"
+            "    x: int = 0x00000008\n"
+            "    print(hex(x))\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(output.strip(), "0x00000008")
+
+    def test_hex_negative_format(self):
+        code = (
+            "def main() -> int:\n"
+            "    x: int = -10\n"
+            "    print(hex(x))\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(output.strip(), "-0x0000000a")
+
 
 if __name__ == "__main__":
     unittest.main()

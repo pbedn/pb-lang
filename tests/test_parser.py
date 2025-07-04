@@ -115,6 +115,12 @@ class TestParseExpressions(ParserTestCase):
         self.assertIsInstance(lit, Literal)
         self.assertEqual(lit.raw, "42")
 
+    def test_parse_literal_hex_int(self):
+        parser = self.parse_tokens("0x00000008")
+        lit = parser.parse_literal()
+        self.assertIsInstance(lit, Literal)
+        self.assertEqual(lit.raw, "0x00000008")
+
     def test_parse_literal_float(self):
         parser = self.parse_tokens("3.14")
         lit = parser.parse_literal()
