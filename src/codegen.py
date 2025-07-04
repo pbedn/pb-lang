@@ -99,6 +99,9 @@ class CodeGen:
         # Names of all classes in the current program
         self._class_names: set[str] = set()
 
+        # Track which imported functions originate from native modules
+        self._native_functions: dict[str, bool] = {}
+
     def _attr_full_name(self, expr: Expr) -> str | None:
         if isinstance(expr, Identifier):
             return expr.name
@@ -124,6 +127,7 @@ class CodeGen:
         self._program = program
         self._modules = getattr(program, "import_aliases", {}).copy()
         self._native_modules = getattr(program, "native_modules", {})
+        self._native_functions = getattr(program, "native_functions", {})
         self._lines.clear()
         self._indent = 0
         self._runtime_emitted = False
@@ -170,6 +174,7 @@ class CodeGen:
         self._program = program
         self._modules = getattr(program, "import_aliases", {}).copy()
         self._native_modules = getattr(program, "native_modules", {})
+        self._native_functions = getattr(program, "native_functions", {})
         self._lines.clear()
         self._indent = 0
         self._runtime_emitted = False
@@ -1153,7 +1158,7 @@ class CodeGen:
                             break
             if imported_from:
                 mod_name = imported_from.replace("_", ".")
-                if self._native_modules.get(mod_name, False):
+                if self._native_modules.get(mod_name, False) or self._native_functions.get(fn_name, False):
                     mangled = fn_name
                 else:
                     mangled = f"{imported_from}_{fn_name}"
