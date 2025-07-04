@@ -898,6 +898,12 @@ class Parser:
             return_type = self.expect_type_name()
 
         self.expect(TokenType.COLON)
+
+        # stub body, native or external implementation
+        if self.check(TokenType.ELLIPSIS):
+            self.expect(TokenType.ELLIPSIS)
+            return FunctionDef(name, params, [PassStmt()], return_type)
+
         self.expect(TokenType.NEWLINE)
         while self.match(TokenType.NEWLINE):
             pass

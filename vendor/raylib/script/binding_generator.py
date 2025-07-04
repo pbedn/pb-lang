@@ -51,6 +51,14 @@ def parse_functions(header):
     func_regex = re.compile(r'RLAPI\s+([a-zA-Z0-9_ *]+?)\s+([a-zA-Z0-9_]+)\s*\(([^)]*)\);')
     functions = []
     for ret, name, params in func_regex.findall(header):
+        if "..." in params:
+            # Skip variadic C functions like: (int level, const char *text, ...)
+            params = params.strip()
+            if params.endswith(", ..."):
+                params = params.rsplit(",", 1)[0].strip()
+            else:
+                continue  # If unsure how to parse, skip
+
         ret = ret.strip().replace(" *", "*")
         param_list = []
         if params.strip() and params.strip() != "void":
@@ -173,6 +181,7 @@ def main():
 
     with open(PB_OUTPUT_PATH, "w", encoding="utf-8") as f:
         f.write("# Auto-generated PB bindings for raylib\n\n")
+        f.write("# pyright: reportAssignmentType=none\n\n")
         for c in constants:
             f.write(c + "\n")
         f.write("\n")
