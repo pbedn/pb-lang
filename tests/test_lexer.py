@@ -551,5 +551,10 @@ class TestFStringLexing(unittest.TestCase):
         self.assertEqual(len(comments), 1)
         self.assertEqual(comments[0].value, "# important")
 
+    def test_hex_integer_literal(self):
+        tokens = Lexer('value = 0x00000008').tokenize()
+        values = [t.value for t in tokens if t.type == TokenType.INT_LIT]
+        self.assertIn('0x00000008', values)
+
 if __name__ == "__main__":
     unittest.main()

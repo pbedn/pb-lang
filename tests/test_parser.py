@@ -116,6 +116,12 @@ class TestParseExpressions(ParserTestCase):
         self.assertIsInstance(lit, Literal)
         self.assertEqual(lit.raw, "42")
 
+    def test_parse_literal_hex_int(self):
+        parser = self.parse_tokens("0x00000008")
+        lit = parser.parse_literal()
+        self.assertIsInstance(lit, Literal)
+        self.assertEqual(lit.raw, "0x00000008")
+
     def test_parse_literal_float(self):
         parser = self.parse_tokens("3.14")
         lit = parser.parse_literal()
@@ -920,6 +926,14 @@ class TestParseStatements(ParserTestCase):
         self.assertEqual(stmt.module, ["foo"])
         self.assertEqual(stmt.names, ["bar"])
         self.assertEqual(stmt.alias, "baz")
+
+    def test_parse_from_import_star(self):
+        parser = self.parse_tokens("from foo import *\n")
+        stmt = parser.parse_import_stmt()
+
+        self.assertIsInstance(stmt, ImportStmt)
+        self.assertEqual(stmt.module, ["foo"])
+        self.assertEqual(stmt.names, ["*"])
 
 
 class TestParseComplexStmtAndExpr(ParserTestCase):

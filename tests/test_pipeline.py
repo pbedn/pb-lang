@@ -1017,6 +1017,25 @@ class TestCodeGenFromSource(unittest.TestCase):
             self.assertIn('#define m2 test_import.mathlib2', c)
             self.assertIn('#define pi2 PI', c)
 
+    def test_pipeline_from_import_star(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            base = os.path.join(os.path.dirname(__file__), "samples")
+            for name in ["mathlib.pb", "utils.pb", "imports_star.pb"]:
+                src_path = os.path.join(base, name)
+                dst_path = os.path.join(tempdir, name)
+                os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+                with open(src_path) as fsrc, open(dst_path, "w") as fdst:
+                    fdst.write(fsrc.read())
+
+            star_path = os.path.join(tempdir, "imports_star.pb")
+            with open(star_path) as f:
+                code = f.read()
+
+            h, c, *_ = compile_code_to_c_and_h(code, module_name="imports_star", pb_path=star_path)
+
+            self.assertIn('#include "mathlib.h"', c)
+            self.assertIn('#include "utils.h"', c)
+
     def test_numeric_literals_with_underscores(self):
         code = (
             "def main() -> int:\n"
@@ -1030,6 +1049,26 @@ class TestCodeGenFromSource(unittest.TestCase):
         h, c = self.compile_pipeline(code)
         self.assertIn('int64_t n = 10;', c)
         self.assertIn('for (int64_t i = 0; i < n; ++i)', c)
+
+    def test_hex_builtin_codegen(self):
+        code = (
+            "def main() -> int:\n"
+            "    x: int = 0x00000008\n"
+            "    print(hex(x))\n"
+            "    return 0\n"
+        )
+        h, c = self.compile_pipeline(code)
+        self.assertIn('pb_format_hex(x)', c)
+
+    def test_hex_negative_codegen(self):
+        code = (
+            "def main() -> int:\n"
+            "    x: int = -10\n"
+            "    print(hex(x))\n"
+            "    return 0\n"
+        )
+        h, c = self.compile_pipeline(code)
+        self.assertIn('pb_format_hex(x)', c)
 
     def test_len_builtin_pipeline(self):
         code = (

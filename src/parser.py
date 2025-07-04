@@ -1139,15 +1139,19 @@ class Parser:
 
         Grammar:
         ImportStmt ::= "import" Identifier { "." Identifier } [ "as" Identifier ] NEWLINE
-        FromImport ::= "from" Identifier { "." Identifier } "import" Identifier [ "as" Identifier ] NEWLINE
+        FromImport ::= "from" Identifier { "." Identifier } "import" (Identifier | "*") [ "as" Identifier ] NEWLINE
         """
         if self.match(TokenType.FROM):
             module = [self.expect(TokenType.IDENTIFIER).value]
             while self.match(TokenType.DOT):
                 module.append(self.expect(TokenType.IDENTIFIER).value)
             self.expect(TokenType.IMPORT)
-            name = self.expect(TokenType.IDENTIFIER).value
             alias = None
+            if self.match(TokenType.STAR):
+                self.expect(TokenType.NEWLINE)
+                loc = (self.tokens[self.pos-1].line, self.tokens[self.pos-1].column)
+                return ImportStmt(module=module, names=["*"], alias=None, loc=loc)
+            name = self.expect(TokenType.IDENTIFIER).value
             if self.match(TokenType.AS):
                 alias = self.expect(TokenType.IDENTIFIER).value
             self.expect(TokenType.NEWLINE)

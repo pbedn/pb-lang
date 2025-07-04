@@ -49,6 +49,21 @@ const char *pb_format_int(int64_t x) {
     return bufs[i];
 }
 
+const char *pb_format_hex(int64_t x) {
+    static char bufs[4][32];
+    static int i = 0;
+    i = (i + 1) % 4;
+
+    if (x < 0) {
+        uint32_t val = (uint32_t)(-x);
+        snprintf(bufs[i], sizeof(bufs[i]), "-0x%08" PRIx32, val);
+    } else {
+        uint32_t val = (uint32_t)x;
+        snprintf(bufs[i], sizeof(bufs[i]), "0x%08" PRIx32, val);
+    }
+    return bufs[i];
+}
+
 
 /* ------------ ERROR HANDLING ------------- */
 

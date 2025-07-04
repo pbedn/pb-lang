@@ -34,10 +34,11 @@ raise, return, True, try, while
 
 ### Literals
 
-* Integer literals: `42`, `1_000`
+* Integer literals: `42`, `1_000`, `0x00000008`
 * Float literals: `3.14`, `1_000.0`, `6.022_140e23`
     - Underscores may separate digits anywhere; they are stripped at lexing.
     - At least one digit before and after the dot; no leading-dot (`.5`) or trailing-dot (`5.`) forms are allowed.
+    - Hexadecimal integers start with `0x` or `0X` and may contain underscores.
 * String literals: single- or double-quoted, single-line only (e.g., `"Hello"`, `'world'`). Escape sequences (`\n`, `\\`, etc.) are decoded; invalid escapes raise a `LexerError` with the raw lexeme.
 * F-string literals: `f"..."` or `f'...'`, single-line only.
     - Placeholders use `{expr}` syntax where `expr` is a full expression (e.g., `x`, `a + b`, `obj.attr`, `call()`).
@@ -97,7 +98,7 @@ settings: dict[str, int] = {"volume": 10}
 
 * **No implicit coercion** is performed between unrelated types (e.g., `str → int`, or unrelated classes).
 
-* **Explicit conversion** is still available using built-in constructors: `int(x)`, `float(x)`, `str(x)`, `bool(x)`.
+* **Explicit conversion** is still available using built-in constructors: `int(x)`, `float(x)`, `str(x)`, `bool(x)`, `hex(x)`.
 
 ---
 
@@ -248,8 +249,10 @@ modules against these signatures.
 
 ## 8. Built-in Functions
 
-`print`, `range`.  
+`print`, `range`, `hex`.
 `print` chooses helper (`pb_print_int`, `pb_print_bool`, …) based on static type.
+`hex(x)` returns a zero-padded hexadecimal string. Negative values are prefixed
+with `-0x`.
 
 ---
 

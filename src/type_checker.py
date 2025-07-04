@@ -595,6 +595,14 @@ class TypeChecker:
                         raise TypeError(f"Function 'str' expects int, float, or str, got {arg_type}")
                     expr.inferred_type = "str"
                     return "str"
+                if fname == "hex":
+                    if len(expr.args) != 1:
+                        raise TypeError("Function 'hex' expects exactly one argument")
+                    arg_type = self.check_expr(expr.args[0])
+                    if arg_type != "int":
+                        raise TypeError(f"Function 'hex' expects int, got {arg_type}")
+                    expr.inferred_type = "str"
+                    return "str"
                 if fname == "open":
                     if len(expr.args) != 2:
                         raise TypeError("Function 'open' expects exactly two arguments")

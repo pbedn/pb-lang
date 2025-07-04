@@ -177,6 +177,23 @@ class TestImportUtilsHelper(unittest.TestCase):
         output = _compile_and_run_modules(modules)
         self.assertEqual(output.splitlines(), expected)
 
+    def test_star_imports_runtime_output(self):
+        base = os.path.join(os.path.dirname(__file__), "samples")
+        with open(os.path.join(base, "imports_star.pb")) as f:
+            star_src = f.read()
+        with open(os.path.join(base, "mathlib.pb")) as f:
+            mathlib_src = f.read()
+        with open(os.path.join(base, "utils.pb")) as f:
+            utils_src = f.read()
+        expected = ["9", "3.1415", "Runinng helper from imported utils.pb file"]
+        modules = {
+            "imports_star": star_src,
+            "mathlib": mathlib_src,
+            "utils": utils_src,
+        }
+        output = _compile_and_run_modules(modules)
+        self.assertEqual(output.splitlines(), expected)
+
 
 class TestPipelineRuntime(unittest.TestCase):
 
@@ -763,6 +780,26 @@ class TestPipelineRuntime(unittest.TestCase):
         )
         output = compile_and_run(code)
         self.assertEqual(output.strip(), "45")
+
+    def test_hex_literal_and_format(self):
+        code = (
+            "def main() -> int:\n"
+            "    x: int = 0x00000008\n"
+            "    print(hex(x))\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(output.strip(), "0x00000008")
+
+    def test_hex_negative_format(self):
+        code = (
+            "def main() -> int:\n"
+            "    x: int = -10\n"
+            "    print(hex(x))\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(output.strip(), "-0x0000000a")
 
 
 if __name__ == "__main__":

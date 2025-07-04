@@ -1133,10 +1133,10 @@ class CodeGen:
             imported_from = None
             for stmt in getattr(self._program, "body", []):
                 if isinstance(stmt, ImportStmt):
-                    if hasattr(stmt, "module") and stmt.module[0] in self._modules:
+                    if not stmt.names and stmt.module[0] in self._modules:
                         if mangled not in self._function_params:
                             imported_from = stmt.module[0]
-                    if hasattr(stmt, "names") and fn_name in getattr(stmt, "names", []):
+                    if stmt.names and fn_name in stmt.names:
                         imported_from = stmt.module[0]
             if imported_from:
                 mangled = f"{imported_from}_{fn_name}"
@@ -1193,6 +1193,11 @@ class CodeGen:
                     return f"pb_format_double({self._expr(e.args[0])})"
                 elif e.args[0].inferred_type == "str":
                     return f"{self._expr(e.args[0])}"
+                else:
+                    raise RuntimeError(f"`{fn_name}` conversion to `{e.args[0].inferred_type}` not supported yet!")
+            if fn_name == "hex":
+                if e.args[0].inferred_type == "int":
+                    return f"pb_format_hex({self._expr(e.args[0])})"
                 else:
                     raise RuntimeError(f"`{fn_name}` conversion to `{e.args[0].inferred_type}` not supported yet!")
 
