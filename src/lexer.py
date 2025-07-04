@@ -145,6 +145,7 @@ TOKEN_REGEX = [
     (re.compile(r'\|'), TokenType.PIPE),
     
     # numeric literals (underscore allowed)
+    (re.compile(r"0[xX][0-9a-fA-F][0-9a-fA-F_]*"), TokenType.INT_LIT),
     (re.compile(r'\d[\d_]*\.\d[\d_]*[eE][+-]?\d[\d_]*'), TokenType.FLOAT_LIT),  # Fraction + Exponent; 12.34e5, 6.02_2e+23
     (re.compile(r'\d[\d_]*[eE][+-]?\d[\d_]*'), TokenType.FLOAT_LIT),            # Integer + Exponent; 10e-3, 1_6e2
     (re.compile(r'\d[\d_]*\.\d[\d_]*'), TokenType.FLOAT_LIT),                   # Simple Fraction (no exponent); 3.1415, 0.5, 2_5.0

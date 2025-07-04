@@ -1194,6 +1194,11 @@ class CodeGen:
                     return f"{self._expr(e.args[0])}"
                 else:
                     raise RuntimeError(f"`{fn_name}` conversion to `{e.args[0].inferred_type}` not supported yet!")
+            if fn_name == "hex":
+                if e.args[0].inferred_type == "int":
+                    return f"pb_format_hex({self._expr(e.args[0])})"
+                else:
+                    raise RuntimeError(f"`{fn_name}` conversion to `{e.args[0].inferred_type}` not supported yet!")
 
         # Method call: player.get_name() → Player__get_name(player)
         if isinstance(e.func, AttributeExpr):
