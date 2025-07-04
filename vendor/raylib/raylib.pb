@@ -1,3 +1,4 @@
+# PB_MODULE_KIND: NATIVE_BINDING
 # Auto-generated PB bindings for raylib
 
 RAYLIB_H: int = ...
