@@ -243,11 +243,14 @@ class TypeChecker:
             "__init__": (["Exception", "str"], "None", 2)
         }
         self.class_bases["Exception"] = None
-        
+
         for exc in ["RuntimeError", "ValueError", "IndexError", "TypeError"]:
             self.known_classes.add(exc)
             self.methods[exc] = {}  # no own methods
             self.class_bases[exc] = "Exception"
+
+        # Track whether a function was imported from a native module
+        self.native_functions: Dict[str, bool] = {}
 
     def _attr_full_name(self, expr: Expr) -> str | None:
         if isinstance(expr, Identifier):
@@ -280,6 +283,7 @@ class TypeChecker:
         program.import_aliases = {alias: mod.name for alias, mod in self.modules.items()}
         program.native_modules = {mod.name: mod.native_binding for mod in self.modules.values()}
         program.native_imports = {alias: mod.native_binding for alias, mod in self.modules.items()}
+        program.native_functions = dict(self.native_functions)
         return program
 
     def check_stmt(self, stmt: Stmt, parent: Stmt | None = None):

@@ -49,6 +49,7 @@ def process_imports(ast: Program, pb_path: str, verbose: bool = False):
                 for name, kind in mod_symbol.exports.items():
                     if kind == "function" and name in mod_symbol.functions:
                         checker.functions[name] = mod_symbol.functions[name]
+                        checker.native_functions[name] = mod_symbol.native_binding
                     else:
                         checker.env[name] = kind
                 stmt.names = [ImportAlias(n) for n in mod_symbol.exports.keys()]
@@ -68,6 +69,7 @@ def process_imports(ast: Program, pb_path: str, verbose: bool = False):
                         kind = mod_symbol.exports[name]
                         if kind == "function" and name in mod_symbol.functions:
                             checker.functions[asname] = mod_symbol.functions[name]
+                            checker.native_functions[asname] = mod_symbol.native_binding
                         else:
                             checker.env[asname] = kind
                     else:

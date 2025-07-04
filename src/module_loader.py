@@ -137,6 +137,7 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
                 for name, kind in mod_symbol.exports.items():
                     if kind == "function" and name in mod_symbol.functions:
                         checker.functions[name] = mod_symbol.functions[name]
+                        checker.native_functions[name] = mod_symbol.native_binding
                     else:
                         checker.env[name] = kind
             else:
@@ -155,6 +156,7 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
                         kind = mod_symbol.exports[name]
                         if kind == "function" and name in mod_symbol.functions:
                             checker.functions[asname] = mod_symbol.functions[name]
+                            checker.native_functions[asname] = mod_symbol.native_binding
                         else:
                             checker.env[asname] = kind
                     else:
