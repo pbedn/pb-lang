@@ -20,6 +20,7 @@ from typing import List, Tuple, Union, Optional, Set
 class Program:
     body: List[Stmt]
     module_name: str | None = None
+    import_aliases: dict[str, str] = field(default_factory=dict)
 
     #  class_name → field_name → pb_type
     inferred_instance_fields: dict[str, dict[str, str]] = field(default_factory=dict)
