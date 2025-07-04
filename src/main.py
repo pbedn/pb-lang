@@ -5,7 +5,7 @@ import shutil
 from pprint import pprint
 
 from lexer import Lexer, LexerError
-from lang_ast import ImportStmt
+from lang_ast import ImportStmt, ImportFromStmt
 from parser import Parser, ParserError
 from codegen import CodeGen
 from module_loader import load_module

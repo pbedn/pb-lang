@@ -119,6 +119,7 @@ from lang_ast import (
     ExceptBlock,
     ExprStmt,
     ImportStmt,
+    ImportFromStmt,
 )
 
 # ─── Type precedence for numeric promotions (higher wins) ───
@@ -303,7 +304,7 @@ class TypeChecker:
             self.check_try_except_stmt(stmt)
         elif isinstance(stmt, PassStmt):
             pass  # nothing to check
-        elif isinstance(stmt, ImportStmt):
+        elif isinstance(stmt, (ImportStmt, ImportFromStmt)):
             pass  # handled by main orchestrator
         elif isinstance(stmt, BreakStmt):
             if self.in_loop == 0:

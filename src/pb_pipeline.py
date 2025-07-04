@@ -4,7 +4,7 @@ from lexer import Lexer, LexerError
 from parser import Parser, ParserError
 from type_checker import TypeChecker, TypeError
 from codegen import CodeGen
-from lang_ast import ImportStmt, Program
+from lang_ast import ImportStmt, ImportFromStmt, ImportAlias, Program, Stmt
 from module_loader import load_module, ModuleNotFoundError
 
 
@@ -18,60 +18,60 @@ def process_imports(ast: Program, pb_path: str, verbose: bool = False):
     checker = TypeChecker()
     entry_dir = os.path.dirname(os.path.abspath(pb_path))
     search_paths = [entry_dir]
-    # First expand any from-import statements that import multiple names
-    expanded: list[ImportStmt | object] = []
+
+    expanded: list[Stmt] = []
     for stmt in getattr(ast, "body", []):
-        if isinstance(stmt, ImportStmt):
-            mod_key = ".".join(stmt.module)
-            if stmt.alias_map == {"*": "*"} or list(stmt.alias_map.keys()) == [mod_key]:
-                expanded.append(stmt)
-            elif len(stmt.alias_map) > 1:
-                for name, alias in stmt.alias_map.items():
-                    expanded.append(ImportStmt(module=stmt.module[:], alias_map={name: alias}, loc=stmt.loc))
-            else:
-                expanded.append(stmt)
+        if isinstance(stmt, ImportFromStmt) and not stmt.is_wildcard:
+            for alias_obj in stmt.names or []:
+                try:
+                    load_module(stmt.module + [alias_obj.name], search_paths, loaded_modules, verbose)
+                except ModuleNotFoundError:
+                    expanded.append(ImportFromStmt(module=stmt.module[:], names=[alias_obj], is_wildcard=False, loc=stmt.loc))
+                else:
+                    alias = alias_obj.asname or alias_obj.name
+                    expanded.append(ImportStmt(module=stmt.module + [alias_obj.name], alias=alias, loc=stmt.loc))
         else:
             expanded.append(stmt)
     ast.body = expanded
 
     for stmt in getattr(ast, "body", []):
         if isinstance(stmt, ImportStmt):
-            key, alias = next(iter(stmt.alias_map.items())) if stmt.alias_map else (None, None)
-            mod_key = ".".join(stmt.module)
-
-            if stmt.alias_map == {"*": "*"}:
+            alias = stmt.alias or ".".join(stmt.module)
+            mod_symbol = load_module(stmt.module, search_paths, loaded_modules, verbose)
+            if verbose:
+                print(f"Registering module '{alias}' with exports: {mod_symbol.exports}")
+            checker.modules[alias] = mod_symbol
+        elif isinstance(stmt, ImportFromStmt):
+            mod_symbol = None
+            if stmt.is_wildcard:
                 mod_symbol = load_module(stmt.module, search_paths, loaded_modules, verbose)
                 for name, kind in mod_symbol.exports.items():
                     if kind == "function" and name in mod_symbol.functions:
                         checker.functions[name] = mod_symbol.functions[name]
                     else:
                         checker.env[name] = kind
-                stmt.alias_map = {name: name for name in mod_symbol.exports.keys()}
-            elif key == mod_key:
-                mod_symbol = load_module(stmt.module, search_paths, loaded_modules, verbose)
-                if verbose:
-                    print(f"Registering module '{alias}' with exports: {mod_symbol.exports}")
-                checker.modules[alias] = mod_symbol
+                stmt.names = [ImportAlias(n) for n in mod_symbol.exports.keys()]
             else:
-                name = key
-                # Attempt to treat 'from X import Y' as importing submodule X.Y
-                try:
-                    sub_mod = load_module(stmt.module + [name], search_paths, loaded_modules, verbose)
-                except ModuleNotFoundError:
-                    mod_symbol = load_module(stmt.module, search_paths, loaded_modules, verbose)
-                    if name not in mod_symbol.exports:
-                        raise ModuleNotFoundError(
-                            f"Module '{'.'.join(stmt.module)}' has no export '{name}'"
-                        )
-                    kind = mod_symbol.exports[name]
-                    if kind == "function" and name in mod_symbol.functions:
-                        checker.functions[alias] = mod_symbol.functions[name]
+                for alias_obj in stmt.names or []:
+                    name = alias_obj.name
+                    asname = alias_obj.asname or name
+                    try:
+                        sub_mod = load_module(stmt.module + [name], search_paths, loaded_modules, verbose)
+                    except ModuleNotFoundError:
+                        if mod_symbol is None:
+                            mod_symbol = load_module(stmt.module, search_paths, loaded_modules, verbose)
+                        if name not in mod_symbol.exports:
+                            raise ModuleNotFoundError(
+                                f"Module '{'.'.join(stmt.module)}' has no export '{name}'"
+                            )
+                        kind = mod_symbol.exports[name]
+                        if kind == "function" and name in mod_symbol.functions:
+                            checker.functions[asname] = mod_symbol.functions[name]
+                        else:
+                            checker.env[asname] = kind
                     else:
-                        checker.env[alias] = kind
-                else:
-                    checker.modules[alias] = sub_mod
-                    stmt.module = stmt.module + [name]
-                    stmt.alias_map = {".".join(stmt.module): alias}
+                        checker.modules[asname] = sub_mod
+
     return checker, loaded_modules
 
 
