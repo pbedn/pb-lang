@@ -240,10 +240,23 @@ def collect_vendor_build_info(loaded_modules):
     link_flags = set()
     for mod in loaded_modules.values():
         md = getattr(mod, "vendor_metadata", None)
-        if md:
-            include_dirs.update(md.get("include_dirs", []))
-            lib_dirs.update(md.get("lib_dirs", []))
-            link_flags.update(md.get("link_flags", []))
+        if not md:
+            continue
+
+        base_dir = os.path.dirname(getattr(mod, "path", ""))
+
+        for inc in md.get("include_dirs", []):
+            if not os.path.isabs(inc) and base_dir:
+                inc = os.path.abspath(os.path.join(base_dir, inc))
+            include_dirs.add(inc)
+
+        for lib in md.get("lib_dirs", []):
+            if not os.path.isabs(lib) and base_dir:
+                lib = os.path.abspath(os.path.join(base_dir, lib))
+            lib_dirs.add(lib)
+
+        link_flags.update(md.get("link_flags", []))
+
     return include_dirs, lib_dirs, link_flags
 
 
