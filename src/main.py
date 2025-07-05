@@ -61,14 +61,14 @@ def compile_to_c(
     return (True, ast, loaded_modules)
 
 
-def build(source_code: str, pb_path: str, output_file: str, verbose: bool = False, debug: bool = False) -> bool:
+def build(source_code: str, pb_path: str, output_file: str, verbose: bool = False, debug: bool = False):
     if not debug: check_gcc_installed(verbose)
 
     # Compile entry point to C
     success, ast, loaded_modules = compile_to_c(source_code, pb_path, f"{output_file}.c", verbose=verbose, debug=debug)
     if not success:
         print("Skipping GCC build because type checking failed.")
-        return False
+        return False, None
 
     # For each module, generate .c and .h
     build_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "build"))
@@ -97,39 +97,52 @@ def build(source_code: str, pb_path: str, output_file: str, verbose: bool = Fals
 
     include_dirs, lib_dirs, link_flags = collect_vendor_build_info(loaded_modules)
 
-    compile_cmd = [
-        "gcc", "-std=c99",
+    flags = [
         "-Wall",        # common warnings
         "-Wextra",      # extra warnings
         "-Wconversion", # warns about implicit type conversions
         "-Wpedantic",   # enforces ISO C standard
+    ]
+    if link_flags: flags = []
+
+    compile_cmd = [
+        "gcc", "-std=c99",
+        *flags,
         *module_c_files,
         "-o", exe_file,
         "-I", build_dir,
         *["-I" + idir for idir in include_dirs],
         *["-L" + ldir for ldir in lib_dirs],
+        runtime_lib,
         *link_flags,
-        runtime_lib
     ]
     if verbose: print("Compile command:", " ".join(compile_cmd))
 
     result = subprocess.run(compile_cmd, capture_output=True, text=True)
     if result.returncode == 0:
         if verbose: print(f"Built: {exe_file}")
-        return True
+        return True, loaded_modules
     else:
         print(f"GCC build failed (exit code {result.returncode})")
         print(f"Error output: {result.stderr}")
-        return False
+        return False, None
 
 
 def run(source_code: str, pb_path: str, output_file: str, verbose: bool = False, debug: bool = False):
-    success = build(source_code, pb_path, output_file, verbose=verbose, debug=debug)
+    success, loaded_modules = build(source_code, pb_path, output_file, verbose=verbose, debug=debug)
     if not success:
         print("Skipping run because compilation failed.")
         return
+
     # exe_file = output_file + (".exe" if os.name == "nt" else "")
     exe_file = get_build_output_path(output_file) + (".exe" if os.name == "nt" else "")
+
+    has_vendor = any(getattr(mod, "native_binding", False) for mod in loaded_modules.values())
+    if has_vendor:
+        print("Run disabled: Native/vendor modules detected. Please run the binary manually.")
+        print(f"    {exe_file}")
+        return
+
     if verbose: print("Running:", exe_file)
     if verbose: print("\n")
     subprocess.run([exe_file])
