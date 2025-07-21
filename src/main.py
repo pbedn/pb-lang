@@ -103,7 +103,6 @@ def build(source_code: str, pb_path: str, output_file: str, verbose: bool = Fals
         "-Wconversion", # warns about implicit type conversions
         "-Wpedantic",   # enforces ISO C standard
     ]
-    if link_flags: flags = []
 
     compile_cmd = [
         "gcc", "-std=c99",
@@ -111,10 +110,10 @@ def build(source_code: str, pb_path: str, output_file: str, verbose: bool = Fals
         *module_c_files,
         "-o", exe_file,
         "-I", build_dir,
-        *["-I" + idir for idir in include_dirs],
-        *["-L" + ldir for ldir in lib_dirs],
+        *["-I" + idir for idir in include_dirs.keys()],
+        *["-L" + ldir for ldir in lib_dirs.keys()],
+        *link_flags.keys(),
         runtime_lib,
-        *link_flags,
     ]
     if verbose: print("Compile command:", " ".join(compile_cmd))
 
@@ -248,9 +247,9 @@ def check_gcc_installed(verbose):
 
 
 def collect_vendor_build_info(loaded_modules):
-    include_dirs = set()
-    lib_dirs = set()
-    link_flags = set()
+    include_dirs = dict()
+    lib_dirs = dict()
+    link_flags = dict()
     for mod in loaded_modules.values():
         md = getattr(mod, "vendor_metadata", None)
         if not md:
@@ -261,14 +260,15 @@ def collect_vendor_build_info(loaded_modules):
         for inc in md.get("include_dirs", []):
             if not os.path.isabs(inc) and base_dir:
                 inc = os.path.abspath(os.path.join(base_dir, inc))
-            include_dirs.add(inc)
+            include_dirs[inc] = None
 
         for lib in md.get("lib_dirs", []):
             if not os.path.isabs(lib) and base_dir:
                 lib = os.path.abspath(os.path.join(base_dir, lib))
-            lib_dirs.add(lib)
+            lib_dirs[lib] = None
 
-        link_flags.update(md.get("link_flags", []))
+        if md_link_flags := md.get("link_flags"):
+            link_flags.update(**{f: None for f in md_link_flags})
 
     return include_dirs, lib_dirs, link_flags
 

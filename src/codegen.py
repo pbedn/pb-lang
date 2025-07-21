@@ -152,7 +152,7 @@ class CodeGen:
                     direct.add(field)
             self._direct_fields[cls.name] = direct
 
-        self._emit_headers_and_runtime(include_self=True, include_runtime=False)
+        self._emit_headers_and_runtime(False, include_self=True, include_runtime=False)
         self._emit_global_decls(program)
         self._emit_class_statics(program)
         self._emit_global_init_func()
@@ -201,7 +201,7 @@ class CodeGen:
                     direct.add(field)
             self._direct_fields[cls.name] = direct
 
-        self._emit_headers_and_runtime(include_self=False, include_runtime=True)
+        self._emit_headers_and_runtime(True, include_self=False, include_runtime=True)
         self._emit_global_externs(program)
         self._emit_class_structs(program)
         self._emit_function_prototypes(program)
@@ -242,7 +242,7 @@ class CodeGen:
         for sub in line.splitlines():
             self._lines.append(f"{prefix}{sub}")
 
-    def _emit_headers_and_runtime(self, include_self: bool = False, include_runtime: bool = True) -> None:
+    def _emit_headers_and_runtime(self, is_header: bool = False, include_self: bool = False, include_runtime: bool = True) -> None:
         """Emit required #include directives for runtime and imports."""
         seen_includes: set[str] = set()
         seen_aliases: set[str] = set()
@@ -252,10 +252,12 @@ class CodeGen:
                 self._emit(f'#include "{path}"')
                 seen_includes.add(path)
 
-        if include_runtime:
-            emit_include("pb_runtime.h")
-        if include_self:
+        if not is_header:
             emit_include(f"{self._get_module_name()}.h")
+            self._emit()
+            return
+
+        emit_include("pb_runtime.h")
 
         for stmt in self._program.body:
             if isinstance(stmt, ImportStmt):

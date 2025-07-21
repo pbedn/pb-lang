@@ -1008,14 +1008,18 @@ class TestCodeGenFromSource(unittest.TestCase):
             h, c, *_ = compile_code_to_c_and_h(code, module_name="imports_extended", pb_path=imports_path)
 
             # Includes should only appear once despite multiple import forms
-            self.assertEqual(c.count('#include "mathlib.h"'), 1)
-            self.assertEqual(c.count('#include "test_import.mathlib2.h"'), 1)
+            self.assertEqual(h.count('#include "mathlib.h"'), 1)
+            self.assertEqual(h.count('#include "test_import.mathlib2.h"'), 1)
+            self.assertIn('#include "mathlib.h"', h)
+            self.assertIn('#include "test_import.mathlib2.h"', h)
+            self.assertIn('#include "utils.h"', h)
+            self.assertIn('#include "imports_extended.h"', c)
 
             # Alias macros should be generated for imported modules/symbols
-            self.assertIn('#define m1 mathlib', c)
-            self.assertIn('#define mathlib2 test_import.mathlib2', c)
-            self.assertIn('#define m2 test_import.mathlib2', c)
-            self.assertIn('#define pi2 PI', c)
+            self.assertIn('#define m1 mathlib', h)
+            self.assertIn('#define mathlib2 test_import.mathlib2', h)
+            self.assertIn('#define m2 test_import.mathlib2', h)
+            self.assertIn('#define pi2 PI', h)
 
     def test_pipeline_from_import_star(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -1033,8 +1037,9 @@ class TestCodeGenFromSource(unittest.TestCase):
 
             h, c, *_ = compile_code_to_c_and_h(code, module_name="imports_star", pb_path=star_path)
 
-            self.assertIn('#include "mathlib.h"', c)
-            self.assertIn('#include "utils.h"', c)
+            self.assertIn('#include "mathlib.h"', h)
+            self.assertIn('#include "utils.h"', h)
+            self.assertIn('#include "imports_star.h"', c)
 
     def test_pipeline_from_import_multiple(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -1052,7 +1057,8 @@ class TestCodeGenFromSource(unittest.TestCase):
 
             h, c, *_ = compile_code_to_c_and_h(code, module_name="imports_multi", pb_path=multi_path)
 
-            self.assertIn('#include "mathlib.h"', c)
+            self.assertIn('#include "mathlib.h"', h)
+            self.assertIn('#include "imports_multi.h"', c)
 
     def test_numeric_literals_with_underscores(self):
         code = (

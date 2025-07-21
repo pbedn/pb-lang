@@ -34,5 +34,5 @@ def test_collect_vendor_build_info_returns_absolute_paths():
         lib_path = os.path.join(mod_dir, "lib")
         assert inc_path in inc_dirs
         assert lib_path in lib_dirs
-        for p in inc_dirs.union(lib_dirs):
+        for p in inc_dirs | lib_dirs:
             assert os.path.isabs(p)
