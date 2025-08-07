@@ -98,45 +98,22 @@ PB_DECLARE_SET(str, const char *)
 
 #define INITIAL_LIST_CAPACITY 4
 
-void list_int_grow_if_needed(List_int *lst);
-void list_int_init(List_int *lst);
-void list_int_set(List_int *lst, int64_t index, int64_t value);
-int64_t list_int_get(List_int *lst, int64_t index);
-void list_int_append(List_int *lst, int64_t value);
-int64_t list_int_pop(List_int *lst);
-bool list_int_remove(List_int *lst, int64_t value);
-void list_int_free(List_int *lst);
-void list_int_print(const List_int *lst);
+/* Generic list method declarations */
+#define PB_DECLARE_LIST_FUNCS(Name, CType)                             \
+    void list_##Name##_grow_if_needed(List_##Name *lst);               \
+    void list_##Name##_init(List_##Name *lst);                         \
+    void list_##Name##_set(List_##Name *lst, int64_t index, CType value); \
+    CType list_##Name##_get(List_##Name *lst, int64_t index);          \
+    void list_##Name##_append(List_##Name *lst, CType value);          \
+    CType list_##Name##_pop(List_##Name *lst);                         \
+    bool list_##Name##_remove(List_##Name *lst, CType value);          \
+    void list_##Name##_free(List_##Name *lst);                         \
+    void list_##Name##_print(const List_##Name *lst);
 
-void list_float_grow_if_needed(List_float *lst);
-void list_float_init(List_float *lst);
-void list_float_set(List_float *lst, int64_t index, double value);
-double list_float_get(List_float *lst, int64_t index);
-void list_float_append(List_float *lst, double value);
-double list_float_pop(List_float *lst);
-bool list_float_remove(List_float *lst, double value);
-void list_float_free(List_float *lst);
-void list_float_print(const List_float *lst);
-
-void list_bool_grow_if_needed(List_bool *lst);
-void list_bool_init(List_bool *lst);
-void list_bool_set(List_bool *lst, int64_t index, bool value);
-bool list_bool_get(List_bool *lst, int64_t index);
-void list_bool_append(List_bool *lst, bool value);
-bool list_bool_pop(List_bool *lst);
-bool list_bool_remove(List_bool *lst, bool value);
-void list_bool_free(List_bool *lst);
-void list_bool_print(const List_bool *lst);
-
-void list_str_grow_if_needed(List_str *lst);
-void list_str_init(List_str *lst);
-void list_str_set(List_str *lst, int64_t index, const char *value);
-const char* list_str_get(List_str *lst, int64_t index);
-void list_str_append(List_str *lst, const char *value);
-const char *list_str_pop(List_str *lst);
-bool list_str_remove(List_str *lst, const char *value);
-void list_str_free(List_str *lst);
-void list_str_print(const List_str *lst);
+PB_DECLARE_LIST_FUNCS(int, int64_t)
+PB_DECLARE_LIST_FUNCS(float, double)
+PB_DECLARE_LIST_FUNCS(bool, bool)
+PB_DECLARE_LIST_FUNCS(str, const char *)
 
 void set_int_print(const Set_int *s);
 void set_float_print(const Set_float *s);
