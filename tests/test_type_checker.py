@@ -41,6 +41,8 @@ from lang_ast import (
     ExprStmt,
     ImportStmt,
     ImportFromStmt,
+    EnumDef,
+    EnumMember,
 )
 
 
@@ -444,6 +446,19 @@ class TestTypeCheckerInternals(unittest.TestCase):
             ]
         )
         self.tc.check_class_def(cls)
+
+    def test_enum_def(self):
+        enum = EnumDef(
+            name="Scene",
+            members=[
+                EnumMember("MENU", Literal("1")),
+                EnumMember("GAME", Literal("2")),
+            ],
+        )
+        self.tc.check_enum_def(enum)
+        expr = AttributeExpr(Identifier("Scene"), "MENU")
+        typ = self.tc.check_expr(expr)
+        self.assertEqual(typ, "int")
 
     def test_attribute_expr_valid(self):
         self.tc.env["self"] = "Point"

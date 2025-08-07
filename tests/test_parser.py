@@ -9,6 +9,7 @@ from lang_ast import (
     Stmt,
     FunctionDef,
     ClassDef,
+    EnumDef,
     GlobalStmt,
     VarDecl,
     AssignStmt,
@@ -809,6 +810,21 @@ class TestParseStatements(ParserTestCase):
         self.assertEqual(len(stmt.methods), 1)
         self.assertEqual(stmt.methods[0].name, "move")
         self.assertEqual(stmt.methods[0].return_type, "None")
+
+    def test_parse_enum_def(self):
+        code = (
+            "class Scene(Enum):\n"
+            "    MENU = 1\n"
+            "    GAME = 2\n"
+        )
+        parser = self.parse_tokens(code)
+        stmt = parser.parse_class_def()
+
+        self.assertIsInstance(stmt, EnumDef)
+        self.assertEqual(stmt.name, "Scene")
+        self.assertEqual(len(stmt.members), 2)
+        self.assertEqual(stmt.members[0].name, "MENU")
+        self.assertIsInstance(stmt.members[0].value, Literal)
 
     def test_parse_global_inside_function(self):
         code = (

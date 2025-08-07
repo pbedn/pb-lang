@@ -106,6 +106,8 @@ from lang_ast import (
     ContinueStmt,
     PassStmt,
     ClassDef,
+    EnumDef,
+    EnumMember,
     AttributeExpr,
     IndexExpr,
     ListExpr,
@@ -249,6 +251,10 @@ class TypeChecker:
             self.methods[exc] = {}  # no own methods
             self.class_bases[exc] = "Exception"
 
+        # enums
+        self.enums: Dict[str, Set[str]] = {}
+        self.known_enums: Set[str] = set()
+
         # Track whether a function was imported from a native module
         self.native_functions: Dict[str, bool] = {}
 
@@ -296,6 +302,8 @@ class TypeChecker:
             self.check_aug_assign_stmt(stmt)
         elif isinstance(stmt, ClassDef):
             self.check_class_def(stmt)
+        elif isinstance(stmt, EnumDef):
+            self.check_enum_def(stmt)
         elif isinstance(stmt, FunctionDef):
             self.check_function_def(stmt)
         elif isinstance(stmt, ReturnStmt):
@@ -526,6 +534,9 @@ class TypeChecker:
             if isinstance(expr.func, Identifier):
                 # Top-level function call (not a method)
                 fname = expr.func.name
+
+                if fname in self.enums:
+                    raise TypeError(f"Cannot call enum '{fname}' as function")
 
                 # Class instantiation: Player(...)
                 if fname in self.methods and "__init__" in self.methods[fname]:
@@ -816,6 +827,13 @@ class TypeChecker:
                     raise TypeError(f"Module '{obj_name}' has no export '{expr.attr}'")
                 expr.inferred_type = mod.exports[expr.attr]
                 return expr.inferred_type
+
+            if obj_name in self.enums:
+                if expr.attr not in self.enums[obj_name]:
+                    raise TypeError(f"Enum '{obj_name}' has no member '{expr.attr}'")
+                expr.obj.inferred_type = obj_name
+                expr.inferred_type = "int"
+                return "int"
 
             # --- instance-field on any variable (including self) ---
             if obj_name in self.env and self.env[obj_name] == "file":
@@ -1431,6 +1449,22 @@ class TypeChecker:
 
             # Type-check the method body
             self.check_function_def(method)
+
+    def check_enum_def(self, enum: EnumDef):
+        """Validate an Enum definition."""
+        if enum.name in self.known_classes or enum.name in self.known_enums:
+            raise TypeError(f"Duplicate definition of '{enum.name}'")
+        self.known_enums.add(enum.name)
+        self.enums[enum.name] = set()
+        seen: set[str] = set()
+        for member in enum.members:
+            if member.name in seen:
+                raise TypeError(f"Duplicate enum member '{member.name}' in {enum.name}")
+            seen.add(member.name)
+            typ = self.check_expr(member.value)
+            if typ != "int":
+                raise TypeError(f"Enum member '{member.name}' must be int, got {typ}")
+            self.enums[enum.name].add(member.name)
 
     def check_assert_stmt(self, stmt: AssertStmt):
         """Check that the asserted expression is of type bool."""

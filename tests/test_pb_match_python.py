@@ -111,6 +111,12 @@ class TestExamplesPythonVsPb(RuntimeHelper):
         out_pb = self._run_pb(path)
         self.assertEqual(out_py, out_pb)
 
+    def test_enum_example(self):
+        path = os.path.join(examples_dir, "enum_example.pb")
+        out_py = self._run_python(path)
+        out_pb = self._run_pb(path)
+        self.assertEqual(out_py, out_pb)
+
     def test_test(self):
         path = os.path.join(examples_dir, "test.pb")
         out_py = self._run_python(path)
