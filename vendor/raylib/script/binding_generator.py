@@ -3,7 +3,7 @@ import os
 from collections import defaultdict, deque
 
 HEADER_PATH = os.path.join(os.path.dirname(__file__), "../include/raylib.h")
-PB_OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "../raylib.pb")
+PB_OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "../raylib_stub.pb")
 
 TYPE_MAP = {
     "void": "None",
@@ -32,6 +32,28 @@ IMMEDIATE_ALIASES = {
 
 IMMEDIATE_ALIAS_SET = set(alias for aliases in IMMEDIATE_ALIASES.values() for alias in aliases)
 
+SKIP_CALLBACK_ALIASES = {
+    "TraceLogCallback",
+    "LoadFileDataCallback",
+    "SaveFileDataCallback",
+    "LoadFileTextCallback",
+    "SaveFileTextCallback",
+    "AudioCallback",
+}
+
+SKIP_CALLBACK_FUNCTIONS = {
+    "SetTraceLogCallback",
+    "SetLoadFileDataCallback",
+    "SetSaveFileDataCallback",
+    "SetLoadFileTextCallback",
+    "SetSaveFileTextCallback",
+    "SetAudioStreamCallback",
+    "AttachAudioStreamProcessor",
+    "DetachAudioStreamProcessor",
+    "AttachAudioMixedProcessor",
+    "DetachAudioMixedProcessor",
+}
+
 def map_c_type(c_type):
     """Map a C type to a PB type."""
     c_type = c_type.replace("const ", "").strip()
@@ -42,12 +64,18 @@ def map_c_type(c_type):
     c_type = re.sub(r'\bunsigned\b', 'int', c_type)
     c_type = re.sub(r'\bsigned\s+int\b', 'int', c_type)
     c_type = re.sub(r'\bsigned\b', '', c_type)
-    if c_type.endswith("*"):
-        return "int"
-    if c_type.endswith("*"):
-        if "char" in c_type:
-            return "str"
-        return "int"
+
+    # Normalize pointer notation
+    c_type = c_type.replace(" *", "*").replace("*", "").strip()
+    
+    # char* → str
+    if "char" in c_type:
+        return "str"
+
+    # void → None
+    if c_type == "void":
+        return "None"
+
     return TYPE_MAP.get(c_type, c_type)
 
 def parse_function_pointer_aliases(header):
@@ -63,6 +91,9 @@ def parse_function_pointer_aliases(header):
     )
 
     for ret, alias, params in pattern.findall(header):
+        if alias in SKIP_CALLBACK_ALIASES:
+            continue
+
         ret = map_c_type(ret.strip())
         paramtypes = []
         paramnames = []
@@ -120,6 +151,9 @@ def parse_functions(header):
     func_regex = re.compile(r'RLAPI\s+([a-zA-Z0-9_ *]+?)\s+([a-zA-Z0-9_]+)\s*\(([^)]*)\);')
     functions = []
     for ret, name, params in func_regex.findall(header):
+        if name in SKIP_CALLBACK_FUNCTIONS:
+            continue
+
         if "..." in params:
             if params.strip().endswith(", ..."):
                 params = params.rsplit(",", 1)[0].strip()
