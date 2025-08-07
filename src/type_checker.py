@@ -231,12 +231,25 @@ class TypeChecker:
 
         # Register built-in exceptions as class names
         # fixme: Remove when stdlib is created
+
+        # Root of the hierarchy
+        self.known_classes.add("BaseException")
+        self.methods["BaseException"] = {
+            "__init__": (["BaseException", "str"], "None", 2)
+        }
+        self.class_bases["BaseException"] = None
+        self.instance_fields["BaseException"] = {"msg": "str"}
+        self.class_attrs["BaseException"] = {}
+
+        # Standard Exception derives from BaseException
         self.known_classes.add("Exception")
         self.methods["Exception"] = {
             "__init__": (["Exception", "str"], "None", 2)
         }
-        self.class_bases["Exception"] = None
-        
+        self.class_bases["Exception"] = "BaseException"
+        self.instance_fields["Exception"] = {"msg": "str"}
+        self.class_attrs["Exception"] = {}
+
         for exc in ["RuntimeError", "ValueError", "IndexError", "TypeError"]:
             self.known_classes.add(exc)
             self.methods[exc] = {}  # no own methods

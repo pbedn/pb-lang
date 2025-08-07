@@ -54,6 +54,12 @@ void pb_raise_obj(const char *type, void *obj);
 void pb_clear_exc(void);
 void pb_reraise(void);
 
+typedef struct BaseException {
+    const char *msg;
+} BaseException;
+
+void BaseException____init__(struct BaseException *self, const char *msg);
+
 /* ------------ FILE ------------- */
 
 typedef struct {

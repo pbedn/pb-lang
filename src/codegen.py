@@ -89,6 +89,20 @@ class CodeGen:
 
         self._modules: set[str] = set()  # track imported module names
 
+        # Built-in class constructor signatures used for inheritance
+        self._builtin_inits: dict[str, FunctionDef] = {
+            "BaseException": FunctionDef(
+                name="BaseException____init__",
+                params=[
+                    Parameter("self", "BaseException", None),
+                    Parameter("msg", "str", None),
+                ],
+                body=[],
+                return_type="None",
+                globals_declared=None,
+            )
+        }
+
     def _attr_full_name(self, expr: Expr) -> str | None:
         if isinstance(expr, Identifier):
             return expr.name
@@ -414,7 +428,7 @@ class CodeGen:
 
             if "__init__" not in own:
                 if cls.base:
-                    base_cls, base_init = self._find_base_init(cls)
+                    _, base_init = self._find_base_init(cls)
                     if base_init:
                         params = [p for p in base_init.params if p.name != "self"]
                         params_code = ", ".join(f"{self._c_type(p.type)} {p.name}" for p in params)
@@ -494,19 +508,18 @@ class CodeGen:
         self._emit("}")
         self._emit()
 
-    def _find_base_init(self, cls: ClassDef):
-        """
-        Search the inheritance chain for the nearest __init__ method.
-        Returns (base_class, init_method) or (None, None) if not found.
-        """
+    def _find_base_init(self, cls: ClassDef) -> tuple[str | None, FunctionDef | None]:
+        """Return (base_name, init_method) for the nearest constructor."""
         base_name = cls.base
         while base_name:
             base_cls = next((c for c in self._classes if c.name == base_name), None)
             if base_cls is None:
-                return None, None
+                if base_name in self._builtin_inits:
+                    return base_name, self._builtin_inits[base_name]
+                return base_name, None
             for m in base_cls.methods:
                 if m.name == "__init__":
-                    return base_cls, m
+                    return base_name, m
             base_name = base_cls.base
         return None, None
 
@@ -534,7 +547,7 @@ class CodeGen:
         if "__init__" not in own:
             # If the class has a base, look for an inherited __init__
             if cls.base:
-                base_cls, base_init = self._find_base_init(cls)
+                base_name, base_init = self._find_base_init(cls)
                 if base_init:
                     # Signature: same parameters as base __init__, except for self
                     params = [p for p in base_init.params if p.name != "self"]
@@ -543,7 +556,7 @@ class CodeGen:
                     self._indent += 1
                     args_code = ", ".join(p.name for p in params)
                     # Call the base class constructor, passing all arguments
-                    self._emit(f"{base_cls.name}____init__((struct {base_cls.name} *)self{', ' if args_code else ''}{args_code});")
+                    self._emit(f"{base_name}____init__((struct {base_name} *)self{', ' if args_code else ''}{args_code});")
                     self._indent -= 1
                     self._emit("}")
                     self._emit()

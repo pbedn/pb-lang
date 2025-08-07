@@ -1698,6 +1698,25 @@ class TestTypeCheckerProgramLevel(unittest.TestCase):
         checker.functions["RuntimeError"] = (["str"], "RuntimeError", 1)
         checker.check(prog)
 
+    def test_raise_base_exception(self):
+        prog = Program(body=[
+            ClassDef(
+                name="RuntimeError",
+                base="BaseException",
+                fields=[],
+                methods=[]
+            ),
+            FunctionDef(
+                name="crash",
+                params=[],
+                return_type="None",
+                body=[
+                    RaiseStmt(CallExpr(Identifier("RuntimeError"), [Literal('"division by zero"')]))
+                ]
+            )
+        ])
+        TypeChecker().check(prog)
+
     def test_class_method_no_init(self):
         """
         class Counter:

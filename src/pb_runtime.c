@@ -167,6 +167,10 @@ void pb_reraise(void) {
     pb_raise_obj(pb_current_exc.type, pb_current_exc.value);
 }
 
+void BaseException____init__(struct BaseException *self, const char *msg) {
+    self->msg = msg;
+}
+
 /* ------------ FILE ------------- */
 
 PbFile pb_open(const char *path, const char *mode) {

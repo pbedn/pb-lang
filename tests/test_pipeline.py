@@ -565,6 +565,22 @@ class TestCodeGenFromSource(unittest.TestCase):
         # Should use the forwarded RuntimeError constructor
         self.assertIn('void RuntimeError____init__(struct RuntimeError * self, const char * msg)', c_code)
 
+    def test_pipeline_base_exception(self):
+        pb_code = (
+            "class RuntimeError(BaseException):\n"
+            "    pass\n"
+            "\n"
+            "def crash():\n"
+            "    raise RuntimeError(\"division by zero\")\n"
+            "\n"
+            "def main():\n"
+            "    crash()\n"
+        )
+        header, c_code = self.compile_pipeline(pb_code)
+        self.assertIn('BaseException____init__((struct BaseException *)self, msg);', c_code)
+        self.assertIn('pb_raise_obj("RuntimeError"', c_code)
+        self.assertIn('void RuntimeError____init__(struct RuntimeError * self, const char * msg)', c_code)
+
     # global ------------------------------------------------------
 
     def test_global_variable_in_method(self):
