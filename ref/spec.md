@@ -76,6 +76,8 @@ raise, return, True, try, while
 | `str`   | UTF‑8, immutable | `const char *` |
 | `list[T]` | homogeneous, mutable (`list[int]`, `list[str]`, `list[float]`, `list[bool]`) | `List_int`|
 | `dict[str,T]` | string keys (runtime ships only `dict[str,int]`) | `Dict_str_int` |
+| `set[T]` | unordered, unique elements (`set[int]`, `set[str]`, ...) | `Set_int` |
+| `file` | result of `open()` | `PbFile` |
 | *User class* | single inheritance | `struct <Class>` |
 
 ### Lists
@@ -83,12 +85,20 @@ raise, return, True, try, while
 ```python
 numbers: list[int] = [1, 2, 3]
 ```
+Lists support `append`, `pop`, and `remove` methods. Assigning to index `len(list)` appends.
 
 ### Dicts
 
 ```python
 settings: dict[str, int] = {"volume": 10}
 ```
+
+### Sets
+
+```python
+unique: set[int] = {1, 2}
+```
+Sets are value containers; runtime currently supports printing them.
 ### Type Conversion
 
 * **Implicit coercion is allowed** in the following cases:
@@ -98,6 +108,8 @@ settings: dict[str, int] = {"volume": 10}
 * **No implicit coercion** is performed between unrelated types (e.g., `str → int`, or unrelated classes).
 
 * **Explicit conversion** is still available using built-in constructors: `int(x)`, `float(x)`, `str(x)`, `bool(x)`.
+
+* **Optional types** use the syntax `T | None` and accept either a value of type `T` or `None`.
 
 ---
 
@@ -144,8 +156,9 @@ class Boss(Enemy):
     rage: int = 0
 ```
 
-* Single inheritance; empty body is a parser error.  
-* Fields may be explicit (`hp`) or inferred from `self.x = …` in `__init__`.  
+* Single inheritance; empty body is a parser error.
+* Fields may be explicit (`hp`) or inferred from `self.x = …` in `__init__`.
+* Fields can be declared without an initializer; they must be set in `__init__`.
 * No `super()` helper yet – call base methods directly (`Enemy__heal(self, 5)`).
 
 ---
@@ -159,8 +172,8 @@ class Boss(Enemy):
 | `for v in range(...)` | *only* `range` is iterable; compiles to a `for` loop in C |
 | `break / continue / pass` | only inside loops |
 | `assert expr` | runtime check → `pb_fail` on failure |
-| `try / except` | parses & type‑checks, but code‑gen emits a comment (no runtime) |
-| `raise expr` | aborts (`pb_fail("Exception raised")`) |
+| `try / except / finally` | full runtime support with stack unwinding |
+| `raise expr` | aborts if uncaught; `raise` in `except` re‑raises |
 
 ### Exception Handling
 
@@ -236,9 +249,12 @@ Arithmetic allowed only on `int`/`float`.
 ## 7. Modules & Imports
 
 * One `.pb` file = one module.
-* Absolute imports only (`import math.stats`); no relative imports yet.
+* Imports support aliasing (`import pkg.mod as m`) and `from pkg.mod import name [as alias]`.
+* Absolute imports only; no relative imports yet.
 
 Global variables are module‑scoped; use `global name` inside a function to assign to them.
+Global variables may be instances of classes; constructors run before `main`.
+`if __name__ == "__main__":` blocks are allowed and skipped when the module is imported.
 When compiling a module, a header file is also produced. All top‑level variables
 are emitted as `extern` declarations so other modules can reference them. The
 compiler keeps the signature of every exported function and checks calls across
@@ -248,8 +264,10 @@ modules against these signatures.
 
 ## 8. Built-in Functions
 
-`print`, `range`.  
+`print`, `range`, `len`, and `open`.
 `print` chooses helper (`pb_print_int`, `pb_print_bool`, …) based on static type.
+`len` works on strings and all container types and returns an `int`.
+`open(path, mode)` returns a `file` object with `.read()`, `.write(str)` and `.close()` methods.
 
 ---
 
@@ -258,7 +276,7 @@ modules against these signatures.
 | Phase | Errors raised |  When |
 |-------|---------------| ---------------|
 | Lexing | LexerError | mixed tabs/spaces, bad token, invalid f‑string placeholder |
-| Parsing | ParserError | `break` outside loop, empty class, chained comparison, duplicate param, etc. |
+| Parsing | ParserError | `break` outside loop, empty class, duplicate param, etc. |
 | Type check | TypeError | mismatched types, heterogeneous list, arithmetic on non‑numeric, etc. |
 | Runtime | ConversionError, RuntimeError | failed `assert`, explicit `raise` → abort |
 
@@ -294,7 +312,7 @@ Dynamic features (exceptions, dynamic dispatch) generate stub comments until imp
 | Dispatch | dynamic (`obj.m()`) | static (`Class__m(obj, …)`) |
 | Inheritance | multiple, `super()` | single, no `super()` helper |
 | Loops | any iterable | only `range` |
-| Exceptions | full runtime | parsed but aborts at runtime |
+| Exceptions | full runtime | basic `try/except/finally` with custom exceptions |
 | Extras | comprehensions, lambdas, decorators, etc. | **not implemented** |
 
 ---
@@ -338,7 +356,6 @@ options:
 
 ## 13. Not Yet Implemented / Road‑map
 
-* Multi-line and raw strings
 * Enums
 * Variadic arguments
 * Relative imports
@@ -357,4 +374,4 @@ options:
 
 -- 
 
-_Last updated : 2025‑05‑14_
+_Last updated : 2025‑06‑26_
