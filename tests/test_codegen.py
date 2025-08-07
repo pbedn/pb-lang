@@ -214,6 +214,26 @@ class TestCodeGen(unittest.TestCase):
         self.assertIn('pb_print_str((snprintf(__fbuf, 256, "Hello, %s!", name), __fbuf));', output)
         self.assertIn('return 0;', output)
 
+    def test_string_concatenation(self):
+        prog = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("a", "str", StringLiteral("foo")),
+                    VarDecl("b", "str", StringLiteral("bar")),
+                    VarDecl("c", "str", BinOp(Identifier("a"), "+", Identifier("b"))),
+                    ExprStmt(CallExpr(Identifier("print"), [Identifier("c")])),
+                    ReturnStmt(Literal("0"))
+                ],
+                globals_declared=None
+            )
+        ])
+        output = codegen_output(prog)
+        self.assertIn('const char * c = pb_str_concat(a, b);', output)
+        self.assertIn('pb_print_str(c);', output)
+
     def test_include_dotted_module_header(self):
         prog = Program(body=[
             ImportStmt(module=["pkg", "sub"])

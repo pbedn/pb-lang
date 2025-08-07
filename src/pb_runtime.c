@@ -49,6 +49,17 @@ const char *pb_format_int(int64_t x) {
     return bufs[i];
 }
 
+char *pb_str_concat(const char *a, const char *b) {
+    size_t len_a = strlen(a);
+    size_t len_b = strlen(b);
+    char *res = malloc(len_a + len_b + 1);
+    if (!res) pb_fail("Out of memory in pb_str_concat");
+    memcpy(res, a, len_a);
+    memcpy(res + len_a, b, len_b);
+    res[len_a + len_b] = '\0';
+    return res;
+}
+
 
 /* ------------ ERROR HANDLING ------------- */
 

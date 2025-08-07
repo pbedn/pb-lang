@@ -751,6 +751,18 @@ class TestPipelineRuntime(unittest.TestCase):
         output = compile_and_run(code)
         self.assertEqual(output.strip(), "3")
 
+    def test_string_concat_runtime(self):
+        code = (
+            "def main() -> int:\n"
+            "    a: str = 'foo'\n"
+            "    b: str = 'bar'\n"
+            "    c: str = a + b\n"
+            "    print(c)\n"
+            "    return 0\n"
+        )
+        output = compile_and_run(code)
+        self.assertEqual(output.strip(), "foobar")
+
     def test_numeric_literal_underscores_runtime(self):
         code = (
             "def main() -> int:\n"

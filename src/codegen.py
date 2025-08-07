@@ -1001,6 +1001,8 @@ class CodeGen:
         left  = self._expr(e.left)
         right = self._expr(e.right)
         op    = e.op
+        left_t = self._get_expr_type(e.left)
+        right_t = self._get_expr_type(e.right)
         # floor-div → C integer divide
         if op == "//":
             op = "/"
@@ -1013,6 +1015,8 @@ class CodeGen:
             return f"({left} == {right})"
         if op == "is not":
             return f"({left} != {right})"
+        if op == "+" and left_t == right_t == "str":
+            return f"pb_str_concat({left}, {right})"
         # default
         return f"({left} {op} {right})"
 

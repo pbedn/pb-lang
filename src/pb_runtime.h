@@ -19,6 +19,7 @@ void pb_print_bool(bool b);
 
 const char *pb_format_double(double x);
 const char *pb_format_int(int64_t x);
+char *pb_str_concat(const char *a, const char *b);
 
 /* ------------ ERROR HANDLING ------------- */
 

@@ -453,6 +453,9 @@ class TypeChecker:
 
             # Arithmetic
             if op in {"+", "-", "*", "/", "//", "%"}:
+                if op == "+" and left_type == right_type == "str":
+                    expr.inferred_type = "str"
+                    return "str"
                 if not is_numeric_type(left_type) or not is_numeric_type(right_type):
                     raise TypeError(f"Operator {op} not supported for types: {left_type} and {right_type}")
                 result_type = promote_numeric_types(left_type, right_type)
