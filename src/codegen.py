@@ -98,6 +98,9 @@ class CodeGen:
         # Names of all classes in the current program
         self._class_names: set[str] = set()
 
+        # Track lists that need explicit cleanup within the current function
+        self._lists_to_free: list[tuple[str, str]] = []
+
     def _attr_full_name(self, expr: Expr) -> str | None:
         if isinstance(expr, Identifier):
             return expr.name
@@ -499,6 +502,9 @@ class CodeGen:
         self._emit("{")
         self._indent += 1
 
+        prev_lists = self._lists_to_free
+        self._lists_to_free = []
+
         # ── silence -Wunused-parameter for any parameter we never read ──
         for p in fn.params:
             if p.name:                      # skip the synthetic “void”
@@ -512,6 +518,10 @@ class CodeGen:
         # ensure void return
         if fn.return_type is None:
             self._emit("return;")
+
+        for name, elem in self._lists_to_free:
+            self._emit(f"list_{elem}_free(&{name});")
+        self._lists_to_free = prev_lists
         self._indent -= 1
         self._emit("}")
         self._emit()
@@ -521,10 +531,16 @@ class CodeGen:
         self._emit("int main(void)")
         self._emit("{")
         self._indent += 1
+        prev_lists = self._lists_to_free
+        self._lists_to_free = []
         self._emit("char __fbuf[256];")
         self._emit("(void)__fbuf;")
         for stmt in fn.body:
             self._emit(self._stmt(stmt))
+
+        for name, elem in self._lists_to_free:
+            self._emit(f"list_{elem}_free(&{name});")
+        self._lists_to_free = prev_lists
         self._indent -= 1
         self._emit("}")
         self._emit()
@@ -763,8 +779,23 @@ class CodeGen:
         return f"{tgt} {op}= {val};"
 
     def _generate_ReturnStmt(self, st: ReturnStmt) -> str:
-        ret = "" if st.value is None else " " + self._expr(st.value)
-        return f"return{ret};"
+        ret_expr = "" if st.value is None else self._expr(st.value)
+        returned_name = None
+        if isinstance(st.value, Identifier):
+            returned_name = st.value.name
+
+        lines: list[str] = []
+        for name, elem in self._lists_to_free:
+            if name != returned_name:
+                lines.append(f"list_{elem}_free(&{name});")
+
+        self._lists_to_free = []
+
+        if ret_expr:
+            lines.append(f"return {ret_expr};")
+        else:
+            lines.append("return;")
+        return "\n".join(lines)
 
     def _generate_PassStmt(self, st: PassStmt) -> str:
         return ";  // pass"
@@ -910,9 +941,14 @@ class CodeGen:
         c_ty = self._c_type(st.declared_type)
         if st.value is None:
             return f"{c_ty} {st.name};"
-    
+
         val = self._expr(st.value)
-        return f"{c_ty} {st.name} = {val};"
+        code = f"{c_ty} {st.name} = {val};"
+        if st.declared_type and st.declared_type.startswith("list["):
+            if isinstance(st.value, ListExpr) and len(st.value.elements) == 0:
+                elem = st.declared_type[5:-1]
+                self._lists_to_free.append((st.name, elem))
+        return code
 
     def _expr(self, e: Expr) -> str:
         """Dispatch and return a C expression (no indent, no semicolon)."""
