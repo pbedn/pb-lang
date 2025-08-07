@@ -383,6 +383,36 @@ class TestTypeCheckerInternals(unittest.TestCase):
         with self.assertRaises(TypeError):
             self.tc.check_for_stmt(stmt)
 
+    def test_for_loop_over_string(self):
+        stmt = ForStmt(
+            var_name="c",
+            iterable=Identifier("text"),
+            body=[PassStmt()]
+        )
+        self.tc.env["text"] = "str"
+        self.tc.check_for_stmt(stmt)
+        self.assertEqual(stmt.elem_type, "str")
+
+    def test_for_loop_over_dict(self):
+        stmt = ForStmt(
+            var_name="k",
+            iterable=Identifier("d"),
+            body=[PassStmt()]
+        )
+        self.tc.env["d"] = "dict[str, int]"
+        self.tc.check_for_stmt(stmt)
+        self.assertEqual(stmt.elem_type, "str")
+
+    def test_for_loop_over_set(self):
+        stmt = ForStmt(
+            var_name="x",
+            iterable=Identifier("s"),
+            body=[PassStmt()]
+        )
+        self.tc.env["s"] = "set[int]"
+        self.tc.check_for_stmt(stmt)
+        self.assertEqual(stmt.elem_type, "int")
+
     def test_class_def_simple(self):
         """
         class C:

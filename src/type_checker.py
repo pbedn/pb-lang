@@ -1259,23 +1259,35 @@ class TypeChecker:
         self.in_loop -= 1
 
     def check_for_stmt(self, stmt: ForStmt):
-        """Type-check a for loop over list[T] or set[T].
+        """Type-check a for loop over an iterable.
 
-        Type-checking requirements:
-        - Iterable must be a list[T] or set[T]
-        - var_name is assigned elements of type T
-        - Body type-checks with var_name bound to T
-        - Must track loop context for break / continue
+        Supported iterables:
+        - ``list[T]`` → loop variable has type ``T``
+        - ``set[T]``  → loop variable has type ``T``
+        - ``dict[K, V]`` → loops over keys of type ``K``
+        - ``str``     → loops over single-character strings
+
+        The loop body type-checks with the variable bound to the
+        element/key type. Loop context is tracked for ``break``/``continue``.
         """
         iterable_type = self.check_expr(stmt.iterable)
 
-        if iterable_type.startswith("list[") and iterable_type.endswith("]"):
+        if iterable_type == "str":
+            element_type = "str"
+        elif iterable_type.startswith("list[") and iterable_type.endswith("]"):
             element_type = iterable_type[5:-1]
         elif iterable_type.startswith("set[") and iterable_type.endswith("]"):
             element_type = iterable_type[4:-1]
+        elif iterable_type.startswith("dict[") and iterable_type.endswith("]"):
+            try:
+                key_type, _ = map(str.strip, iterable_type[5:-1].split(",", 1))
+            except Exception:
+                raise TypeError(f"Invalid dict type: {iterable_type}")
+            element_type = key_type
         else:
             raise TypeError(
-                f"For loop requires iterable of type list[T] or set[T], got {iterable_type}"
+                "For loop requires iterable of type list[T], set[T], dict[K, V] or str, "
+                f"got {iterable_type}"
             )
         stmt.elem_type = element_type
 
