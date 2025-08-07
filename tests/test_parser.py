@@ -955,6 +955,28 @@ class TestParseStatements(ParserTestCase):
         self.assertEqual(stmt.module, ["foo"])
         self.assertEqual([(n.name, n.asname) for n in stmt.names], [("bar", "b"), ("baz", "z")])
 
+    def test_parse_from_import_parenthesized(self):
+        parser = self.parse_tokens("from foo import (bar, baz)\n")
+        stmt = parser.parse_import_stmt()
+
+        self.assertIsInstance(stmt, ImportFromStmt)
+        self.assertEqual(stmt.module, ["foo"])
+        self.assertEqual([(n.name, n.asname) for n in stmt.names], [("bar", None), ("baz", None)])
+
+    def test_parse_from_import_parenthesized_multiline(self):
+        code = (
+            "from foo import (\n"
+            "    bar,\n"
+            "    baz,\n"
+            ")\n"
+        )
+        parser = self.parse_tokens(code)
+        stmt = parser.parse_import_stmt()
+
+        self.assertIsInstance(stmt, ImportFromStmt)
+        self.assertEqual(stmt.module, ["foo"])
+        self.assertEqual([(n.name, n.asname) for n in stmt.names], [("bar", None), ("baz", None)])
+
 
 class TestParseComplexStmtAndExpr(ParserTestCase):
 

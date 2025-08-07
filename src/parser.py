@@ -1162,6 +1162,8 @@ class Parser:
 
             names: list[ImportAlias] = []
 
+            paren = self.match(TokenType.LPAREN)
+
             name = self.expect(TokenType.IDENTIFIER).value
             asname = None
             if self.match(TokenType.AS):
@@ -1169,11 +1171,16 @@ class Parser:
             names.append(ImportAlias(name, asname))
 
             while self.match(TokenType.COMMA):
+                if paren and self.check(TokenType.RPAREN):
+                    break # allow trailing comma inside parentheses
                 name = self.expect(TokenType.IDENTIFIER).value
                 asname = None
                 if self.match(TokenType.AS):
                     asname = self.expect(TokenType.IDENTIFIER).value
                 names.append(ImportAlias(name, asname))
+
+            if paren:
+                self.expect(TokenType.RPAREN)
 
             self.expect(TokenType.NEWLINE)
             loc = (self.tokens[self.pos-1].line, self.tokens[self.pos-1].column)

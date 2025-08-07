@@ -1,17 +1,16 @@
-# from raylib import (
-#     InitWindow,
-#     SetTargetFPS,
-#     WindowShouldClose,
-#     BeginDrawing,
-#     ClearBackground,
-#     DrawText,
-#     EndDrawing,
-#     CloseWindow,
-#     RAYWHITE,
-#     DARKGRAY
-# )
+from raylib import (
+    InitWindow,
+    SetTargetFPS,
+    WindowShouldClose,
+    BeginDrawing,
+    ClearBackground,
+    DrawText,
+    EndDrawing,
+    CloseWindow,
+    RAYWHITE,
+    DARKGRAY
+)
 
-from raylib import InitWindow, SetTargetFPS, WindowShouldClose, BeginDrawing, ClearBackground, DrawText, EndDrawing, CloseWindow, RAYWHITE, DARKGRAY
 
 def main() -> None:
     InitWindow(800, 600, "Hello Raylib")

@@ -231,11 +231,12 @@ class Lexer:
 
         indent_width = 0
         if line.strip():
-            indent_str   = WHITESPACE.match(line).group(0)
+            indent_str = WHITESPACE.match(line).group(0)
             if " " in indent_str and "\t" in indent_str:
                 raise LexerError("Mixed tabs and spaces in indentation", self.line_num, 1)
             indent_width = len(indent_str.replace("\t", "    "))
-            self._emit_indentation(indent_width)
+            if self.bracket_depth == 0:
+                self._emit_indentation(indent_width)
 
         # scan the rest of the line
         pos, length = indent_width, len(line)
