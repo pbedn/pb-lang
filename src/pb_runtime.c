@@ -259,93 +259,96 @@ void pb_index_error(const char *type, const char *op, int64_t index, int64_t len
 
 /* ------------ LIST ------------- */
 
-void list_int_grow_if_needed(List_int *lst) {
-    if (lst->len >= lst->capacity) {
-        int64_t new_capacity = (lst->capacity == 0) ? INITIAL_LIST_CAPACITY : (lst->capacity * 2);
-        int64_t *new_data;
-        if (lst->capacity == 0 && lst->data != NULL) {
-            new_data = (int64_t *)malloc(new_capacity * sizeof(int64_t));
-            if (!new_data) {
-                char buf[128];
-                snprintf(buf, sizeof(buf),
-                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64,
-                    "int", lst->capacity);
-                pb_fail(buf);
-            }
-            memcpy(new_data, lst->data, lst->len * sizeof(int64_t));
-        } else {
-            new_data = (int64_t *)realloc(lst->data, new_capacity * sizeof(int64_t));
-            if (!new_data) {
-                char buf[128];
-                snprintf(buf, sizeof(buf),
-                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64,
-                    "int", lst->capacity);
-                pb_fail(buf);
-            }
-        }
-        lst->data = new_data;
-        lst->capacity = new_capacity;
-    }
+/* Utility equality helpers used by generic list macros */
+#define PB_EQ(a, b) ((a) == (b))
+#define PB_STR_EQ(a, b) (strcmp((a), (b)) == 0)
+
+/* Generic list method implementations */
+#define PB_DEFINE_LIST_METHODS(Name, CType, TypeStr, EQ)                              \
+void list_##Name##_grow_if_needed(List_##Name *lst) {                                \
+    if (lst->len >= lst->capacity) {                                                 \
+        int64_t new_capacity = (lst->capacity == 0) ? INITIAL_LIST_CAPACITY          \
+                                                   : (lst->capacity * 2);            \
+        CType *new_data;                                                             \
+        if (lst->capacity == 0 && lst->data != NULL) {                               \
+            new_data = (CType *)malloc(new_capacity * sizeof(CType));                \
+            if (!new_data) {                                                         \
+                char buf[128];                                                       \
+                snprintf(buf, sizeof(buf),                                            \
+                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, \
+                    TypeStr, lst->capacity);                                         \
+                pb_fail(buf);                                                        \
+            }                                                                        \
+            memcpy(new_data, lst->data, lst->len * sizeof(CType));                   \
+        } else {                                                                     \
+            new_data = (CType *)realloc(lst->data, new_capacity * sizeof(CType));    \
+            if (!new_data) {                                                         \
+                char buf[128];                                                       \
+                snprintf(buf, sizeof(buf),                                            \
+                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, \
+                    TypeStr, lst->capacity);                                         \
+                pb_fail(buf);                                                        \
+            }                                                                        \
+        }                                                                            \
+        lst->data = new_data;                                                        \
+        lst->capacity = new_capacity;                                                \
+    }                                                                                \
+}                                                                                    \
+void list_##Name##_init(List_##Name *lst) {                                          \
+    lst->len = 0;                                                                    \
+    lst->capacity = 0;                                                               \
+    lst->data = NULL;                                                                \
+}                                                                                    \
+void list_##Name##_set(List_##Name *lst, int64_t index, CType value) {               \
+    if (index < 0 || index >= lst->len) {                                            \
+        pb_index_error(TypeStr, "set", index, lst->len, lst);                       \
+    } else {                                                                         \
+        lst->data[index] = value;                                                    \
+    }                                                                                \
+}                                                                                    \
+CType list_##Name##_get(List_##Name *lst, int64_t index) {                           \
+    if (index < 0 || index >= lst->len) {                                            \
+        pb_index_error(TypeStr, "get", index, lst->len, lst);                       \
+    }                                                                                \
+    return lst->data[index];                                                         \
+}                                                                                    \
+void list_##Name##_append(List_##Name *lst, CType value) {                           \
+    list_##Name##_grow_if_needed(lst);                                               \
+    lst->data[lst->len++] = value;                                                   \
+}                                                                                    \
+CType list_##Name##_pop(List_##Name *lst) {                                          \
+    if (lst->len == 0) {                                                             \
+        char buf[128];                                                               \
+        snprintf(buf, sizeof(buf), "Cannot pop from empty list");                   \
+        pb_fail(buf);                                                                \
+    }                                                                                \
+    return lst->data[--lst->len];                                                    \
+}                                                                                    \
+bool list_##Name##_remove(List_##Name *lst, CType value) {                           \
+    for (int64_t i = 0; i < lst->len; ++i) {                                         \
+        if (EQ(lst->data[i], value)) {                                               \
+            for (int64_t j = i; j + 1 < lst->len; ++j) {                              \
+                lst->data[j] = lst->data[j + 1];                                      \
+            }                                                                        \
+            lst->len--;                                                              \
+            return true;                                                             \
+        }                                                                            \
+    }                                                                                \
+    return false;                                                                    \
+}                                                                                    \
+void list_##Name##_free(List_##Name *lst) {                                          \
+    if (lst->data) {                                                                 \
+        free(lst->data);                                                             \
+        lst->data = NULL;                                                            \
+    }                                                                                \
+    lst->len = 0;                                                                    \
+    lst->capacity = 0;                                                               \
 }
 
-void list_int_init(List_int *lst) {
-    lst->len = 0;
-    lst->capacity = 0;
-    lst->data = NULL;
-}
-
-void list_int_set(List_int *lst, int64_t index, int64_t value) {
-    if (index < 0 || index >= lst->len) {
-        pb_index_error("int", "set", index, lst->len, lst);
-    } else {
-        lst->data[index] = value;
-    }
-}
-
-
-int64_t list_int_get(List_int *lst, int64_t index) {
-    if (index < 0 || index >= lst->len) {
-        pb_index_error("int", "get", index, lst->len, lst);
-    }
-    return lst->data[index];
-}
-
-void list_int_append(List_int *lst, int64_t value) {
-    list_int_grow_if_needed(lst);
-    lst->data[lst->len++] = value;
-}
-
-int64_t list_int_pop(List_int *lst) {
-    if (lst->len == 0) {
-        char buf[128];
-        snprintf(buf, sizeof(buf), "Cannot pop from empty list");
-        pb_fail(buf);
-    }
-    return lst->data[--lst->len];
-}
-
-bool list_int_remove(List_int *lst, int64_t value) {
-    for (int64_t i = 0; i < lst->len; ++i) {
-        if (lst->data[i] == value) {
-            /* Move elements to the left */
-            for (int64_t j = i; j + 1 < lst->len; ++j) {
-                lst->data[j] = lst->data[j + 1];
-            }
-            lst->len--;
-            return true;
-        }
-    }
-    return false;
-}
-
-void list_int_free(List_int *lst) {
-    if (lst->data) {
-        free(lst->data);
-        lst->data = NULL;
-    }
-    lst->len = 0;
-    lst->capacity = 0;
-}
+PB_DEFINE_LIST_METHODS(int, int64_t, "int", PB_EQ)
+PB_DEFINE_LIST_METHODS(float, double, "float", PB_EQ)
+PB_DEFINE_LIST_METHODS(bool, bool, "bool", PB_EQ)
+PB_DEFINE_LIST_METHODS(str, const char *, "str", PB_STR_EQ)
 
 void list_int_print(const List_int *lst) {
     printf("[");
@@ -354,92 +357,6 @@ void list_int_print(const List_int *lst) {
         printf("%" PRId64, lst->data[i]);
     }
     printf("]\n");
-}
-
-
-void list_float_grow_if_needed(List_float *lst) {
-    if (lst->len >= lst->capacity) {
-        int64_t new_capacity = (lst->capacity == 0) ? INITIAL_LIST_CAPACITY : (lst->capacity * 2);
-        double *new_data;
-        if (lst->capacity == 0 && lst->data != NULL) {
-            new_data = (double *)malloc(new_capacity * sizeof(double));
-            if (!new_data) {
-                char buf[128];
-                snprintf(buf, sizeof(buf),
-                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
-                pb_fail(buf);
-            }
-            memcpy(new_data, lst->data, lst->len * sizeof(double));
-        } else {
-            new_data = (double *)realloc(lst->data, new_capacity * sizeof(double));
-            if (!new_data) {
-                char buf[128];
-                snprintf(buf, sizeof(buf),
-                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
-                pb_fail(buf);
-            }
-        }
-        lst->data = new_data;
-        lst->capacity = new_capacity;
-    }
-}
-
-void list_float_init(List_float *lst) {
-    lst->len = 0;
-    lst->capacity = 0;
-    lst->data = NULL;
-}
-
-void list_float_set(List_float *lst, int64_t index, double value) {
-    if (index < 0 || index >= lst->len) {
-        pb_index_error("float", "set", index, lst->len, lst);
-    } else {
-        lst->data[index] = value;
-    }
-}
-
-double list_float_get(List_float *lst, int64_t index) {
-    if (index < 0 || index >= lst->len) {
-        pb_index_error("float", "get", index, lst->len, lst);
-    }
-    return lst->data[index];
-}
-
-void list_float_append(List_float *lst, double value) {
-    list_float_grow_if_needed(lst);
-    lst->data[lst->len++] = value;
-}
-
-double list_float_pop(List_float *lst) {
-    if (lst->len == 0) {
-        char buf[128];
-        snprintf(buf, sizeof(buf), "Cannot pop from empty list");
-        pb_fail(buf);
-    }
-    return lst->data[--lst->len];
-}
-
-bool list_float_remove(List_float *lst, double value) {
-    for (int64_t i = 0; i < lst->len; ++i) {
-        if (lst->data[i] == value) {
-            /* Move elements to the left */
-            for (int64_t j = i; j + 1 < lst->len; ++j) {
-                lst->data[j] = lst->data[j + 1];
-            }
-            lst->len--;
-            return true;
-        }
-    }
-    return false;
-}
-
-void list_float_free(List_float *lst) {
-    if (lst->data) {
-        free(lst->data);
-        lst->data = NULL;
-    }
-    lst->len = 0;
-    lst->capacity = 0;
 }
 
 void list_float_print(const List_float *lst) {
@@ -456,92 +373,6 @@ void list_float_print(const List_float *lst) {
     printf("]\n");
 }
 
-
-void list_bool_grow_if_needed(List_bool *lst) {
-    if (lst->len >= lst->capacity) {
-        int64_t new_capacity = (lst->capacity == 0) ? INITIAL_LIST_CAPACITY : (lst->capacity * 2);
-        bool *new_data;
-        if (lst->capacity == 0 && lst->data != NULL) {
-            new_data = (bool *)malloc(new_capacity * sizeof(bool));
-            if (!new_data) {
-                char buf[128];
-                snprintf(buf, sizeof(buf),
-                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
-                pb_fail(buf);
-            }
-            memcpy(new_data, lst->data, lst->len * sizeof(bool));
-        } else {
-            new_data = (bool *)realloc(lst->data, new_capacity * sizeof(bool));
-            if (!new_data) {
-                char buf[128];
-                snprintf(buf, sizeof(buf),
-                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
-                pb_fail(buf);
-            }
-        }
-        lst->data = new_data;
-        lst->capacity = new_capacity;
-    }
-}
-
-void list_bool_init(List_bool *lst) {
-    lst->len = 0;
-    lst->capacity = 0;
-    lst->data = NULL;
-}
-
-void list_bool_set(List_bool *lst, int64_t index, bool value) {
-    if (index < 0 || index >= lst->len) {
-        pb_index_error("bool", "set", index, lst->len, lst);
-    } else {
-        lst->data[index] = value;
-    }
-}
-
-bool list_bool_get(List_bool *lst, int64_t index) {
-    if (index < 0 || index >= lst->len) {
-        pb_index_error("bool", "get", index, lst->len, lst);
-    }
-    return lst->data[index];
-}
-
-void list_bool_append(List_bool *lst, bool value) {
-    list_bool_grow_if_needed(lst);
-    lst->data[lst->len++] = value;
-}
-
-bool list_bool_pop(List_bool *lst) {
-    if (lst->len == 0) {
-        char buf[128];
-        snprintf(buf, sizeof(buf), "Cannot pop from empty list");
-        pb_fail(buf);
-    }
-    return lst->data[--lst->len];
-}
-
-bool list_bool_remove(List_bool *lst, bool value) {
-    for (int64_t i = 0; i < lst->len; ++i) {
-        if (lst->data[i] == value) {
-            /* Move elements to the left */
-            for (int64_t j = i; j + 1 < lst->len; ++j) {
-                lst->data[j] = lst->data[j + 1];
-            }
-            lst->len--;
-            return true;
-        }
-    }
-    return false;
-}
-
-void list_bool_free(List_bool *lst) {
-    if (lst->data) {
-        free(lst->data);
-        lst->data = NULL;
-    }
-    lst->len = 0;
-    lst->capacity = 0;
-}
-
 void list_bool_print(const List_bool *lst) {
     printf("[");
     for (int64_t i = 0; i < lst->len; ++i) {
@@ -549,92 +380,6 @@ void list_bool_print(const List_bool *lst) {
         printf(lst->data[i] ? "True" : "False");
     }
     printf("]\n");
-}
-
-
-void list_str_grow_if_needed(List_str *lst) {
-    if (lst->len >= lst->capacity) {
-        int64_t new_capacity = (lst->capacity == 0) ? INITIAL_LIST_CAPACITY : (lst->capacity * 2);
-        const char **new_data;
-        if (lst->capacity == 0 && lst->data != NULL) {
-            new_data = (const char **)malloc(new_capacity * sizeof(const char *));
-            if (!new_data) {
-                char buf[128];
-                snprintf(buf, sizeof(buf),
-                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
-                pb_fail(buf);
-            }
-            memcpy(new_data, lst->data, lst->len * sizeof(const char *));
-        } else {
-            new_data = (const char **)realloc(lst->data, new_capacity * sizeof(const char *));
-            if (!new_data) {
-                char buf[128];
-                snprintf(buf, sizeof(buf),
-                    "Failed to allocate memory while growing list[%s]: old capacity = %" PRId64, "int", lst->capacity);
-                pb_fail(buf);
-            }
-        }
-        lst->data = new_data;
-        lst->capacity = new_capacity;
-    }
-}
-
-void list_str_init(List_str *lst) {
-    lst->len = 0;
-    lst->capacity = 0;
-    lst->data = NULL;
-}
-
-void list_str_set(List_str *lst, int64_t index, const char *value) {
-    if (index < 0 || index >= lst->len) {
-        pb_index_error("str", "set", index, lst->len, lst);
-    } else {
-        lst->data[index] = value;  // assumes value is valid for the lifetime of lst
-    }
-}
-
-const char* list_str_get(List_str *lst, int64_t index) {
-    if (index < 0 || index >= lst->len) {
-        pb_index_error("str", "get", index, lst->len, lst);
-    }
-    return lst->data[index];
-}
-
-void list_str_append(List_str *lst, const char *value) {
-    list_str_grow_if_needed(lst);
-    lst->data[lst->len++] = value;
-}
-
-const char *list_str_pop(List_str *lst) {
-    if (lst->len == 0) {
-        char buf[128];
-        snprintf(buf, sizeof(buf), "Cannot pop from empty list");
-        pb_fail(buf);
-    }
-    return lst->data[--lst->len];
-}
-
-bool list_str_remove(List_str *lst, const char *value) {
-    for (int64_t i = 0; i < lst->len; ++i) {
-        if (strcmp(lst->data[i], value) == 0) {
-            /* Move elements to the left */
-            for (int64_t j = i; j + 1 < lst->len; ++j) {
-                lst->data[j] = lst->data[j + 1];
-            }
-            lst->len--;
-            return true;
-        }
-    }
-    return false;
-}
-
-void list_str_free(List_str *lst) {
-    if (lst->data) {
-        free(lst->data);
-        lst->data = NULL;
-    }
-    lst->len = 0;
-    lst->capacity = 0;
 }
 
 void list_str_print(const List_str *lst) {
