@@ -11,7 +11,7 @@ from lang_ast import (
     Expr, Identifier, Literal, StringLiteral, FStringLiteral, FStringText, FStringExpr,
     BinOp, UnaryOp, CallExpr, AttributeExpr, IndexExpr,
     ListExpr, SetExpr, DictExpr, EllipsisLiteral,
-    Parameter, FunctionDef, PassStmt,
+    Parameter, FunctionDef, PassStmt, EnumDef,
 )
 
 # ───────────────────────── Logging Setup ─────────────────────────
@@ -96,6 +96,8 @@ class CodeGen:
         # Lines that should execute before main to initialize globals
         self._global_init_lines: list[str] = []
 
+        self._enums: dict[str, list[tuple[str, int]]] = {}
+
         # Names of all classes in the current program
         self._class_names: set[str] = set()
 
@@ -135,6 +137,7 @@ class CodeGen:
         self._needed_dict_types.clear()
         self._needed_set_types.clear()
         self._global_init_lines.clear()
+        self._enums = {name: members for name, members in getattr(program, "enums", {}).items()}
 
         self._classes = [d for d in program.body if isinstance(d, ClassDef)]
         self._instance_fields = getattr(program, "inferred_instance_fields", {})
@@ -153,6 +156,7 @@ class CodeGen:
             self._direct_fields[cls.name] = direct
 
         self._emit_headers_and_runtime(False, include_self=True, include_runtime=False)
+        self._emit_enum_defs(program)
         self._emit_global_decls(program)
         self._emit_class_statics(program)
         self._emit_global_init_func()
@@ -182,6 +186,7 @@ class CodeGen:
         self._needed_dict_types.clear()
         self._needed_set_types.clear()
         self._structs_emitted.clear()
+        self._enums = {name: members for name, members in getattr(program, "enums", {}).items()}
 
         self._lines.append("#pragma once")
 
@@ -202,6 +207,7 @@ class CodeGen:
             self._direct_fields[cls.name] = direct
 
         self._emit_headers_and_runtime(True, include_self=False, include_runtime=True)
+        self._emit_enum_defs(program)
         self._emit_global_externs(program)
         self._emit_class_structs(program)
         self._emit_function_prototypes(program)
@@ -353,6 +359,8 @@ class CodeGen:
             name = self._sanitize(val)
             self._needed_dict_types.add((name, c_val))
             return f"Dict_str_{name}"
+        if pb_type in self._enums:
+            return pb_type
         # user class
         return f"struct {pb_type} *"
 
@@ -411,6 +419,18 @@ class CodeGen:
 
             self._direct_fields[name] = actually_emitted
             self._class_bases[name] = stmt.base
+
+    def _emit_enum_defs(self, program: Program) -> None:
+        for stmt in program.body:
+            if not isinstance(stmt, EnumDef):
+                continue
+            self._emit(f"typedef enum {{")
+            self._indent += 1
+            for name, val in stmt.members:
+                self._emit(f"{stmt.name}_{name} = {val},")
+            self._indent -= 1
+            self._emit(f"}} {stmt.name};")
+            self._emit()
 
 
     def _emit_global_decls(self, program: Program) -> None:

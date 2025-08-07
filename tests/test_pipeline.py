@@ -83,6 +83,21 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn("int64_t x = 0;", c_code)
         self.assertIn("x = 42;", c_code)
 
+    def test_enum_pipeline(self):
+        code = (
+            "from enum import Enum\n"
+            "class Status(Enum):\n"
+            "    OK = 0\n"
+            "    FAIL\n"
+            "\n"
+            "def main() -> int:\n"
+            "    s: Status = Status.FAIL\n"
+            "    return 0\n"
+        )
+        h, c = self.compile_pipeline(code, pb_path="main.pb")
+        self.assertIn("typedef enum", h)
+        self.assertIn("Status_FAIL = 1", h)
+
     def test_f_string_interpolation_from_source(self):
         code = (
             "def main() -> int:\n"

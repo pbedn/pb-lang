@@ -41,6 +41,7 @@ from lang_ast import (
     ExprStmt,
     ImportStmt,
     ImportFromStmt,
+    EnumDef,
 )
 
 
@@ -428,6 +429,16 @@ class TestTypeCheckerInternals(unittest.TestCase):
         )
         with self.assertRaises(TypeError):
             self.tc.check_class_def(cls)
+
+    def test_enum_def_and_usage(self):
+        enum = EnumDef(name="Color", members=[("RED", 1), ("GREEN", 2)])
+        prog = Program(body=[enum])
+        self.tc.check(prog)
+        self.assertIn("Color", self.tc.class_attrs)
+        self.assertEqual(self.tc.class_attrs["Color"]["RED"], "Color")
+        expr = AttributeExpr(Identifier("Color"), "GREEN")
+        typ = self.tc.check_expr(expr)
+        self.assertEqual(typ, "Color")
 
     def test_class_def_with_method(self):
         cls = ClassDef(

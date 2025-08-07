@@ -2,7 +2,7 @@ import unittest
 import tempfile
 import os
 
-from module_loader import resolve_module, load_module, ModuleNotFoundError
+from module_loader import resolve_module, load_module, ModuleNotFoundError, get_std_vendor_paths
 
 class TestModuleLoader(unittest.TestCase):
     def test_module_not_found(self):
@@ -75,6 +75,17 @@ class TestModuleLoader(unittest.TestCase):
             modules["bar"] = mod
             self.assertIn("bar", modules)
             self.assertIn("f", modules["bar"].exports)
+
+    def test_load_module_exports_enum(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            mod_path = os.path.join(tempdir, "color.pb")
+            with open(mod_path, "w") as f:
+                f.write("from enum import Enum\nclass Color(Enum):\n    RED = 1\n    GREEN = 2\n")
+            loaded = {}
+            search = get_std_vendor_paths() + [tempdir]
+            mod = load_module(["color"], search, loaded)
+            self.assertEqual(mod.exports["Color"], "enum")
+            self.assertEqual(mod.exports["RED"], "Color")
 
 
 if __name__ == "__main__":

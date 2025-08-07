@@ -45,6 +45,7 @@ from lang_ast import (
     SetExpr,
     DictExpr,
     EllipsisLiteral,
+    EnumDef,
 )
 
 class ParserTestCase(unittest.TestCase):
@@ -809,6 +810,19 @@ class TestParseStatements(ParserTestCase):
         self.assertEqual(len(stmt.methods), 1)
         self.assertEqual(stmt.methods[0].name, "move")
         self.assertEqual(stmt.methods[0].return_type, "None")
+
+    def test_parse_enum_def(self):
+        code = (
+            "class Color(Enum):\n"
+            "    RED = 1\n"
+            "    GREEN\n"
+            "    BLUE = 3\n"
+        )
+        parser = self.parse_tokens(code)
+        stmt = parser.parse_class_def()
+        self.assertIsInstance(stmt, EnumDef)
+        self.assertEqual(stmt.name, "Color")
+        self.assertEqual(stmt.members, [("RED", 1), ("GREEN", 2), ("BLUE", 3)])
 
     def test_parse_global_inside_function(self):
         code = (

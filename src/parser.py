@@ -43,6 +43,7 @@ from lang_ast import (
     ImportStmt,
     ImportFromStmt,
     ImportAlias,
+    EnumDef,
 )
 
 
@@ -980,6 +981,44 @@ class Parser:
 
         return type_str
 
+    def parse_enum_body(self, name: str):
+        self.expect(TokenType.COLON)
+        self.expect(TokenType.NEWLINE)
+        while self.match(TokenType.NEWLINE):
+            pass
+        self.expect(TokenType.INDENT)
+
+        members: list[tuple[str, int]] = []
+        value = -1
+        is_empty = False
+
+        while True:
+            if self.match(TokenType.DEDENT):
+                break
+            if self.check(TokenType.NEWLINE):
+                self.advance()
+                continue
+            if self.match(TokenType.PASS):
+                is_empty = True
+                self.expect(TokenType.NEWLINE)
+                continue
+
+            member = self.expect(TokenType.IDENTIFIER).value
+            if self.match(TokenType.ASSIGN):
+                expr = self.parse_expr()
+                if not isinstance(expr, Literal) or not expr.raw.isdigit():
+                    raise ParserError("Enum value must be an integer literal")
+                value = int(expr.raw)
+            else:
+                value += 1
+            members.append((member, value))
+            self.expect(TokenType.NEWLINE)
+
+        if not members and not is_empty:
+            raise ParserError(f"enum '{name}' has no members")
+
+        return EnumDef(name, members)
+
     def parse_class_def(self) -> ClassDef:
         """Parse a class definition with optional single inheritance
 
@@ -995,6 +1034,9 @@ class Parser:
         if self.match(TokenType.LPAREN):
             base = self.expect(TokenType.IDENTIFIER).value
             self.expect(TokenType.RPAREN)
+
+        if base == "Enum":
+            return self.parse_enum_body(name)
 
         self.expect(TokenType.COLON)
         self.expect(TokenType.NEWLINE)

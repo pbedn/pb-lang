@@ -120,6 +120,7 @@ from lang_ast import (
     ExprStmt,
     ImportStmt,
     ImportFromStmt,
+    EnumDef,
 )
 
 # ─── Type precedence for numeric promotions (higher wins) ───
@@ -231,6 +232,7 @@ class TypeChecker:
         self.class_attrs: Dict[str, Dict[str, str]] = {}
         self.instance_fields: Dict[str, Dict[str, str]] = {}
         self.class_bases: Dict[str, str] = {}  # child class → base class
+        self.enums: Dict[str, Dict[str, int]] = {}
 
         # class-scoped method registry
         # class_name → method_name → (param_types, return_type, num_required)
@@ -280,6 +282,7 @@ class TypeChecker:
             self.check_stmt(stmt)
 
         program.inferred_instance_fields = dict(self.instance_fields)
+        program.enums = {k: [(m, v) for m, v in mem.items()] for k, mem in self.enums.items()}
         program.import_aliases = {alias: mod.name for alias, mod in self.modules.items()}
         program.native_modules = {mod.name: mod.native_binding for mod in self.modules.values()}
         program.native_imports = {alias: mod.native_binding for alias, mod in self.modules.items()}
@@ -296,6 +299,8 @@ class TypeChecker:
             self.check_aug_assign_stmt(stmt)
         elif isinstance(stmt, ClassDef):
             self.check_class_def(stmt)
+        elif isinstance(stmt, EnumDef):
+            self.check_enum_def(stmt)
         elif isinstance(stmt, FunctionDef):
             self.check_function_def(stmt)
         elif isinstance(stmt, ReturnStmt):
@@ -1091,6 +1096,15 @@ class TypeChecker:
         self.current_return_type = old_ret
         self.current_function_name = None  # Clear context
         self.inside_method = False
+
+    def check_enum_def(self, enum: EnumDef):
+        if enum.name in self.enums:
+            raise TypeError(f"Duplicate enum '{enum.name}'")
+        self.enums[enum.name] = {}
+        self.class_attrs[enum.name] = {}
+        for member, value in enum.members:
+            self.enums[enum.name][member] = value
+            self.class_attrs[enum.name][member] = enum.name
 
     def check_assign_stmt(self, stmt: AssignStmt):
         """Type-check a regular assignment.

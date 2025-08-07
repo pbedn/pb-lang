@@ -24,6 +24,8 @@ class Program:
 
     #  class_name → field_name → pb_type
     inferred_instance_fields: dict[str, dict[str, str]] = field(default_factory=dict)
+    # enum_name → list of (member, value)
+    enums: dict[str, list[tuple[str, int]]] = field(default_factory=dict)
 
 # ---------------------------------------------------------------------------
 # Statements
@@ -50,8 +52,14 @@ class FunctionDef:
 class ClassDef:
     name: str
     base: Optional[str]             # single inheritance only
-    fields: List["VarDecl"]         # field decls (VarDecl) 
+    fields: List["VarDecl"]         # field decls (VarDecl)
     methods: List["FunctionDef"]    # methods (FunctionDef)
+
+
+@dataclass
+class EnumDef:
+    name: str
+    members: List[tuple[str, int]]
 
 
 @dataclass
@@ -290,6 +298,7 @@ class DictExpr:
 Stmt = Union[
     FunctionDef,
     ClassDef,
+    EnumDef,
     GlobalStmt,
     VarDecl,
     AssignStmt,
