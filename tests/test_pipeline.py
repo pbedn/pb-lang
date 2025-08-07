@@ -1106,6 +1106,21 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn('int64_t x = arr.len;', c_code)
         self.assertIn('pb_print_int(x);', c_code)
 
+    def test_enum_pipeline(self):
+        code = (
+            "from enum import Enum\n"
+            "class Scene(Enum):\n"
+            "    MENU = 1\n"
+            "    GAME = 2\n"
+            "\n"
+            "def main() -> int:\n"
+            "    print(Scene.MENU)\n"
+            "    return 0\n"
+        )
+        h, c = self.compile_pipeline(code)
+        self.assertIn("typedef enum", h)
+        self.assertIn('pb_print_str("Scene.MENU")', c)
+
     def test_native_module_function_call_no_prefix(self):
         code = (
             "from raylib import InitWindow\n"

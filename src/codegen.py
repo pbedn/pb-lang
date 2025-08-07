@@ -11,7 +11,7 @@ from lang_ast import (
     Expr, Identifier, Literal, StringLiteral, FStringLiteral, FStringText, FStringExpr,
     BinOp, UnaryOp, CallExpr, AttributeExpr, IndexExpr,
     ListExpr, SetExpr, DictExpr, EllipsisLiteral,
-    Parameter, FunctionDef, PassStmt,
+    Parameter, FunctionDef, PassStmt, EnumDef, EnumMember,
 )
 
 # ───────────────────────── Logging Setup ─────────────────────────
@@ -99,6 +99,9 @@ class CodeGen:
         # Names of all classes in the current program
         self._class_names: set[str] = set()
 
+        # Enum definitions by name
+        self._enums: dict[str, EnumDef] = {}
+
         # Track which imported functions originate from native modules
         self._native_functions: dict[str, bool] = {}
 
@@ -137,6 +140,8 @@ class CodeGen:
         self._global_init_lines.clear()
 
         self._classes = [d for d in program.body if isinstance(d, ClassDef)]
+        self._enums = {d.name: d for d in program.body if isinstance(d, EnumDef)}
+        self._enums = {d.name: d for d in program.body if isinstance(d, EnumDef)}
         self._instance_fields = getattr(program, "inferred_instance_fields", {})
         self._class_bases = {cls.name: cls.base for cls in self._classes}
         self._class_names = {cls.name for cls in self._classes}
@@ -203,6 +208,7 @@ class CodeGen:
 
         self._emit_headers_and_runtime(True, include_self=False, include_runtime=True)
         self._emit_global_externs(program)
+        self._emit_enum_defs(program)
         self._emit_class_structs(program)
         self._emit_function_prototypes(program)
 
@@ -353,8 +359,19 @@ class CodeGen:
             name = self._sanitize(val)
             self._needed_dict_types.add((name, c_val))
             return f"Dict_str_{name}"
+        if pb_type in self._enums:
+            return pb_type
         # user class
         return f"struct {pb_type} *"
+
+    def _emit_enum_defs(self, program: Program) -> None:
+        for stmt in program.body:
+            if isinstance(stmt, EnumDef):
+                members = ", ".join(
+                    f"{stmt.name}_{m.name} = {self._expr(m.value)}" for m in stmt.members
+                )
+                self._emit(f"typedef enum {{ {members} }} {stmt.name};")
+                self._emit()
 
     def _emit_class_structs(self, program: Program) -> None:
         """Emit structs (with single inheritance) for each ClassDef in the program."""
@@ -706,6 +723,10 @@ class CodeGen:
             arg_expr = self._expr(arg)
             print_arg = arg_expr
             t = self._get_expr_type(arg)
+
+            if isinstance(arg, AttributeExpr) and isinstance(arg.obj, Identifier) and arg.obj.name in self._enums:
+                lines.append(f'pb_print_str("{arg.obj.name}.{arg.attr}");')
+                continue
 
             # Always prefer explicit string forms for string literals and f-strings
             if isinstance(arg, (StringLiteral, FStringLiteral)):
@@ -1257,6 +1278,8 @@ class CodeGen:
         return f"{fn}({args})"
 
     def _generate_AttributeExpr(self, e: AttributeExpr) -> str:
+        if isinstance(e.obj, Identifier) and e.obj.name in self._enums:
+            return f"{e.obj.name}_{e.attr}"
         if isinstance(e.obj, Identifier) and e.obj.name in self._class_map:
             origin = self._find_class_attr_origin(e.obj.name, e.attr)
             if origin:
