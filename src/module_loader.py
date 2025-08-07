@@ -2,7 +2,7 @@ import os
 import json
 from lexer import Lexer
 from parser import Parser
-from lang_ast import ImportStmt, ImportFromStmt, FunctionDef, ClassDef, VarDecl
+from lang_ast import ImportStmt, ImportFromStmt, FunctionDef, ClassDef, VarDecl, EnumDef
 from type_checker import TypeChecker, ModuleSymbol
 
 
@@ -174,6 +174,10 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
                 functions[stmt.name] = checker.functions[stmt.name]
         elif isinstance(stmt, ClassDef):
             exports[stmt.name] = "class"
+        elif isinstance(stmt, EnumDef):
+            exports[stmt.name] = "enum"
+            for member, _ in stmt.members:
+                exports[member] = stmt.name
         elif isinstance(stmt, VarDecl):
             exports[stmt.name] = stmt.declared_type
 

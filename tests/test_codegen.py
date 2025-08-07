@@ -1859,6 +1859,17 @@ class TestCodeGen(unittest.TestCase):
             "return 0;",
         ])
 
+    def test_enum_codegen(self):
+        prog = Program(body=[
+            EnumDef(name="Color", members=[("RED",1),("GREEN",2)]),
+            VarDecl("c", "Color", None),
+            FunctionDef(name="main", params=[], body=[ReturnStmt(Literal("0"))], return_type="int", globals_declared=None)
+        ])
+        output = codegen_output(prog)
+        self.assertIn("typedef enum", output)
+        self.assertIn("Color_RED = 1", output)
+        self.assertIn("Color_GREEN = 2", output)
+
 
 if __name__ == "__main__":
     unittest.main()
