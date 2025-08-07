@@ -362,6 +362,68 @@ class TestCodeGen(unittest.TestCase):
             "return 0;"
         ])
 
+    def test_for_loop_over_list_dict_set_str(self):
+        program = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("nums", "list[int]", ListExpr(
+                        elements=[Literal("1"), Literal("2")],
+                        elem_type="int",
+                        inferred_type="list[int]"
+                    )),
+                    VarDecl("s", "str", StringLiteral(value="ab", inferred_type="str")),
+                    VarDecl("d", "dict[str, int]", DictExpr(
+                        keys=[StringLiteral("a")],
+                        values=[Literal("1")],
+                        elem_type="int",
+                        inferred_type="dict[str, int]"
+                    )),
+                    VarDecl("st", "set[int]", SetExpr(
+                        elements=[Literal("3")],
+                        elem_type="int",
+                        inferred_type="set[int]"
+                    )),
+                    ForStmt(
+                        var_name="n",
+                        iterable=Identifier("nums"),
+                        body=[ExprStmt(CallExpr(Identifier("print"), [Identifier("n")]))]
+                    ),
+                    ForStmt(
+                        var_name="ch",
+                        iterable=Identifier("s"),
+                        body=[ExprStmt(CallExpr(Identifier("print"), [Identifier("ch")]))]
+                    ),
+                    ForStmt(
+                        var_name="k",
+                        iterable=Identifier("d"),
+                        body=[ExprStmt(CallExpr(Identifier("print"), [Identifier("k")]))]
+                    ),
+                    ForStmt(
+                        var_name="x",
+                        iterable=Identifier("st"),
+                        body=[ExprStmt(CallExpr(Identifier("print"), [Identifier("x")]))]
+                    ),
+                    ReturnStmt(Literal("0"))
+                ],
+                globals_declared=None
+            )
+        ])
+        output = codegen_output(program)
+        assert_contains_all(self, output, [
+            "for (int64_t __i = 0; __i < nums.len; ++__i) {",
+            "int64_t n = nums.data[__i];",
+            "for (int64_t __i = 0; __i < strlen(s); ++__i) {",
+            "const char * ch = __tmp_char;",
+            "for (int64_t __i = 0; __i < d.len; ++__i) {",
+            "const char * k = d.data[__i].key;",
+            "for (int64_t __i = 0; __i < st.len; ++__i) {",
+            "int64_t x = st.data[__i];",
+            "return 0;"
+        ])
+
     def test_augmented_assignments(self):
         program = Program(body=[
             FunctionDef(

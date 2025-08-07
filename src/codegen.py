@@ -810,28 +810,55 @@ class CodeGen:
         return "\n".join(lines)
 
     def _generate_ForStmt(self, st: ForStmt) -> str:
-        # only support: for var in range(stop) or range(start, stop)
+        """Generate C code for a ``for`` loop."""
         loop = st.iterable
         if isinstance(loop, CallExpr) and getattr(loop.func, "name", "") == "range":
             args = loop.args
             if len(args) == 1:
                 start = "0"
-                stop  = self._expr(args[0])
+                stop = self._expr(args[0])
             else:
                 start = self._expr(args[0])
-                stop  = self._expr(args[1])
+                stop = self._expr(args[1])
 
-            # build the for-loop header
             lines = [f"for (int64_t {st.var_name} = {start}; {st.var_name} < {stop}; ++{st.var_name}) {{"]
-            # inject body statements
             for s in st.body:
                 lines.append(self.INDENT + self._stmt(s))
             lines.append("}")
             return "\n".join(lines)
+
+        iter_expr = self._expr(loop)
+        iter_type = self._get_expr_type(loop)
+
+        elem_c_type = self._c_type(st.elem_type or "int")
+
+        if iter_type and iter_type.startswith("list["):
+            len_expr = f"{iter_expr}.len"
+            value_expr = f"{iter_expr}.data[__i]"
+        elif iter_type and iter_type.startswith("set["):
+            len_expr = f"{iter_expr}.len"
+            value_expr = f"{iter_expr}.data[__i]"
+        elif iter_type and iter_type.startswith("dict["):
+            len_expr = f"{iter_expr}.len"
+            value_expr = f"{iter_expr}.data[__i].key"
+        elif iter_type == "str":
+            len_expr = f"strlen({iter_expr})"
+            value_expr = None
         else:
-            # fallback for other iterables
             return "/* unsupported for-loop */"
-        return f"for(int64_t {st.var_name}={start}; {st.var_name}<{stop}; ++{st.var_name}) {{ /* ... */ }}"
+
+        lines = [f"for (int64_t __i = 0; __i < {len_expr}; ++__i) {{"]
+        if iter_type == "str":
+            lines.append(self.INDENT + "char __tmp_char[2];")
+            lines.append(self.INDENT + f"__tmp_char[0] = {iter_expr}[__i];")
+            lines.append(self.INDENT + "__tmp_char[1] = '\0';")
+            lines.append(self.INDENT + f"{elem_c_type} {st.var_name} = __tmp_char;")
+        else:
+            lines.append(self.INDENT + f"{elem_c_type} {st.var_name} = {value_expr};")
+        for s in st.body:
+            lines.append(self.INDENT + self._stmt(s))
+        lines.append("}")
+        return "\n".join(lines)
     
     def _generate_BreakStmt(self, st: BreakStmt) -> str:
         return "break;"
