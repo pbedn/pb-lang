@@ -11,7 +11,7 @@ from lang_ast import (
     Expr, Identifier, Literal, StringLiteral, FStringLiteral, FStringText, FStringExpr,
     BinOp, UnaryOp, CallExpr, AttributeExpr, IndexExpr,
     ListExpr, SetExpr, DictExpr, EllipsisLiteral,
-    Parameter, FunctionDef, PassStmt,
+    Parameter, FunctionDef, PassStmt, EnumDef, EnumMember,
 )
 
 # ───────────────────────── Logging Setup ─────────────────────────
@@ -99,8 +99,15 @@ class CodeGen:
         # Names of all classes in the current program
         self._class_names: set[str] = set()
 
+        # Enum definitions by name
+        self._enums: dict[str, EnumDef] = {}
+
         # Track which imported functions originate from native modules
         self._native_functions: dict[str, bool] = {}
+        self._exception_aliases = {}
+        self._try_frames = []
+        self._loop_depth = 0
+        self._volatile_names = set()
 
     def _attr_full_name(self, expr: Expr) -> str | None:
         if isinstance(expr, Identifier):
@@ -122,6 +129,42 @@ class CodeGen:
             c = self._class_bases.get(c)
         return None
 
+    def _classes_with_builtins(self, program):
+        classes = [stmt for stmt in program.body if isinstance(stmt, ClassDef)]
+        declared = {cls.name for cls in classes}
+        needed = set()
+        def walk(value):
+            if isinstance(value, TryExceptStmt):
+                needed.update(block.exc_type for block in value.except_blocks if block.exc_type)
+            if isinstance(value, ClassDef) and value.base:
+                needed.add(value.base)
+            if isinstance(value, CallExpr) and isinstance(value.func, Identifier):
+                if value.func.name in {"BaseException", "Exception", "RuntimeError", "ValueError", "IndexError", "KeyError", "TypeError"}:
+                    needed.add(value.func.name)
+            if hasattr(value, "__dict__"):
+                for field in vars(value).values():
+                    if isinstance(field, list):
+                        for item in field: walk(item)
+                    elif hasattr(field, "__dict__"): walk(field)
+        walk(program)
+        parents = {"BaseException": None, "Exception": "BaseException", "RuntimeError": "Exception", "ValueError": "Exception", "IndexError": "Exception", "KeyError": "Exception", "TypeError": "Exception"}
+        synthesized = []
+        def add(name):
+            if name in declared or name not in parents:
+                return
+            base = parents[name]
+            if base: add(base)
+            fields, methods = [], []
+            if name == "BaseException":
+                fields = [VarDecl("msg", "str")]
+                methods = [FunctionDef("__init__", [Parameter("self", name), Parameter("msg", "str")], [AssignStmt(AttributeExpr(Identifier("self", inferred_type=name), "msg"), Identifier("msg", inferred_type="str"))], "None")]
+            builtin = ClassDef(name, base, fields, methods)
+            builtin.builtin_exception = True
+            synthesized.append(builtin)
+            declared.add(name)
+        for name in sorted(needed): add(name)
+        return synthesized + classes
+
     def generate(self, program: Program) -> str:
         """Generate the complete C source for ``program``."""
         self._program = program
@@ -136,9 +179,11 @@ class CodeGen:
         self._needed_set_types.clear()
         self._global_init_lines.clear()
 
-        self._classes = [d for d in program.body if isinstance(d, ClassDef)]
+        self._classes = self._classes_with_builtins(program)
+        self._enums = getattr(program, "enum_c_names", {}).copy()
         self._instance_fields = getattr(program, "inferred_instance_fields", {})
-        self._class_bases = {cls.name: cls.base for cls in self._classes}
+        self._class_bases = getattr(program, "class_bases", {}).copy()
+        self._class_bases.update({cls.name: cls.base for cls in self._classes})
         self._class_names = {cls.name for cls in self._classes}
         self._class_map = {cls.name: cls for cls in self._classes}
         self._direct_fields = {}
@@ -182,12 +227,14 @@ class CodeGen:
         self._needed_dict_types.clear()
         self._needed_set_types.clear()
         self._structs_emitted.clear()
+        self._enums = getattr(program, "enum_c_names", {}).copy()
 
         self._lines.append("#pragma once")
 
-        self._classes = [d for d in program.body if isinstance(d, ClassDef)]
+        self._classes = self._classes_with_builtins(program)
         self._instance_fields = getattr(program, "inferred_instance_fields", {})
-        self._class_bases = {cls.name: cls.base for cls in self._classes}
+        self._class_bases = getattr(program, "class_bases", {}).copy()
+        self._class_bases.update({cls.name: cls.base for cls in self._classes})
         self._class_names = {cls.name for cls in self._classes}
         self._class_map = {cls.name: cls for cls in self._classes}
         self._direct_fields = {}
@@ -202,6 +249,7 @@ class CodeGen:
             self._direct_fields[cls.name] = direct
 
         self._emit_headers_and_runtime(True, include_self=False, include_runtime=True)
+        self._emit_enum_defs(program)
         self._emit_global_externs(program)
         self._emit_class_structs(program)
         self._emit_function_prototypes(program)
@@ -353,8 +401,27 @@ class CodeGen:
             name = self._sanitize(val)
             self._needed_dict_types.add((name, c_val))
             return f"Dict_str_{name}"
+        if pb_type in self._enums:
+            return self._enums[pb_type]
         # user class
         return f"struct {pb_type} *"
+
+    def _emit_enum_defs(self, program: Program) -> None:
+        for stmt in program.body:
+            if not isinstance(stmt, EnumDef):
+                continue
+            name = getattr(stmt, "c_name", stmt.name)
+            values = getattr(program, "enums", {}).get(stmt.name, {})
+            members = ", ".join(f"{name}_{member.name} = {values.get(member.name, self._expr(member.value))}" for member in stmt.members)
+            if not members:
+                members = f"{name}__empty = 0"
+            self._emit(f"typedef enum {{ {members} }} {name};")
+            self._emit(f"static inline const char *{name}_name({name} value) {{")
+            for member in stmt.members:
+                self._emit(f'    if (value == {name}_{member.name}) return "{stmt.name}.{member.name}";')
+            self._emit('    return "<invalid enum>";')
+            self._emit("}")
+            self._emit()
 
     def _emit_class_structs(self, program: Program) -> None:
         """Emit structs (with single inheritance) for each ClassDef in the program."""
@@ -363,14 +430,16 @@ class CodeGen:
         # inherited = fields from base classes (handled via _instance_fields)
 
 
-        for stmt in program.body:
-            if not isinstance(stmt, ClassDef):
-                continue
+        for stmt in self._classes:
             name = stmt.name
             if name in self._structs_emitted:
                 continue
             self._structs_emitted.add(name)
 
+            builtin = getattr(stmt, "builtin_exception", False)
+            if builtin:
+                self._emit(f"#ifndef PB_BUILTIN_{name}_DEFINED")
+                self._emit(f"#define PB_BUILTIN_{name}_DEFINED")
             # Begin struct
             # logger.info(f"[struct] Emitting struct for class {stmt.name}")
             self._emit(f"typedef struct {name} {{")
@@ -407,6 +476,9 @@ class CodeGen:
 
             self._indent -= 1
             self._emit(f"}} {name};")
+            if builtin:
+                self._emit(f"static inline void {name}____init__(struct {name} *self, const char *msg) {{ *(const char **)self = msg; }}")
+                self._emit("#endif")
             self._emit()
 
             self._direct_fields[name] = actually_emitted
@@ -446,7 +518,9 @@ class CodeGen:
                 self._emit(self._func_proto(stmt) + ";")
 
         # — methods of every class —
-        for cls in (s for s in program.body if isinstance(s, ClassDef)):
+        for cls in self._classes:
+            if getattr(cls, "builtin_exception", False):
+                continue
             own = {m.name for m in cls.methods}
 
             for m in cls.methods:
@@ -477,11 +551,32 @@ class CodeGen:
         self._emit()
 
 
+    def _exception_modified_names(self, fn):
+        """C requires modified automatic variables to survive longjmp via volatile."""
+        modified = set()
+        def walk(node, protected=False):
+            if isinstance(node, TryExceptStmt):
+                protected = True
+            if protected and isinstance(node, (AssignStmt, AugAssignStmt)) and isinstance(node.target, Identifier):
+                modified.add(node.target.name)
+            if hasattr(node, "__dict__"):
+                for field in vars(node).values():
+                    if isinstance(field, list):
+                        for child in field:
+                            walk(child, protected)
+                    elif hasattr(field, "__dict__"):
+                        walk(field, protected)
+        walk(fn)
+        return modified
+
     def _func_proto(self, fn: FunctionDef) -> str:
         ret = self._c_type(fn.return_type)
+        protected = self._exception_modified_names(fn)
         params = []
         for p in fn.params:
             pty = self._c_type(p.type)
+            if p.name in protected:
+                pty += " volatile"
             params.append(f"{pty} {p.name}")
         if not params:
             params = ["void"]
@@ -496,9 +591,12 @@ class CodeGen:
     def _emit_function(self, fn: FunctionDef) -> None:
         """Emit a standard (non-main) function definition."""
         mangled_name = self._mangle_function_name(fn.name)
+        self._volatile_names = self._exception_modified_names(fn)
 
         self._emit(self._func_proto(fn))
 
+        self._try_frames = []
+        self._loop_depth = 0
         # keep metadata for print() type-picking
         self._function_returns[mangled_name] = fn.return_type or "None"
         
@@ -522,6 +620,9 @@ class CodeGen:
         self._emit("char __fbuf[256];")
         self._emit("(void)__fbuf;")
         # declare parameters are already in C signature
+        for cls in self._classes:
+            if cls.base:
+                self._emit(f'pb_register_exception("{cls.name}", "{cls.base}");')
         for stmt in fn.body:
             self._emit(self._stmt(stmt))
         # ensure void return
@@ -533,11 +634,17 @@ class CodeGen:
 
     def _emit_main(self, fn: FunctionDef) -> None:
         """Map PB `main()` → `int main(void)`."""
+        self._try_frames = []
+        self._loop_depth = 0
+        self._volatile_names = self._exception_modified_names(fn)
         self._emit("int main(void)")
         self._emit("{")
         self._indent += 1
         self._emit("char __fbuf[256];")
         self._emit("(void)__fbuf;")
+        for cls in self._classes:
+            if cls.base:
+                self._emit(f'pb_register_exception("{cls.name}", "{cls.base}");')
         for stmt in fn.body:
             self._emit(self._stmt(stmt))
         self._indent -= 1
@@ -639,6 +746,17 @@ class CodeGen:
                     self._emit()
 
     def _stmt(self, st: Any) -> str:
+        # Expression temporaries belong to this statement's C scope, including
+        # statements nested in branches and exception handlers.
+        previous_lines, previous_indent = self._lines, self._indent
+        self._lines, self._indent = [], 0
+        try:
+            statement = self._dispatch_stmt(st)
+            return "\n".join(self._lines + [statement])
+        finally:
+            self._lines, self._indent = previous_lines, previous_indent
+
+    def _dispatch_stmt(self, st: Any) -> str:
         """Translate one AST statement → C, returning a full C statement/block."""
         # Dispatch to specific generator methods based on node type
         if isinstance(st, ExprStmt): return self._generate_ExprStmt(st.expr)
@@ -673,6 +791,25 @@ class CodeGen:
         return getattr(expr, "inferred_type", None)
 
     def _generate_print_call(self, ce: CallExpr) -> str:
+        if len(ce.args) != 1:
+            arguments = []
+            for arg in ce.args:
+                typ = self._get_expr_type(arg)
+                value = self._expr(arg)
+                if isinstance(arg, IndexExpr):
+                    typ = arg.elem_type
+                if isinstance(arg, Identifier) and arg.name in self._exception_aliases:
+                    typ, value = "str", self._exception_aliases[arg.name]
+                if typ == "str":
+                    value = f"pb_string_copy({value})"
+                self._tmp_counter += 1
+                name = f"__print_arg_{self._tmp_counter}"
+                self._emit(f"{self._c_type(typ)} {name} = {value};")
+                arguments.append(Identifier(name, inferred_type=typ))
+            lines = ["pb_print_begin();"]
+            for arg in arguments:
+                lines.append(self._generate_print_call(CallExpr(Identifier("print"), [arg])))
+            return "\n".join(lines + ["pb_print_end();"])
 
         def _print_function_for_type(t: str) -> str:
             return {
@@ -687,6 +824,10 @@ class CodeGen:
                 "set[float]": "set_float_print",
                 "set[bool]": "set_bool_print",
                 "set[str]": "set_str_print",
+                "dict[str, int]": "dict_str_int_print",
+                "dict[str, float]": "dict_str_float_print",
+                "dict[str, bool]": "dict_str_bool_print",
+                "dict[str, str]": "dict_str_str_print",
             }.get(t, "pb_print_int")  # default to int
 
         def _extract_dict_value_type(type_str: str) -> str:
@@ -707,6 +848,14 @@ class CodeGen:
             print_arg = arg_expr
             t = self._get_expr_type(arg)
 
+            if isinstance(arg, Identifier) and arg.name in self._exception_aliases:
+                lines.append(f"pb_print_str({self._exception_aliases[arg.name]});")
+                continue
+
+            if t in self._enums:
+                lines.append(f"pb_print_str({self._enums[t]}_name({arg_expr}));")
+                continue
+
             # Always prefer explicit string forms for string literals and f-strings
             if isinstance(arg, (StringLiteral, FStringLiteral)):
                 lines.append(f"pb_print_str({arg_expr});")
@@ -719,7 +868,7 @@ class CodeGen:
             # - IndexExpr       arr[0], d["x"]
             # - CallExpr        get_name()
             if isinstance(arg, Identifier):
-                if t and (t.startswith("list[") or t.startswith("set[")):
+                if t and t.startswith(("list[", "set[", "dict[")):
                     print_arg = f"&{print_arg}"
 
             if isinstance(arg, IndexExpr):
@@ -740,6 +889,8 @@ class CodeGen:
             print_func = _print_function_for_type(t)
             lines.append(f"{print_func}({print_arg});")
 
+        if len(ce.args) != 1:
+            lines = ["pb_print_begin();"] + lines + ["pb_print_end();"]
         return "\n".join(lines)
 
     def _generate_AssignStmt(self, st: AssignStmt) -> str:
@@ -753,8 +904,11 @@ class CodeGen:
         # x = [1]
         if isinstance(st.target, IndexExpr):
             list_type = st.inferred_type
-            base_name = st.target.base.name
+            base_name = self._expr(st.target.base)
             index_val = self._expr(st.target.index)
+
+            if list_type.startswith("dict[str,"):
+                return f"pb_dict_set_str_{list_type[9:-1].strip()}({base_name}, {index_val}, {val});"
 
             if list_type == "list[int]":
                 return f"list_int_set(&{base_name}, {index_val}, {val});"
@@ -765,11 +919,15 @@ class CodeGen:
             if list_type == "list[bool]":
                 return f"list_bool_set(&{base_name}, {index_val}, {val});"
 
+        if isinstance(st.target, AttributeExpr):
+            val = self._owned_value(val, st.inferred_type)
         return f"{tgt} = {val};"
 
     def _generate_AugAssignStmt(self, st: AugAssignStmt) -> str:
         tgt = self._expr(st.target)
         val = self._expr(st.value)
+        if st.op == "+=" and self._get_expr_type(st.target) == "str":
+            return f"{tgt} = pb_str_concat({tgt}, {val});"
         op = st.op
         # drop extra '=' if present ('+==' → '+=')
         if op.endswith("="): op = op[:-1]
@@ -777,9 +935,27 @@ class CodeGen:
         if op == "//": op = "/"
         return f"{tgt} {op}= {val};"
 
+    def _owned_value(self, value, typ):
+        if typ == "str":
+            return f"pb_string_copy({value})"
+        if typ and typ.startswith(("list[", "set[")):
+            kind, elem = typ.split("[", 1)
+            return f"{kind}_{elem[:-1]}_copy({value})"
+        if typ and typ.startswith("dict[str,"):
+            return f"dict_str_{typ[9:-1].strip()}_copy({value})"
+        return value
+
     def _generate_ReturnStmt(self, st: ReturnStmt) -> str:
-        ret = "" if st.value is None else " " + self._expr(st.value)
-        return f"return{ret};"
+        if st.value is None:
+            return "\n".join(self._unwind() + ["return;"])
+        value = self._expr(st.value)
+        typ = st.inferred_type or self._get_expr_type(st.value)
+        value = self._owned_value(value, typ)
+        if self._try_frames:
+            self._tmp_counter += 1
+            name = f"__return_{self._tmp_counter}"
+            return "\n".join([f"{self._c_type(typ)} {name} = {value};"] + self._unwind() + [f"return {name};"])
+        return f"return {value};"
 
     def _generate_PassStmt(self, st: PassStmt) -> str:
         return ";  // pass"
@@ -801,43 +977,49 @@ class CodeGen:
         lines = [f"while ({cond}) {{"]
 
         # 2) translate every statement inside the while-body
+        self._loop_depth += 1
         for sub in st.body:
             # prepend exactly one extra indent level so nested code lines up
             lines.append(self.INDENT + self._stmt(sub))
 
+        self._loop_depth -= 1
         # 3) close the block
         lines.append("}")
         return "\n".join(lines)
 
     def _generate_ForStmt(self, st: ForStmt) -> str:
-        # only support: for var in range(stop) or range(start, stop)
         loop = st.iterable
+        self._tmp_counter += 1
+        suffix = self._tmp_counter
         if isinstance(loop, CallExpr) and getattr(loop.func, "name", "") == "range":
             args = loop.args
-            if len(args) == 1:
-                start = "0"
-                stop  = self._expr(args[0])
-            else:
-                start = self._expr(args[0])
-                stop  = self._expr(args[1])
-
-            # build the for-loop header
-            lines = [f"for (int64_t {st.var_name} = {start}; {st.var_name} < {stop}; ++{st.var_name}) {{"]
-            # inject body statements
-            for s in st.body:
-                lines.append(self.INDENT + self._stmt(s))
-            lines.append("}")
-            return "\n".join(lines)
+            start = "0" if len(args) == 1 else self._expr(args[0])
+            stop = self._expr(args[0] if len(args) == 1 else args[1])
+            end = f"__range_end_{suffix}"
+            lines = ["{", f"int64_t {end} = {stop};", f"for (int64_t {st.var_name} = {start}; {st.var_name} < {end}; ++{st.var_name}) {{"]
         else:
-            # fallback for other iterables
-            return "/* unsupported for-loop */"
-        return f"for(int64_t {st.var_name}={start}; {st.var_name}<{stop}; ++{st.var_name}) {{ /* ... */ }}"
-    
+            value = self._expr(loop)
+            typ = self._get_expr_type(loop)
+            if not typ or not (typ == "str" or typ.startswith(("list[", "set[", "dict["))):
+                raise RuntimeError(f"Unsupported for-loop iterable: {typ}")
+            tmp, idx = f"__iter_{suffix}", f"__index_{suffix}"
+            length = f"pb_string_length({tmp})" if typ == "str" else f"{tmp}.len"
+            item = f"pb_string_char({tmp}, {idx})" if typ == "str" else f"{tmp}.data[{idx}]"
+            if typ.startswith("dict["):
+                item += ".key"
+            lines = ["{", f"{self._c_type(typ)} {tmp} = {value};", f"for (int64_t {idx} = 0; {idx} < {length}; ++{idx}) {{", self.INDENT + f"{self._c_type(st.elem_type)} {st.var_name} = {item};"]
+        self._loop_depth += 1
+        for stmt in st.body:
+            lines.append(self.INDENT + self._stmt(stmt))
+        self._loop_depth -= 1
+        lines.extend(["}", "}"])
+        return "\n".join(lines)
+
     def _generate_BreakStmt(self, st: BreakStmt) -> str:
-        return "break;"
+        return "\n".join(self._unwind(self._loop_depth) + ["break;"])
 
     def _generate_ContinueStmt(self, st: ContinueStmt) -> str:
-        return "continue;"
+        return "\n".join(self._unwind(self._loop_depth) + ["continue;"])
 
     def _generate_AssertStmt(self, st: AssertStmt) -> str:
         cond = self._expr(st.condition)
@@ -872,57 +1054,75 @@ class CodeGen:
         names = ", ".join(st.names)
         return f"/* global {names} */"
 
+    def _unwind(self, minimum_loop=None):
+        lines = []
+        frames = self._try_frames[:]
+        for index in range(len(frames) - 1, -1, -1):
+            frame = frames[index]
+            if minimum_loop is not None and frame["loop"] < minimum_loop:
+                continue
+            if frame.get("pop"):
+                lines.append("pb_pop_try();")
+            if frame.get("restore"):
+                lines.append(f"pb_current_exc = {frame['restore']};")
+            self._try_frames = frames[:index]
+            for stmt in frame.get("finally", []):
+                lines.append(self._stmt(stmt))
+        self._try_frames = frames
+        return lines
+
     def _generate_TryExceptStmt(self, st: TryExceptStmt) -> str:
         self._tmp_counter += 1
-        ctx = f"__exc_ctx_{self._tmp_counter}"
-        flag = f"__exc_flag_{self._tmp_counter}"
-        handled = f"__exc_handled_{self._tmp_counter}"
-
-        lines = [
-            f"PbTryContext {ctx};",
-            f"pb_push_try(&{ctx});",
-            f"int {flag} = setjmp({ctx}.env);",
-            f"bool {handled} = false;",
-            f"if ({flag} == 0) {{",
-        ]
-        for s in st.try_body:
-            lines.append(self.INDENT + self._stmt(s))
-        lines.append(f"pb_pop_try();")
-        lines.append("} else {")
-
-        first = True
-        for block in st.except_blocks:
-            cond = "1"
-            if block.exc_type:
-                cond = f'strcmp(pb_current_exc.type, \"{block.exc_type}\") == 0'
-            prefix = "if" if first else "else if"
-            lines.append(self.INDENT + f"{prefix} ({cond}) {{")
-            if block.alias:
-                cty = block.exc_type or "Exception"
-                lines.append(self.INDENT*2 + f"struct {cty} * {block.alias} = (struct {cty} *)pb_current_exc.value;")
-            for s in block.body:
-                lines.append(self.INDENT*2 + self._stmt(s))
-            lines.append(self.INDENT*2 + "pb_clear_exc();")
-            lines.append(self.INDENT*2 + f"{handled} = true;")
-            lines.append(self.INDENT + "}")
-            first = False
-        if st.except_blocks:
-            lines.append(self.INDENT + "else {")
-            lines.append(self.INDENT*2 + "pb_reraise();")
-            lines.append(self.INDENT + "}")
-        else:
-            lines.append(self.INDENT + "pb_reraise();")
-        lines.append("}")
-
+        n = self._tmp_counter
+        ctx, flag, saved = f"__exc_ctx_{n}", f"__exc_flag_{n}", f"__exc_saved_{n}"
+        lines = ["{", f"PbException {saved} = pb_current_exc;"]
+        guard = f"__finally_ctx_{n}"
+        pending = f"__finally_flag_{n}"
         if st.finally_body:
-            for s in st.finally_body:
-                lines.append(self._stmt(s))
-
-        lines.append(f"if ({flag} && !{handled}) pb_reraise();")
+            lines += [f"PbTryContext {guard};", f"pb_push_try(&{guard});", f"int {pending} = pb_setjmp({guard}.env);", f"if ({pending} == 0) {{"]
+            self._try_frames.append({"pop": True, "finally": st.finally_body, "loop": self._loop_depth})
+        lines += [f"PbTryContext {ctx};", f"pb_push_try(&{ctx});", f"int {flag} = pb_setjmp({ctx}.env);", f"if ({flag} == 0) {{"]
+        self._try_frames.append({"pop": True, "loop": self._loop_depth})
+        for stmt in st.try_body:
+            lines.append(self.INDENT + self._stmt(stmt))
+        self._try_frames.pop()
+        lines += ["pb_pop_try();", "} else {"]
+        for index, block in enumerate(st.except_blocks):
+            condition = f'pb_exception_matches("{block.exc_type}")' if block.exc_type else "true"
+            prefix = "if" if index == 0 else "else if"
+            lines.append(f"{prefix} ({condition}) {{")
+            previous = self._exception_aliases.copy()
+            if block.alias:
+                typ = block.exc_type or "Exception"
+                lines.append(f"struct {typ} *{block.alias} = (struct {typ} *)pb_current_exc.value;")
+                lines.append(f"(void){block.alias};")
+                self._exception_aliases[block.alias] = "pb_exception_message()"
+            self._try_frames.append({"restore": saved, "loop": self._loop_depth})
+            for stmt in block.body:
+                lines.append(self.INDENT + self._stmt(stmt))
+            self._try_frames.pop()
+            self._exception_aliases = previous
+            lines += [f"pb_current_exc = {saved};", "}"]
+        if st.except_blocks:
+            lines.append("else { pb_reraise(); }")
+        else:
+            lines.append("pb_reraise();")
+        lines.append("}")
+        if st.finally_body:
+            self._try_frames.pop()
+            lines += ["pb_pop_try();", "}"]
+            self._try_frames.append({"restore": saved, "loop": self._loop_depth})
+            for stmt in st.finally_body:
+                lines.append(self._stmt(stmt))
+            self._try_frames.pop()
+            lines.append(f"if ({pending}) pb_reraise();")
+        lines.append("}")
         return "\n".join(lines)
 
     def _generate_VarDecl(self, st: VarDecl) -> str:
         c_ty = self._c_type(st.declared_type)
+        if st.name in self._volatile_names:
+            c_ty += " volatile"
         if st.value is None:
             return f"{c_ty} {st.name};"
     
@@ -1029,6 +1229,8 @@ class CodeGen:
             return f"({left} == {right})"
         if op == "is not":
             return f"({left} != {right})"
+        if op == "+" and self._get_expr_type(e.left) == self._get_expr_type(e.right) == "str":
+            return f"pb_str_concat({left}, {right})"
         # default
         return f"({left} {op} {right})"
 
@@ -1137,12 +1339,12 @@ class CodeGen:
                     actual_args.append(defaults[i])
 
                 args = ", ".join(actual_args)
-                self._emit(f"struct {class_name} {var};")
+                self._emit(f"struct {class_name} *{var} = pb_alloc(sizeof(*{var}));")
                 if args:
-                    self._emit(f"{init_func}(&{var}, {args});")
+                    self._emit(f"{init_func}({var}, {args});")
                 else:
-                    self._emit(f"{init_func}(&{var});")
-                return f"&{var}"
+                    self._emit(f"{init_func}({var});")
+                return var
 
             # Normal function call — also handle defaults
             fn_name = e.func.name
@@ -1183,7 +1385,7 @@ class CodeGen:
                 arg = self._expr(e.args[0])
                 arg_type = e.args[0].inferred_type
                 if arg_type == "str":
-                    return f"(int64_t)strlen({arg})"
+                    return f"pb_string_length({arg})"
                 if arg_type.startswith("list[") or arg_type.startswith("set[") or arg_type.startswith("dict["):
                     return f"{arg}.len"
                 raise RuntimeError(f"len() not supported for {arg_type}")
@@ -1212,11 +1414,13 @@ class CodeGen:
                     raise RuntimeError(f"`{fn_name}` conversion to `{e.args[0].inferred_type}` not supported yet!")
             if fn_name == "str":
                 if e.args[0].inferred_type == "int":
-                    return f"pb_format_int({self._expr(e.args[0])})"
+                    return f"pb_string_copy(pb_format_int({self._expr(e.args[0])}))"
                 elif e.args[0].inferred_type == "float":
-                    return f"pb_format_double({self._expr(e.args[0])})"
+                    return f"pb_string_copy(pb_format_double({self._expr(e.args[0])}))"
                 elif e.args[0].inferred_type == "str":
                     return f"{self._expr(e.args[0])}"
+                elif e.args[0].inferred_type == "bool":
+                    return f'({self._expr(e.args[0])} ? "True" : "False")'
                 else:
                     raise RuntimeError(f"`{fn_name}` conversion to `{e.args[0].inferred_type}` not supported yet!")
             if fn_name == "hex":
@@ -1257,6 +1461,10 @@ class CodeGen:
         return f"{fn}({args})"
 
     def _generate_AttributeExpr(self, e: AttributeExpr) -> str:
+        if isinstance(e.obj, Identifier) and e.obj.name in self._exception_aliases and e.attr == "msg":
+            return self._exception_aliases[e.obj.name]
+        if getattr(e, "enum_c_name", None):
+            return e.enum_c_name
         if isinstance(e.obj, Identifier) and e.obj.name in self._class_map:
             origin = self._find_class_attr_origin(e.obj.name, e.attr)
             if origin:
@@ -1311,6 +1519,8 @@ class CodeGen:
                 return f"{func}(&{base}, {idx})"
             return f"{base}.data[{idx}]"
 
+        if t and t.startswith("dict[str,"):
+            return f"pb_dict_get_str_{t[9:-1].strip()}({base}, {idx})"
         return f"{base}.data[{idx}]"
     
     def _generate_ListExpr(self, e: ListExpr) -> str:

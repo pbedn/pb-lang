@@ -1,6 +1,27 @@
 #pragma once
 #include "pb_runtime.h"
 extern int64_t counter;
+#ifndef PB_BUILTIN_BaseException_DEFINED
+#define PB_BUILTIN_BaseException_DEFINED
+typedef struct BaseException {
+    const char * msg;
+} BaseException;
+static inline void BaseException____init__(struct BaseException *self, const char *msg) { *(const char **)self = msg; }
+#endif
+#ifndef PB_BUILTIN_Exception_DEFINED
+#define PB_BUILTIN_Exception_DEFINED
+typedef struct Exception {
+    BaseException base;
+} Exception;
+static inline void Exception____init__(struct Exception *self, const char *msg) { *(const char **)self = msg; }
+#endif
+#ifndef PB_BUILTIN_RuntimeError_DEFINED
+#define PB_BUILTIN_RuntimeError_DEFINED
+typedef struct RuntimeError {
+    Exception base;
+} RuntimeError;
+static inline void RuntimeError____init__(struct RuntimeError *self, const char *msg) { *(const char **)self = msg; }
+#endif
 typedef struct Player {
     int64_t hp;
     const char * species;

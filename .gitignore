@@ -9,3 +9,6 @@ build/
 *.zip
 *.txt
 playground/
+
+.branch-backups/
+.pytest_cache/

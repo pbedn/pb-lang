@@ -213,7 +213,6 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn("while (true) {", c)
         self.assertIn(";  // pass", c)
 
-    @unittest.skip("Not supported yet")
     def test_for_stmt_from_source(self):
         code = (
             "def main() -> int:\n"
@@ -223,8 +222,8 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    return 0\n"
         )
         h, c = self.compile_pipeline(code)
-        self.assertIn("for (int __i_x = 0;", c)
-        self.assertIn("x = arr.data[__i_x];", c)
+        self.assertRegex(c, r"for \(int64_t __index_\d+ = 0;")
+        self.assertRegex(c, r"int64_t x = __iter_\d+\.data\[__index_\d+\];")
 
     # function ------------------------------------------------------
 
@@ -341,16 +340,15 @@ class TestCodeGenFromSource(unittest.TestCase):
         self.assertIn("list_int_set(&nums, 0, 123);", c)
         self.assertIn("int64_t first = list_int_get(&nums, 0);", c)
 
-    @unittest.skip("Not supported yet")
     def test_list_mixed_types_error(self):
         code = (
             "def main() -> int:\n"
-            "    stuff = [1, True, \"oops\"]\n"
+            "    stuff: list[int] = [1, True, \"oops\"]\n"
             "    return 0\n"
         )
-        with self.assertRaises(Exception) as ctx:
+        with self.assertRaises(TypeError) as ctx:
             self.compile_pipeline(code)
-        self.assertIn("All elements of a list must have the same type", str(ctx.exception))
+        self.assertIn("List elements must be the same type", str(ctx.exception))
 
     # dict ------------------------------------------------------
 
@@ -459,8 +457,8 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    return 0\n"
         )
         h, c = self.compile_pipeline(code)
-        self.assertIn("struct Player __tmp_", c)
-        self.assertIn("Player____init__(&__tmp_", c)
+        self.assertIn("struct Player *__tmp_", c)
+        self.assertIn("Player____init__(__tmp_", c)
         self.assertIn("pb_print_int(Player__get_hp(p));", c)
 
     def test_class_attrs_and_dynamic_instance_attr_with_static_and_dynamic_access(self):
@@ -484,8 +482,8 @@ class TestCodeGenFromSource(unittest.TestCase):
         h, c = self.compile_pipeline(code)
 
         # Check that instance and class fields are both accessed correctly
-        self.assertIn("struct Player __tmp_", c)
-        self.assertIn("Player____init__(&__tmp_", c)
+        self.assertIn("struct Player *__tmp_", c)
+        self.assertIn("Player____init__(__tmp_", c)
         self.assertIn("pb_print_int(p->hp);", c)
         self.assertIn("pb_print_int(Player__get_hp(p));", c)
         self.assertIn("pb_print_int(Player_mp);", c)
@@ -613,7 +611,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    return 0\n"
         )
         h, c = self.compile_pipeline(code)
-        self.assertIn("struct Child __tmp_", c)
+        self.assertIn("struct Child *__tmp_", c)
         self.assertIn("pb_print_str(\"child\");", c)
 
     def test_pipeline_exception_raise(self):
@@ -731,7 +729,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    return 0\n"
         )
         header, c_code = self.compile_pipeline(code)
-        self.assertIn("for (int64_t i = 0; i < 3; ++i)", c_code)
+        self.assertIn("for (int64_t i = 0; i < __range_end_1; ++i)", c_code)
         self.assertIn('pb_print_int(i)', c_code)
 
     def test_range_one_arg(self):
@@ -742,7 +740,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    return 0\n"
         )
         header, c_code = self.compile_pipeline(code)
-        self.assertIn("for (int64_t x = 0; x < 2; ++x)", c_code)
+        self.assertIn("for (int64_t x = 0; x < __range_end_1; ++x)", c_code)
         self.assertIn('pb_print_int(x)', c_code)
 
     def test_range_type_error(self):
@@ -779,7 +777,7 @@ class TestCodeGenFromSource(unittest.TestCase):
             "    return 0\n"
         )
         h, c = self.compile_pipeline(code)
-        self.assertIn("for (int64_t i = 0; i < 5; ++i)", c)
+        self.assertIn("for (int64_t i = 0; i < __range_end_1; ++i)", c)
         self.assertIn("continue;", c)
         self.assertIn("break;", c)
 
@@ -836,7 +834,7 @@ class TestCodeGenFromSource(unittest.TestCase):
         h, c = self.compile_pipeline(code)
 
         self.assertIn('list_int_set(&arr, 0, (int64_t)(4.5));', c)
-        self.assertIn('list_str_set(&arr2, 0, pb_format_int(4));', c)
+        self.assertIn('list_str_set(&arr2, 0, pb_string_copy(pb_format_int(4)));', c)
         self.assertIn('list_float_set(&arr3, 0, (double)(4));', c)
         self.assertIn('list_bool_set(&arr4, 0, (1 != 0));', c)
     def test_fstring_expression_codegen(self):
@@ -911,7 +909,7 @@ class TestCodeGenFromSource(unittest.TestCase):
         )
         header, c_code = self.compile_pipeline(code)
         self.assertIn('pb_print_int(pb_dict_get_str_int(d, "b"));', c_code)
-        self.assertIn('if (strcmp(pb_current_exc.type, "KeyError") == 0)', c_code)
+        self.assertIn('if (pb_exception_matches("KeyError"))', c_code)
         self.assertIn('pb_print_str("caught KeyError");', c_code)
 
     def test_reraise_in_except(self):
@@ -927,10 +925,10 @@ class TestCodeGenFromSource(unittest.TestCase):
             "        print(\"caught outer\")\n"
         )
         header, c_code = self.compile_pipeline(code)
-        self.assertIn('pb_raise_msg("ValueError", "bad");', c_code)
-        self.assertIn('if (strcmp(pb_current_exc.type, "ValueError") == 0)', c_code)
+        self.assertIn('pb_raise_obj("ValueError"', c_code)
+        self.assertIn('if (pb_exception_matches("ValueError"))', c_code)
         self.assertIn('pb_print_str("re-raising");', c_code)
-        self.assertIn('if (__exc_flag_2 && !__exc_handled_2) pb_reraise();', c_code)
+        self.assertIn('else { pb_reraise(); }', c_code)
         self.assertIn('pb_print_str("caught outer");', c_code)
 
     def test_raise_custom_struct(self):
@@ -947,9 +945,9 @@ class TestCodeGenFromSource(unittest.TestCase):
         )
         header, c_code = self.compile_pipeline(code)
         self.assertIn('pb_raise_obj("MyError", e);', c_code)
-        self.assertIn('if (strcmp(pb_current_exc.type, "MyError") == 0)', c_code)
-        self.assertIn('struct MyError * err = (struct MyError *)pb_current_exc.value;', c_code)
-        self.assertIn('pb_print_str(err->msg);', c_code)
+        self.assertIn('if (pb_exception_matches("MyError"))', c_code)
+        self.assertIn('struct MyError *err = (struct MyError *)pb_current_exc.value;', c_code)
+        self.assertIn('pb_print_str(pb_exception_message());', c_code)
 
     def test_raise_string(self):
         code = (
@@ -961,7 +959,7 @@ class TestCodeGenFromSource(unittest.TestCase):
         )
         header, c_code = self.compile_pipeline(code)
         self.assertIn('pb_raise_msg("str", "basic failure");', c_code)
-        self.assertIn('if (strcmp(pb_current_exc.type, "Exception") == 0)', c_code)
+        self.assertIn('if (pb_exception_matches("Exception"))', c_code)
         self.assertIn('pb_print_str("caught generic error");', c_code)
 
     def test_raise_without_except(self):
@@ -974,7 +972,7 @@ class TestCodeGenFromSource(unittest.TestCase):
         )
         header, c_code = self.compile_pipeline(code)
         self.assertIn('pb_raise_msg("str", "basic failure");', c_code)
-        self.assertIn('if (1)', c_code)
+        self.assertIn('if (true)', c_code)
         self.assertIn('pb_print_str("caught generic error");', c_code)
 
     def test_raise_without_raise_msg(self):
@@ -987,7 +985,7 @@ class TestCodeGenFromSource(unittest.TestCase):
         )
         header, c_code = self.compile_pipeline(code)
         self.assertIn('pb_reraise();', c_code)
-        self.assertIn('if (strcmp(pb_current_exc.type, "Exception") == 0)', c_code)
+        self.assertIn('if (pb_exception_matches("Exception"))', c_code)
         self.assertIn('pb_print_str("caught generic error");', c_code)
 
     def test_pipeline_import_with_alias(self):
@@ -1072,7 +1070,7 @@ class TestCodeGenFromSource(unittest.TestCase):
         )
         h, c = self.compile_pipeline(code)
         self.assertIn('int64_t n = 10;', c)
-        self.assertIn('for (int64_t i = 0; i < n; ++i)', c)
+        self.assertIn('for (int64_t i = 0; i < __range_end_1; ++i)', c)
 
     def test_hex_builtin_codegen(self):
         code = (
@@ -1105,6 +1103,21 @@ class TestCodeGenFromSource(unittest.TestCase):
         header, c_code = self.compile_pipeline(code)
         self.assertIn('int64_t x = arr.len;', c_code)
         self.assertIn('pb_print_int(x);', c_code)
+
+    def test_enum_pipeline(self):
+        code = (
+            "from enum import Enum\n"
+            "class Scene(Enum):\n"
+            "    MENU = 1\n"
+            "    GAME = 2\n"
+            "\n"
+            "def main() -> int:\n"
+            "    print(Scene.MENU)\n"
+            "    return 0\n"
+        )
+        h, c = self.compile_pipeline(code)
+        self.assertIn("typedef enum", h)
+        self.assertIn('pb_print_str(Scene_name(Scene_MENU))', c)
 
     def test_native_module_function_call_no_prefix(self):
         code = (

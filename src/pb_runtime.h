@@ -10,6 +10,18 @@
 #include <inttypes.h>
 #include <assert.h>
 
+/* PB allocations live until explicit release or process shutdown. Value
+ * container copies may share their backing storage; generated code never
+ * frees a local merely because its lexical scope ends. */
+void *pb_alloc(size_t size);
+void pb_release(void *ptr);
+void pb_memory_cleanup(void);
+const char *pb_string_copy(const char *value);
+const char *pb_str_concat(const char *a, const char *b);
+const char *pb_string_char(const char *value, int64_t index);
+void pb_print_begin(void);
+void pb_print_end(void);
+
 /* ------------ PRINT ------------- */
 
 void pb_print_int(int64_t x);    
@@ -30,9 +42,19 @@ void pb_fail(const char *msg);
 #include <setjmp.h>
 #include <assert.h>
 
+/* PB unwinds plain C frames itself. MinGW's SEH frame unwinding can use an
+ * invalid establisher frame in optimized code; a null frame requests the
+ * register/stack restore that PB needs, without native SEH unwinding. */
+#if defined(__MINGW32__) && defined(__x86_64__)
+#define pb_setjmp(env) _setjmp((env), NULL)
+#else
+#define pb_setjmp(env) setjmp(env)
+#endif
+
 typedef struct {
     const char *type;
     void *value;
+    bool is_message;
 } PbException;
 
 typedef struct PbTryContext {
@@ -55,6 +77,9 @@ void pb_raise_obj(const char *type, void *obj);
 
 void pb_clear_exc(void);
 void pb_reraise(void);
+bool pb_exception_matches(const char *type);
+const char *pb_exception_message(void);
+void pb_register_exception(const char *type, const char *base);
 
 /* ------------ FILE ------------- */
 
@@ -99,45 +124,22 @@ PB_DECLARE_SET(str, const char *)
 
 #define INITIAL_LIST_CAPACITY 4
 
-void list_int_grow_if_needed(List_int *lst);
-void list_int_init(List_int *lst);
-void list_int_set(List_int *lst, int64_t index, int64_t value);
-int64_t list_int_get(List_int *lst, int64_t index);
-void list_int_append(List_int *lst, int64_t value);
-int64_t list_int_pop(List_int *lst);
-bool list_int_remove(List_int *lst, int64_t value);
-void list_int_free(List_int *lst);
-void list_int_print(const List_int *lst);
+/* Generic list method declarations */
+#define PB_DECLARE_LIST_FUNCS(Name, CType)                             \
+    void list_##Name##_grow_if_needed(List_##Name *lst);               \
+    void list_##Name##_init(List_##Name *lst);                         \
+    void list_##Name##_set(List_##Name *lst, int64_t index, CType value); \
+    CType list_##Name##_get(List_##Name *lst, int64_t index);          \
+    void list_##Name##_append(List_##Name *lst, CType value);          \
+    CType list_##Name##_pop(List_##Name *lst);                         \
+    bool list_##Name##_remove(List_##Name *lst, CType value);          \
+    void list_##Name##_free(List_##Name *lst);                         \
+    void list_##Name##_print(const List_##Name *lst);
 
-void list_float_grow_if_needed(List_float *lst);
-void list_float_init(List_float *lst);
-void list_float_set(List_float *lst, int64_t index, double value);
-double list_float_get(List_float *lst, int64_t index);
-void list_float_append(List_float *lst, double value);
-double list_float_pop(List_float *lst);
-bool list_float_remove(List_float *lst, double value);
-void list_float_free(List_float *lst);
-void list_float_print(const List_float *lst);
-
-void list_bool_grow_if_needed(List_bool *lst);
-void list_bool_init(List_bool *lst);
-void list_bool_set(List_bool *lst, int64_t index, bool value);
-bool list_bool_get(List_bool *lst, int64_t index);
-void list_bool_append(List_bool *lst, bool value);
-bool list_bool_pop(List_bool *lst);
-bool list_bool_remove(List_bool *lst, bool value);
-void list_bool_free(List_bool *lst);
-void list_bool_print(const List_bool *lst);
-
-void list_str_grow_if_needed(List_str *lst);
-void list_str_init(List_str *lst);
-void list_str_set(List_str *lst, int64_t index, const char *value);
-const char* list_str_get(List_str *lst, int64_t index);
-void list_str_append(List_str *lst, const char *value);
-const char *list_str_pop(List_str *lst);
-bool list_str_remove(List_str *lst, const char *value);
-void list_str_free(List_str *lst);
-void list_str_print(const List_str *lst);
+PB_DECLARE_LIST_FUNCS(int, int64_t)
+PB_DECLARE_LIST_FUNCS(float, double)
+PB_DECLARE_LIST_FUNCS(bool, bool)
+PB_DECLARE_LIST_FUNCS(str, const char *)
 
 void set_int_print(const Set_int *s);
 void set_float_print(const Set_float *s);
@@ -173,4 +175,25 @@ double pb_dict_get_str_float(Dict_str_float d, const char *key);
 bool pb_dict_get_str_bool(Dict_str_bool d, const char *key);
 
 
+List_int list_int_copy(List_int value);
+List_float list_float_copy(List_float value);
+List_bool list_bool_copy(List_bool value);
+List_str list_str_copy(List_str value);
+int64_t pb_string_length(const char *value);
+void pb_dict_set_str_int(Dict_str_int dict, const char *key, int64_t value);
+Set_int set_int_copy(Set_int value);
+Dict_str_int dict_str_int_copy(Dict_str_int value);
+void pb_dict_set_str_float(Dict_str_float dict, const char *key, double value);
+Set_float set_float_copy(Set_float value);
+Dict_str_float dict_str_float_copy(Dict_str_float value);
+void pb_dict_set_str_bool(Dict_str_bool dict, const char *key, bool value);
+Set_bool set_bool_copy(Set_bool value);
+Dict_str_bool dict_str_bool_copy(Dict_str_bool value);
+void pb_dict_set_str_str(Dict_str_str dict, const char *key, const char * value);
+Set_str set_str_copy(Set_str value);
+Dict_str_str dict_str_str_copy(Dict_str_str value);
+void dict_str_int_print(const Dict_str_int *dict);
+void dict_str_float_print(const Dict_str_float *dict);
+void dict_str_bool_print(const Dict_str_bool *dict);
+void dict_str_str_print(const Dict_str_str *dict);
 #endif // PB_RUNTIME_H

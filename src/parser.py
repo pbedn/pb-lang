@@ -40,6 +40,8 @@ from lang_ast import (
     SetExpr,
     DictExpr,
     EllipsisLiteral,
+    EnumDef,
+    EnumMember,
     ImportStmt,
     ImportFromStmt,
     ImportAlias,
@@ -980,13 +982,14 @@ class Parser:
 
         return type_str
 
-    def parse_class_def(self) -> ClassDef:
-        """Parse a class definition with optional single inheritance
+    def parse_class_def(self) -> ClassDef | EnumDef:
+        """Parse a class or enum definition with optional single inheritance
 
         Grammar:
         ClassDef ::= "class" Identifier [ "(" Identifier ")" ] ":" NEWLINE INDENT { Statement } DEDENT
+        EnumDef  ::= "class" Identifier "(" "Enum" ")" ":" NEWLINE INDENT { EnumMember } DEDENT
 
-        AST: ClassDef(name, base, fields, methods)
+        AST: ClassDef(name, base, fields, methods) or EnumDef(name, members)
         """
         self.expect(TokenType.CLASS)
         name = self.expect(TokenType.IDENTIFIER).value
@@ -1001,6 +1004,30 @@ class Parser:
         while self.match(TokenType.NEWLINE):
             pass
         self.expect(TokenType.INDENT)
+
+        if base == "Enum":
+            members: List[EnumMember] = []
+            is_empty_with_pass = False
+            while True:
+                if self.match(TokenType.DEDENT):
+                    break
+                if self.check(TokenType.NEWLINE):
+                    self.advance()
+                    continue
+                if self.match(TokenType.PASS):
+                    self.expect(TokenType.NEWLINE)
+                    is_empty_with_pass = True
+                    continue
+                member_name = self.expect(TokenType.IDENTIFIER).value
+                self.expect(TokenType.ASSIGN)
+                value = self.parse_expr()
+                self.expect(TokenType.NEWLINE)
+                members.append(EnumMember(member_name, value))
+
+            if not (members or is_empty_with_pass):
+                raise ParserError(f"enum '{name}' has no members (line {self.current().line})")
+
+            return EnumDef(name, members)
 
         fields: List[VarDecl] = []
         methods: List[FunctionDef] = []

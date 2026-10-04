@@ -50,8 +50,20 @@ class FunctionDef:
 class ClassDef:
     name: str
     base: Optional[str]             # single inheritance only
-    fields: List["VarDecl"]         # field decls (VarDecl) 
+    fields: List["VarDecl"]         # field decls (VarDecl)
     methods: List["FunctionDef"]    # methods (FunctionDef)
+
+
+@dataclass
+class EnumMember:
+    name: str
+    value: Expr
+
+
+@dataclass
+class EnumDef:
+    name: str
+    members: List[EnumMember]
 
 
 @dataclass
@@ -290,6 +302,7 @@ class DictExpr:
 Stmt = Union[
     FunctionDef,
     ClassDef,
+    EnumDef,
     GlobalStmt,
     VarDecl,
     AssignStmt,

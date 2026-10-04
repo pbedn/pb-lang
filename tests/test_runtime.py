@@ -5,6 +5,7 @@ import sys
 import os
 import shutil
 import ast
+import shlex
 
 from type_checker import TypeError
 from lexer import Lexer
@@ -71,6 +72,7 @@ def _compile_and_run_modules(modules: dict[str, str]) -> str:
 
         compile_cmd = [
             "gcc", "-std=c99", "-W",
+            *shlex.split(os.environ.get("PB_CFLAGS", "")),
             *c_files,
             "-o", exe_path,
             "-I", tmpdir,

@@ -106,6 +106,8 @@ from lang_ast import (
     ContinueStmt,
     PassStmt,
     ClassDef,
+    EnumDef,
+    EnumMember,
     AttributeExpr,
     IndexExpr,
     ListExpr,
@@ -242,12 +244,25 @@ class TypeChecker:
         self.methods["Exception"] = {
             "__init__": (["Exception", "str"], "None", 2)
         }
-        self.class_bases["Exception"] = None
+        self.known_classes.add("BaseException")
+        self.methods["BaseException"] = {"__init__": (["BaseException", "str"], "None", 2)}
+        self.class_bases["BaseException"] = None
+        self.class_bases["Exception"] = "BaseException"
+        for name in ("BaseException", "Exception"):
+            self.class_attrs[name] = {}
+            self.instance_fields[name] = {"msg": "str"}
 
-        for exc in ["RuntimeError", "ValueError", "IndexError", "TypeError"]:
+        for exc in ["RuntimeError", "ValueError", "IndexError", "KeyError", "TypeError"]:
             self.known_classes.add(exc)
             self.methods[exc] = {}  # no own methods
             self.class_bases[exc] = "Exception"
+            self.class_attrs[exc] = {}
+            self.instance_fields[exc] = {"msg": "str"}
+
+        # enums
+        self.enums: Dict[str, Dict[str, int]] = {}
+        self.enum_c_names: Dict[str, str] = {}
+        self.known_enums: Set[str] = set()
 
         # Track whether a function was imported from a native module
         self.native_functions: Dict[str, bool] = {}
@@ -271,6 +286,7 @@ class TypeChecker:
 
     def check(self, program: Program):
         """Type-check the entire program."""
+        self.module_name = program.module_name or "main"
         seen_main = False
         for stmt in program.body:
             if isinstance(stmt, FunctionDef) and stmt.name == "main":
@@ -284,7 +300,18 @@ class TypeChecker:
         program.native_modules = {mod.name: mod.native_binding for mod in self.modules.values()}
         program.native_imports = {alias: mod.native_binding for alias, mod in self.modules.items()}
         program.native_functions = dict(self.native_functions)
+        program.enum_c_names = dict(self.enum_c_names)
+        program.enums = dict(self.enums)
+        program.class_bases = dict(self.class_bases)
         return program
+
+    def register_enum_imports(self, module, alias: str, imported_name: str | None = None):
+        for name, members in getattr(module, "enums", {}).items():
+            local = alias if imported_name == name else f"{alias}.{name}"
+            if imported_name is not None and imported_name != name:
+                continue
+            self.enums[local] = members
+            self.enum_c_names[local] = module.enum_c_names[name]
 
     def check_stmt(self, stmt: Stmt, parent: Stmt | None = None):
         """Type-check a single statement."""
@@ -296,6 +323,8 @@ class TypeChecker:
             self.check_aug_assign_stmt(stmt)
         elif isinstance(stmt, ClassDef):
             self.check_class_def(stmt)
+        elif isinstance(stmt, EnumDef):
+            self.check_enum_def(stmt)
         elif isinstance(stmt, FunctionDef):
             self.check_function_def(stmt)
         elif isinstance(stmt, ReturnStmt):
@@ -471,6 +500,9 @@ class TypeChecker:
 
             # Arithmetic
             if op in {"+", "-", "*", "/", "//", "%"}:
+                if op == "+" and left_type == right_type == "str":
+                    expr.inferred_type = "str"
+                    return "str"
                 if not is_numeric_type(left_type) or not is_numeric_type(right_type):
                     raise TypeError(f"Operator {op} not supported for types: {left_type} and {right_type}")
                 result_type = promote_numeric_types(left_type, right_type)
@@ -526,6 +558,9 @@ class TypeChecker:
             if isinstance(expr.func, Identifier):
                 # Top-level function call (not a method)
                 fname = expr.func.name
+
+                if fname in self.enums:
+                    raise TypeError(f"Cannot call enum '{fname}' as function")
 
                 # Class instantiation: Player(...)
                 if fname in self.methods and "__init__" in self.methods[fname]:
@@ -604,8 +639,8 @@ class TypeChecker:
                     if len(expr.args) != 1:
                         raise TypeError("Function 'str' expects exactly one argument")
                     arg_type = self.check_expr(expr.args[0])
-                    if arg_type not in {"int", "float", "str"}:
-                        raise TypeError(f"Function 'str' expects int, float, or str, got {arg_type}")
+                    if arg_type not in {"int", "float", "str", "bool"}:
+                        raise TypeError(f"Function 'str' expects int, float, bool, or str, got {arg_type}")
                     expr.inferred_type = "str"
                     return "str"
                 if fname == "hex":
@@ -798,6 +833,12 @@ class TypeChecker:
 
         elif isinstance(expr, AttributeExpr):
             obj_full = self._attr_full_name(expr.obj)
+            if obj_full in self.enums:
+                if expr.attr not in self.enums[obj_full]:
+                    raise TypeError(f"Enum '{obj_full}' has no member '{expr.attr}'")
+                expr.enum_c_name = f"{self.enum_c_names[obj_full]}_{expr.attr}"
+                expr.inferred_type = obj_full
+                return obj_full
             if obj_full and obj_full in self.modules:
                 mod = self.modules[obj_full]
                 if expr.attr not in mod.exports:
@@ -806,7 +847,12 @@ class TypeChecker:
                 return expr.inferred_type
 
             if not isinstance(expr.obj, Identifier):
-                raise TypeError("Attribute access must be through an identifier")
+                obj_type = self.check_expr(expr.obj)
+                fields = self.instance_fields.get(obj_type, {})
+                if expr.attr not in fields:
+                    raise TypeError(f"Class '{obj_type}' has no attribute '{expr.attr}'")
+                expr.inferred_type = fields[expr.attr]
+                return expr.inferred_type
 
             obj_name = expr.obj.name
 
@@ -1077,7 +1123,7 @@ class TypeChecker:
                         if all(contains_return(branch.body) for branch in s.branches):
                             return True
                     if isinstance(s, TryExceptStmt):
-                        if contains_return(s.try_body) or any(contains_return(b.body) for b in s.except_blocks):
+                        if contains_return(s.finally_body or []) or contains_return(s.try_body) or any(contains_return(b.body) for b in s.except_blocks):
                             return True
                     # you can ignore loops for now
                 return False
@@ -1115,6 +1161,13 @@ class TypeChecker:
             # extract object and field
             obj = stmt.target.obj
             field_name = stmt.target.attr
+
+            if not isinstance(obj, Identifier):
+                expected = self.check_expr(stmt.target)
+                actual = self.check_expr(stmt.value)
+                self.check_arg_compatibility(actual, expected, 1, f"assignment to '{field_name}'")
+                stmt.inferred_type = actual
+                return
 
             # disallow assignment to module attributes ---
             if isinstance(obj, Identifier) and obj.name in self.modules:
@@ -1218,6 +1271,11 @@ class TypeChecker:
         if stmt.op not in {"+=", "-=", "*=", "/=", "//=", "%="}:
             raise TypeError(f"Unsupported augmented operator '{stmt.op}'")
 
+        if stmt.op == "+=" and expected_type == actual_type == "str":
+            target.inferred_type = "str"
+            stmt.inferred_type = "str"
+            return
+
         if not is_numeric_type(expected_type) or not is_numeric_type(actual_type):
             raise TypeError("...")
 
@@ -1259,23 +1317,35 @@ class TypeChecker:
         self.in_loop -= 1
 
     def check_for_stmt(self, stmt: ForStmt):
-        """Type-check a for loop over list[T] or set[T].
+        """Type-check a for loop over an iterable.
 
-        Type-checking requirements:
-        - Iterable must be a list[T] or set[T]
-        - var_name is assigned elements of type T
-        - Body type-checks with var_name bound to T
-        - Must track loop context for break / continue
+        Supported iterables:
+        - ``list[T]`` → loop variable has type ``T``
+        - ``set[T]``  → loop variable has type ``T``
+        - ``dict[K, V]`` → loops over keys of type ``K``
+        - ``str``     → loops over single-character strings
+
+        The loop body type-checks with the variable bound to the
+        element/key type. Loop context is tracked for ``break``/``continue``.
         """
         iterable_type = self.check_expr(stmt.iterable)
 
-        if iterable_type.startswith("list[") and iterable_type.endswith("]"):
+        if iterable_type == "str":
+            element_type = "str"
+        elif iterable_type.startswith("list[") and iterable_type.endswith("]"):
             element_type = iterable_type[5:-1]
         elif iterable_type.startswith("set[") and iterable_type.endswith("]"):
             element_type = iterable_type[4:-1]
+        elif iterable_type.startswith("dict[") and iterable_type.endswith("]"):
+            try:
+                key_type, _ = map(str.strip, iterable_type[5:-1].split(",", 1))
+            except Exception:
+                raise TypeError(f"Invalid dict type: {iterable_type}")
+            element_type = key_type
         else:
             raise TypeError(
-                f"For loop requires iterable of type list[T] or set[T], got {iterable_type}"
+                "For loop requires iterable of type list[T], set[T], dict[K, V] or str, "
+                f"got {iterable_type}"
             )
         stmt.elem_type = element_type
 
@@ -1357,6 +1427,8 @@ class TypeChecker:
                     self.hp += amount  # OK: 'hp' inherited from Player
         """
         name = cls.name
+        if name in self.enums:
+            raise TypeError(f"Duplicate definition of '{name}'")
         if cls.base:
             if cls.base not in self.known_classes:
                 raise TypeError(f"Base class '{cls.base}' not defined before '{name}'")
@@ -1431,6 +1503,34 @@ class TypeChecker:
 
             # Type-check the method body
             self.check_function_def(method)
+
+    def check_enum_def(self, enum: EnumDef):
+        """Validate an Enum definition."""
+        if enum.name in self.known_classes or enum.name in self.enums:
+            raise TypeError(f"Duplicate definition of '{enum.name}'")
+        self.known_enums.add(enum.name)
+        self.enums[enum.name] = {}
+        module = getattr(self, "module_name", "main")
+        enum.c_name = enum.name if module == "main" else f"{module.replace('.', '_')}_{enum.name}"
+        self.enum_c_names[enum.name] = enum.c_name
+        seen: set[str] = set()
+        for member in enum.members:
+            if member.name in seen:
+                raise TypeError(f"Duplicate enum member '{member.name}' in {enum.name}")
+            seen.add(member.name)
+            typ = self.check_expr(member.value)
+            if typ != "int":
+                raise TypeError(f"Enum member '{member.name}' must be int, got {typ}")
+            def constant(expr):
+                if isinstance(expr, Literal):
+                    return int(expr.raw.replace('_', ''), 0) if expr.raw.lower().startswith('0x') else int(expr.raw.replace('_', ''))
+                if isinstance(expr, UnaryOp) and expr.op == '-':
+                    return -constant(expr.operand)
+                raise TypeError("Enum values must be integer constants")
+            value = constant(member.value)
+            if not -(2**31) <= value < 2**31:
+                raise TypeError("Enum values must fit a signed 32-bit C enum")
+            self.enums[enum.name][member.name] = value
 
     def check_assert_stmt(self, stmt: AssertStmt):
         """Check that the asserted expression is of type bool."""

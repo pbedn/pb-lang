@@ -313,7 +313,7 @@ class TestCodeGen(unittest.TestCase):
         ])
         output = codegen_output(program)
         assert_contains_all(self, output, [
-            "for (int64_t k = 0; k < 3; ++k) {",
+            "for (int64_t k = 0; k < __range_end_1; ++k) {",
             "pb_print_int(k);",
             "}",
             "return 0;"
@@ -350,7 +350,7 @@ class TestCodeGen(unittest.TestCase):
         ])
         output = codegen_output(program)
         assert_contains_all(self, output, [
-            "for (int64_t i = 0; i < 5; ++i) {",
+            "for (int64_t i = 0; i < __range_end_1; ++i) {",
             "if ((i == 2)) {",
             "continue;",
             "}",
@@ -359,6 +359,68 @@ class TestCodeGen(unittest.TestCase):
             "}",
             "pb_print_int(i);",
             "}",
+            "return 0;"
+        ])
+
+    def test_for_loop_over_list_dict_set_str(self):
+        program = Program(body=[
+            FunctionDef(
+                name="main",
+                params=[],
+                return_type="int",
+                body=[
+                    VarDecl("nums", "list[int]", ListExpr(
+                        elements=[Literal("1"), Literal("2")],
+                        elem_type="int",
+                        inferred_type="list[int]"
+                    )),
+                    VarDecl("s", "str", StringLiteral(value="ab", inferred_type="str")),
+                    VarDecl("d", "dict[str, int]", DictExpr(
+                        keys=[StringLiteral("a")],
+                        values=[Literal("1")],
+                        elem_type="int",
+                        inferred_type="dict[str, int]"
+                    )),
+                    VarDecl("st", "set[int]", SetExpr(
+                        elements=[Literal("3")],
+                        elem_type="int",
+                        inferred_type="set[int]"
+                    )),
+                    ForStmt(
+                        var_name="n",
+                        iterable=Identifier("nums"),
+                        body=[ExprStmt(CallExpr(Identifier("print"), [Identifier("n")]))]
+                    ),
+                    ForStmt(
+                        var_name="ch",
+                        iterable=Identifier("s"),
+                        body=[ExprStmt(CallExpr(Identifier("print"), [Identifier("ch")]))]
+                    ),
+                    ForStmt(
+                        var_name="k",
+                        iterable=Identifier("d"),
+                        body=[ExprStmt(CallExpr(Identifier("print"), [Identifier("k")]))]
+                    ),
+                    ForStmt(
+                        var_name="x",
+                        iterable=Identifier("st"),
+                        body=[ExprStmt(CallExpr(Identifier("print"), [Identifier("x")]))]
+                    ),
+                    ReturnStmt(Literal("0"))
+                ],
+                globals_declared=None
+            )
+        ])
+        output = codegen_output(program)
+        assert_contains_all(self, output, [
+            "List_int __iter_1 = nums;",
+            "int64_t n = __iter_1.data[__index_1];",
+            "const char * __iter_2 = s;",
+            "const char * ch = pb_string_char(__iter_2, __index_2);",
+            "Dict_str_int __iter_3 = d;",
+            "const char * k = __iter_3.data[__index_3].key;",
+            "Set_int __iter_4 = st;",
+            "int64_t x = __iter_4.data[__index_4];",
             "return 0;"
         ])
 
@@ -584,8 +646,8 @@ class TestCodeGen(unittest.TestCase):
         output = codegen_output(program)
         self.assertIn('pb_push_try(&', output)
         self.assertIn('pb_raise_obj("RuntimeError"', output)
-        self.assertIn('strcmp(pb_current_exc.type, "RuntimeError") == 0', output)
-        self.assertIn('pb_clear_exc();', output)
+        self.assertIn('pb_exception_matches("RuntimeError")', output)
+        self.assertIn('pb_current_exc = __exc_saved_1;', output)
         self.assertIn('pb_reraise();', output)
 
     def test_global_variable_in_method(self):
@@ -1747,7 +1809,7 @@ class TestCodeGen(unittest.TestCase):
         output = codegen_output(prog)
         assert_contains_all(self, output, [
             "list_int_set(&arr, 0, (int64_t)(4.5));",
-            "list_str_set(&arr2, 0, pb_format_int(4));",
+            "list_str_set(&arr2, 0, pb_string_copy(pb_format_int(4)));",
             "list_float_set(&arr3, 0, (double)(4));",
             "list_bool_set(&arr4, 0, (1 != 0));",
         ])

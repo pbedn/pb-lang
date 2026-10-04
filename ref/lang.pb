@@ -1,5 +1,5 @@
 # lang.pb
-# This file demonstrates all currently implemented features of the language.
+# This file demonstrates a representative subset of the language.
 # Each section includes comments describing what is tested.
 
 # === Global variable declaration ===
@@ -195,7 +195,7 @@ def main():
     print(map_str["a"])
     print(map_str["b"])
 
-    # Not supported yet - Currently it just skips try except
+    # Runtime exceptions unwind to the matching handler.
     print("=== Try / Except / Raise ===")
     try:
         result: int = divide(10, 0)

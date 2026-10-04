@@ -2,7 +2,7 @@ import os
 import json
 from lexer import Lexer
 from parser import Parser
-from lang_ast import ImportStmt, ImportFromStmt, FunctionDef, ClassDef, VarDecl
+from lang_ast import ImportStmt, ImportFromStmt, FunctionDef, ClassDef, VarDecl, EnumDef
 from type_checker import TypeChecker, ModuleSymbol
 
 
@@ -130,6 +130,7 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
             if verbose:
                 print(f"Loaded module: {alias_name}, exports: {mod_symbol.exports}")
             checker.modules[alias_name] = mod_symbol
+            checker.register_enum_imports(mod_symbol, alias_name)
         elif isinstance(stmt, ImportFromStmt):
             mod_symbol = None
             if stmt.is_wildcard:
@@ -140,6 +141,7 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
                         checker.native_functions[name] = mod_symbol.native_binding
                     else:
                         checker.env[name] = kind
+                        checker.register_enum_imports(mod_symbol, name, name)
             else:
                 for alias_obj in stmt.names or []:
                     name = alias_obj.name
@@ -159,9 +161,11 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
                             checker.native_functions[asname] = mod_symbol.native_binding
                         else:
                             checker.env[asname] = kind
+                        checker.register_enum_imports(mod_symbol, asname, name)
                     else:
                         checker.modules[asname] = sub_mod
 
+    program.module_name = ".".join(module_name)
     checker.check(program)
 
     # Step 4: Collect exports (functions, classes, globals)
@@ -174,6 +178,8 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
                 functions[stmt.name] = checker.functions[stmt.name]
         elif isinstance(stmt, ClassDef):
             exports[stmt.name] = "class"
+        elif isinstance(stmt, EnumDef):
+            exports[stmt.name] = "enum"
         elif isinstance(stmt, VarDecl):
             exports[stmt.name] = stmt.declared_type
 
@@ -191,5 +197,7 @@ def load_module(module_name: list[str], search_paths: list[str], loaded_modules:
         vendor_metadata=vendor_metadata,
         native_binding=native,
     )
+    mod_symbol.enums = {stmt.name: checker.enums[stmt.name] for stmt in program.body if isinstance(stmt, EnumDef)}
+    mod_symbol.enum_c_names = {name: checker.enum_c_names[name] for name in mod_symbol.enums}
     loaded_modules[name_tuple] = mod_symbol
     return mod_symbol

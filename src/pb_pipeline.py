@@ -42,6 +42,7 @@ def process_imports(ast: Program, pb_path: str, verbose: bool = False):
             if verbose:
                 print(f"Registering module '{alias}' with exports: {mod_symbol.exports}")
             checker.modules[alias] = mod_symbol
+            checker.register_enum_imports(mod_symbol, alias)
         elif isinstance(stmt, ImportFromStmt):
             mod_symbol = None
             if stmt.is_wildcard:
@@ -52,6 +53,7 @@ def process_imports(ast: Program, pb_path: str, verbose: bool = False):
                         checker.native_functions[name] = mod_symbol.native_binding
                     else:
                         checker.env[name] = kind
+                        checker.register_enum_imports(mod_symbol, name, name)
                 stmt.names = [ImportAlias(n) for n in mod_symbol.exports.keys()]
             else:
                 for alias_obj in stmt.names or []:
@@ -72,6 +74,7 @@ def process_imports(ast: Program, pb_path: str, verbose: bool = False):
                             checker.native_functions[asname] = mod_symbol.native_binding
                         else:
                             checker.env[asname] = kind
+                        checker.register_enum_imports(mod_symbol, asname, name)
                     else:
                         checker.modules[asname] = sub_mod
 
@@ -107,6 +110,7 @@ def compile_code_to_ast(
         checker = TypeChecker(native_module=is_native_binding(pb_path) if pb_path else False)
         loaded_modules = {}
 
+    ast.module_name = module_name
     checker.check(ast)
     if debug and pprint:
         print("TYPED ENRICHED AST:\n"); pprint(ast); print(f"{'-'*80}\n")

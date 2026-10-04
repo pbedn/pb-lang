@@ -2,6 +2,7 @@ import os
 import subprocess
 import argparse
 import shutil
+import shlex
 from pprint import pprint
 
 from lexer import Lexer, LexerError
@@ -38,7 +39,7 @@ def compile_to_c(
     source_code: str, pb_path: str, output_file: str = "out.c", 
     verbose: bool = False, debug: bool = False
 ):
-    basename = os.path.splitext(os.path.basename(pb_path))[0]
+    basename = os.path.splitext(os.path.basename(output_file))[0]
     h_code, c_code, ast, loaded_modules = compile_code_to_c_and_h(
         source_code,
         module_name=basename,
@@ -52,16 +53,16 @@ def compile_to_c(
     if ast is None:
         return (False, None, {})
     output_h_path = get_build_output_path(output_file.replace(".c", ".h"))
-    with open(output_h_path, "w") as f:
+    with open(output_h_path, "w", encoding="utf-8") as f:
         f.write(h_code)
     output_c_path = get_build_output_path(output_file)
-    with open(output_c_path, "w") as f:
+    with open(output_c_path, "w", encoding="utf-8") as f:
         f.write(c_code)
     if verbose: print(f"C code written to {output_c_path}")
     return (True, ast, loaded_modules)
 
 
-def build(source_code: str, pb_path: str, output_file: str, verbose: bool = False, debug: bool = False):
+def build(source_code: str, pb_path: str, output_file: str, verbose: bool = False, debug: bool = False, compile_flags: list[str] | None = None):
     if not debug: check_gcc_installed(verbose)
 
     # Compile entry point to C
@@ -93,7 +94,7 @@ def build(source_code: str, pb_path: str, output_file: str, verbose: bool = Fals
     # if not os.path.isfile(runtime_lib):
         # if verbose: print("Runtime library not found; building it now...")
         # build_runtime_library(verbose=verbose, debug=debug)    
-    build_runtime_library(verbose=verbose, debug=debug)    
+    build_runtime_library(verbose=verbose, debug=debug, compile_flags=compile_flags)
 
     include_dirs, lib_dirs, link_flags = collect_vendor_build_info(loaded_modules)
 
@@ -107,6 +108,7 @@ def build(source_code: str, pb_path: str, output_file: str, verbose: bool = Fals
     compile_cmd = [
         "gcc", "-std=c99",
         *flags,
+        *(compile_flags if compile_flags is not None else shlex.split(os.environ.get("PB_CFLAGS", ""))),
         *module_c_files,
         "-o", exe_file,
         "-I", build_dir,
@@ -131,7 +133,7 @@ def run(source_code: str, pb_path: str, output_file: str, verbose: bool = False,
     success, loaded_modules = build(source_code, pb_path, output_file, verbose=verbose, debug=debug)
     if not success:
         print("Skipping run because compilation failed.")
-        return
+        raise RuntimeError("PB build failed")
 
     # exe_file = output_file + (".exe" if os.name == "nt" else "")
     exe_file = get_build_output_path(output_file) + (".exe" if os.name == "nt" else "")
@@ -144,7 +146,7 @@ def run(source_code: str, pb_path: str, output_file: str, verbose: bool = False,
 
     if verbose: print("Running:", exe_file)
     if verbose: print("\n")
-    subprocess.run([exe_file])
+    subprocess.run([exe_file], check=True)
     if verbose: print("\n")
 
 
@@ -174,14 +176,14 @@ def write_module_code_files(mod_symbol, build_dir, verbose: bool = False, debug:
     c_code = codegen.generate(mod_symbol.program)
     if debug: print(f"Module CODE: {basename}.c\n"); pretty_print_code(c_code, "c"); print(f"{'-'*80}\n")
 
-    with open(h_path, "w") as f:
+    with open(h_path, "w", encoding="utf-8") as f:
         f.write(h_code)
-    with open(c_path, "w") as f:
+    with open(c_path, "w", encoding="utf-8") as f:
         f.write(c_code)
     return c_path  # return path for later GCC command
 
 
-def build_runtime_library(verbose: bool = False, debug: bool = False):
+def build_runtime_library(verbose: bool = False, debug: bool = False, compile_flags: list[str] | None = None):
     """
     Builds the PB runtime into a static library (pb_runtime.a)
     and copies the header to the build directory.
@@ -197,18 +199,17 @@ def build_runtime_library(verbose: bool = False, debug: bool = False):
     header_dest = os.path.join(build_dir, "pb_runtime.h")
 
     if not os.path.isfile(src_c):
-        print(f"pb_runtime.c not found at: {src_c}")
-        return
+        raise RuntimeError(f"Runtime source not found: {src_c}")
 
     # Compile to object file
     obj_path = os.path.join(build_dir, "pb_runtime.o")
-    compile_cmd = ["gcc", "-std=c99", "-c", src_c, "-o", obj_path]
+    flags = compile_flags if compile_flags is not None else shlex.split(os.environ.get("PB_CFLAGS", ""))
+    compile_cmd = ["gcc", "-std=c99", *flags, "-c", src_c, "-o", obj_path]
     if verbose: print("PB Runtime compile command:", " ".join(compile_cmd))
 
     result = subprocess.run(compile_cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"Compilation failed:\n{result.stderr}")
-        return
+        raise RuntimeError(f"Runtime compilation failed:\n{result.stderr}")
 
     # Archive into static library
     # lib_path = os.path.join(build_dir, "libpbruntime.a")
@@ -217,8 +218,7 @@ def build_runtime_library(verbose: bool = False, debug: bool = False):
 
     result = subprocess.run(ar_cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"Archiving failed:\n{result.stderr}")
-        return
+        raise RuntimeError(f"Runtime archive failed:\n{result.stderr}")
 
     if verbose:
         print(f"Built static library: {lib_path}")
@@ -240,10 +240,9 @@ def check_gcc_installed(verbose):
     except FileNotFoundError:
         print("GCC is not installed or not in the system PATH.")
         print("If not installed then run `sudo apt install gcc`")
-        return False
+        raise RuntimeError("GCC is required to build PB programs")
     except subprocess.CalledProcessError:
-        if verbose: print("GCC is available, but an error occurred while running it.")
-        return False
+        raise RuntimeError("GCC could not be executed successfully")
 
 
 def collect_vendor_build_info(loaded_modules):
@@ -298,7 +297,7 @@ def main():
         if not os.path.isabs(pb_path):
             pb_path = os.path.join(os.path.dirname(__file__), "..", pb_path)
 
-        with open(pb_path) as f:
+        with open(pb_path, encoding="utf-8") as f:
             code = f.read()
 
 
@@ -308,7 +307,9 @@ def main():
         if args.command == "toc":
             compile_to_c(code, pb_path, f"{output_filename}.c", verbose=args.verbose, debug=args.debug)
         elif args.command == "build":
-            build(code, pb_path, output_filename, verbose=args.verbose, debug=args.debug)
+            success, _ = build(code, pb_path, output_filename, verbose=args.verbose, debug=args.debug)
+            if not success:
+                raise RuntimeError("PB build failed")
         elif args.command == "run":
             run(code, pb_path, output_filename, verbose=args.verbose, debug=args.debug)
 

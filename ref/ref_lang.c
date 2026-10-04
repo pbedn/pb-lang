@@ -10,10 +10,13 @@ void Player____init__(struct Player * self, int64_t hp, int64_t mp)
     (void)mp;
     char __fbuf[256];
     (void)__fbuf;
+    pb_register_exception("Exception", "BaseException");
+    pb_register_exception("RuntimeError", "Exception");
+    pb_register_exception("Mage", "Player");
     self->hp = hp;
     self->mp = mp;
     self->score = 0;
-    self->name = "Hero";
+    self->name = pb_string_copy("Hero");
 }
 void Player__heal(struct Player * self, int64_t amount)
 {
@@ -21,6 +24,9 @@ void Player__heal(struct Player * self, int64_t amount)
     (void)amount;
     char __fbuf[256];
     (void)__fbuf;
+    pb_register_exception("Exception", "BaseException");
+    pb_register_exception("RuntimeError", "Exception");
+    pb_register_exception("Mage", "Player");
     self->hp += amount;
 }
 const char * Player__get_name(struct Player * self)
@@ -28,20 +34,29 @@ const char * Player__get_name(struct Player * self)
     (void)self;
     char __fbuf[256];
     (void)__fbuf;
-    return self->name;
+    pb_register_exception("Exception", "BaseException");
+    pb_register_exception("RuntimeError", "Exception");
+    pb_register_exception("Mage", "Player");
+    return pb_string_copy(self->name);
 }
 const char * Player__get_species_one(struct Player * self)
 {
     (void)self;
     char __fbuf[256];
     (void)__fbuf;
-    return Player_species;
+    pb_register_exception("Exception", "BaseException");
+    pb_register_exception("RuntimeError", "Exception");
+    pb_register_exception("Mage", "Player");
+    return pb_string_copy(Player_species);
 }
 void Player__add_to_counter(struct Player * self)
 {
     (void)self;
     char __fbuf[256];
     (void)__fbuf;
+    pb_register_exception("Exception", "BaseException");
+    pb_register_exception("RuntimeError", "Exception");
+    pb_register_exception("Mage", "Player");
     /* global counter */
     counter += self->hp;
 }
@@ -51,6 +66,9 @@ void Mage____init__(struct Mage * self, int64_t hp)
     (void)hp;
     char __fbuf[256];
     (void)__fbuf;
+    pb_register_exception("Exception", "BaseException");
+    pb_register_exception("RuntimeError", "Exception");
+    pb_register_exception("Mage", "Player");
     Player____init__((struct Player *)self, hp, 150);
     self->mp = 200;
 }
@@ -60,6 +78,9 @@ void Mage__cast_spell(struct Mage * self, int64_t spell_cost)
     (void)spell_cost;
     char __fbuf[256];
     (void)__fbuf;
+    pb_register_exception("Exception", "BaseException");
+    pb_register_exception("RuntimeError", "Exception");
+    pb_register_exception("Mage", "Player");
     if ((self->mp >= spell_cost)) {
         pb_print_str("Spell cast!");
         self->mp -= spell_cost;
@@ -74,6 +95,9 @@ void Mage__heal(struct Mage * self, int64_t amount)
     (void)amount;
     char __fbuf[256];
     (void)__fbuf;
+    pb_register_exception("Exception", "BaseException");
+    pb_register_exception("RuntimeError", "Exception");
+    pb_register_exception("Mage", "Player");
     self->base.hp += amount;
     self->mp += (amount / 2);
 }
@@ -95,6 +119,9 @@ int64_t lang_add(int64_t x, int64_t y)
     (void)y;
     char __fbuf[256];
     (void)__fbuf;
+    pb_register_exception("Exception", "BaseException");
+    pb_register_exception("RuntimeError", "Exception");
+    pb_register_exception("Mage", "Player");
     int64_t result = (x + y);
     pb_print_str("Adding numbers:");
     pb_print_int(result);
@@ -106,8 +133,13 @@ int64_t lang_divide(int64_t x, int64_t y)
     (void)y;
     char __fbuf[256];
     (void)__fbuf;
+    pb_register_exception("Exception", "BaseException");
+    pb_register_exception("RuntimeError", "Exception");
+    pb_register_exception("Mage", "Player");
     if ((y == 0)) {
-        pb_raise_msg("RuntimeError", "division by zero");
+        struct RuntimeError *__tmp_runtimeerror_1 = pb_alloc(sizeof(*__tmp_runtimeerror_1));
+    RuntimeError____init__(__tmp_runtimeerror_1, "division by zero");
+    pb_raise_obj("RuntimeError", __tmp_runtimeerror_1);
     }
     return (x / y);
 }
@@ -117,6 +149,9 @@ int64_t lang_increment(int64_t x, int64_t step)
     (void)step;
     char __fbuf[256];
     (void)__fbuf;
+    pb_register_exception("Exception", "BaseException");
+    pb_register_exception("RuntimeError", "Exception");
+    pb_register_exception("Mage", "Player");
     return (x + step);
 }
 bool lang_is_even(int64_t n)
@@ -124,6 +159,9 @@ bool lang_is_even(int64_t n)
     (void)n;
     char __fbuf[256];
     (void)__fbuf;
+    pb_register_exception("Exception", "BaseException");
+    pb_register_exception("RuntimeError", "Exception");
+    pb_register_exception("Mage", "Player");
     if (((n % 2) == 0)) {
         return true;
     }
@@ -135,6 +173,9 @@ int main(void)
 {
     char __fbuf[256];
     (void)__fbuf;
+    pb_register_exception("Exception", "BaseException");
+    pb_register_exception("RuntimeError", "Exception");
+    pb_register_exception("Mage", "Player");
     pb_print_str("=== F-String Interpolation ===");
     int64_t value = 42;
     const char * name = "Alice";
@@ -175,15 +216,23 @@ int main(void)
         loop_counter = (loop_counter + 1);
     }
     pb_print_str("=== For Loop with range(0, 3) ===");
-    for (int64_t i = 0; i < 3; ++i) {
+    {
+    int64_t __range_end_2 = 3;
+    for (int64_t i = 0; i < __range_end_2; ++i) {
         pb_print_int(i);
     }
+    }
     pb_print_str("=== For Loop with range(2) ===");
-    for (int64_t j = 0; j < 2; ++j) {
+    {
+    int64_t __range_end_3 = 2;
+    for (int64_t j = 0; j < __range_end_3; ++j) {
         pb_print_int(j);
     }
+    }
     pb_print_str("=== Break and Continue ===");
-    for (int64_t k = 0; k < 5; ++k) {
+    {
+    int64_t __range_end_4 = 5;
+    for (int64_t k = 0; k < __range_end_4; ++k) {
         if ((k == 2)) {
         continue;
     }
@@ -191,6 +240,7 @@ int main(void)
         break;
     }
         pb_print_int(k);
+    }
     }
     pb_print_str("=== List and Indexing ===");
     int64_t __tmp_list_1[] = {100, 200, 300};
@@ -237,25 +287,23 @@ int main(void)
     pb_print_str(pb_dict_get_str_str(map_str, "a"));
     pb_print_str(pb_dict_get_str_str(map_str, "b"));
     pb_print_str("=== Try / Except / Raise ===");
-    PbTryContext __exc_ctx_1;
-    pb_push_try(&__exc_ctx_1);
-    int __exc_flag_1 = setjmp(__exc_ctx_1.env);
-    bool __exc_handled_1 = false;
-    if (__exc_flag_1 == 0) {
+    {
+    PbException __exc_saved_5 = pb_current_exc;
+    PbTryContext __exc_ctx_5;
+    pb_push_try(&__exc_ctx_5);
+    int __exc_flag_5 = pb_setjmp(__exc_ctx_5.env);
+    if (__exc_flag_5 == 0) {
         int64_t result = lang_divide(10, 0);
         pb_print_int(result);
     pb_pop_try();
     } else {
-        if (strcmp(pb_current_exc.type, "RuntimeError") == 0) {
-            pb_print_str("Caught division by zero");
-            pb_clear_exc();
-            __exc_handled_1 = true;
-        }
-        else {
-            pb_reraise();
-        }
+    if (pb_exception_matches("RuntimeError")) {
+        pb_print_str("Caught division by zero");
+    pb_current_exc = __exc_saved_5;
     }
-    if (__exc_flag_1 && !__exc_handled_1) pb_reraise();
+    else { pb_reraise(); }
+    }
+    }
     pb_print_str("=== Boolean Literals ===");
     bool x = true;
     bool y = false;
@@ -311,9 +359,9 @@ int main(void)
     int64_t i2 = (int64_t)(f2);
     pb_print_str((snprintf(__fbuf, 256, "f2: %s, i2: %lld", pb_format_double(f2), i2), __fbuf));
     pb_print_str("=== Class Instantiation and Methods ===");
-    struct Player __tmp_player_2;
-    Player____init__(&__tmp_player_2, 110, 150);
-    struct Player * player = &__tmp_player_2;
+    struct Player *__tmp_player_6 = pb_alloc(sizeof(*__tmp_player_6));
+    Player____init__(__tmp_player_6, 110, 150);
+    struct Player * player = __tmp_player_6;
     pb_print_str((snprintf(__fbuf, 256, "player.hp: %lld", player->hp), __fbuf));
     pb_print_str("Healing player by 50...");
     Player__heal(player, 50);
@@ -323,12 +371,12 @@ int main(void)
     pb_print_str("Updated counter:");
     pb_print_int(counter);
     pb_print_str("=== Class vs Instance Variables ===");
-    struct Player __tmp_player_3;
-    Player____init__(&__tmp_player_3, 1234, 150);
-    struct Player * player1 = &__tmp_player_3;
-    struct Player __tmp_player_4;
-    Player____init__(&__tmp_player_4, 5678, 150);
-    struct Player * player2 = &__tmp_player_4;
+    struct Player *__tmp_player_7 = pb_alloc(sizeof(*__tmp_player_7));
+    Player____init__(__tmp_player_7, 1234, 150);
+    struct Player * player1 = __tmp_player_7;
+    struct Player *__tmp_player_8 = pb_alloc(sizeof(*__tmp_player_8));
+    Player____init__(__tmp_player_8, 5678, 150);
+    struct Player * player2 = __tmp_player_8;
     player1->score = 100;
     pb_print_str((snprintf(__fbuf, 256, "Player1 score: %lld", player1->score), __fbuf));
     pb_print_str((snprintf(__fbuf, 256, "Player2 score (should be default): %lld", player2->score), __fbuf));
@@ -342,9 +390,9 @@ int main(void)
     player->hp = 999;
     pb_print_int(player->hp);
     pb_print_str("=== Inheritance: Mage Subclass ===");
-    struct Mage __tmp_mage_5;
-    Mage____init__(&__tmp_mage_5, 120);
-    struct Mage * mage = &__tmp_mage_5;
+    struct Mage *__tmp_mage_9 = pb_alloc(sizeof(*__tmp_mage_9));
+    Mage____init__(__tmp_mage_9, 120);
+    struct Mage * mage = __tmp_mage_9;
     pb_print_str((snprintf(__fbuf, 256, "Mage name: %s", Mage__get_name(mage)), __fbuf));
     pb_print_str((snprintf(__fbuf, 256, "Mage HP: %lld", mage->base.hp), __fbuf));
     pb_print_str((snprintf(__fbuf, 256, "Mage MP: %lld", mage->mp), __fbuf));

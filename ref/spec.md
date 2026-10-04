@@ -1,363 +1,194 @@
-# PB 0.1 - Language Specification - (May 2025)
+# PB language specification
 
-## 1. Goals & Philosophy
+Updated October 4, 2026. This document describes the implementation on `master`.
+PB is an experimental, statically typed language with Python-like syntax and C99
+output. It implements a subset of Python, not a drop-in interpreter or a
+production memory-safe language.
 
-* **Static, strong, explicit** – every binding carries a compile-time type.  
-* **Pythonic surface, C-level confidence** – familiar syntax, predictable performance.  
-* **Safety first** – many errors rejected at lex, parse or type‑check time.  
-* **Simplicity** – a deliberately small subset of Python; no GC, no runtime dynamic typing.
+## Toolchain
 
-PB is a **statically and strongly typed programming language** that features Python-like syntax and compiles to C (targeting C99). It is designed to be minimal, fast, and safe, intentionally avoiding dynamic typing. PB prioritizes readability and simplicity, enabling developers to write high-performance code with clear C semantics under the hood.
+Python 3.13 or later, GCC, and GNU `ar` are required for builds. Install the Python
+dependencies with `python -m pip install -r requirements.txt`.
 
----
-
-## 2. Lexical Structure
-
-### Character set
-
-UTF‑8 source; keywords stay ASCII.
-
-### Identifiers
-
-Identifiers consist of letters, digits, and underscores and must begin with a letter or underscore:
-
-### Keywords
-
-Reserved words include:
-
+```text
+python run.py toc examples/hello.pb
+python run.py build examples/hello.pb
+python run.py run examples/hello.pb
+python run.py buildlib
+python -m pytest -q
 ```
-and, as, assert, break, class, continue, def, elif, else, except,
-False, for, global, if, import, in, is, None, not, or, pass,
-raise, return, True, try, while
-```
-> **Note:** `True` and `False` are keywords (not re-bindable). Any attempt to assign, delete, or bind them is a compile-time `SyntaxError`. Lowercase `true`/`false` are ordinary identifiers.
 
-### Literals
+Generated headers, C sources, runtime archives, and executables go into `build/`.
+`toc` performs lexing, parsing, type checking, and generation; `build` also compiles
+and links; `run` builds and executes. Native/vendor programs must be launched
+manually. Build and executable failures produce a nonzero command exit status.
 
-* Integer literals: `42`, `1_000`, `0x00000008`
-* Float literals: `3.14`, `1_000.0`, `6.022_140e23`
-    - Underscores may separate digits anywhere; they are stripped at lexing.
-    - At least one digit before and after the dot; no leading-dot (`.5`) or trailing-dot (`5.`) forms are allowed.
-    - Hexadecimal integers start with `0x` or `0X` and may contain underscores.
-* String literals: single- or double-quoted, single-line only (e.g., `"Hello"`, `'world'`). Escape sequences (`\n`, `\\`, etc.) are decoded; invalid escapes raise a `LexerError` with the raw lexeme.
-* F-string literals: `f"..."` or `f'...'`, single-line only.
-    - Placeholders use `{expr}` syntax where `expr` is a full expression (e.g., `x`, `a + b`, `obj.attr`, `call()`).
-    - Internally, an f-string is parsed into a sequence of static text and embedded expressions:
-      ```pb
-      f"Hello {name}, your score is {player.get_score()}"
-      ```
-      is compiled as:
-      ```c
-      snprintf(__fbuf, 256, "Hello %s, your score is %lld", name, Player__get_score(player));
-      ```
-    - No support for `!conversion` (`!r`, `!s`) or `:format_spec` yet.
+## Lexical rules
 
-* Boolean literals: `True`, `False` (keywords)
+Source uses UTF-8, significant indentation with spaces, and `#` comments. Tabs in
+indentation are rejected. Integer/float literals support digit separators;
+hexadecimal integers are supported. Strings support quotes, escapes, raw prefixes,
+and triple-quoted multiline forms. F-strings support expressions in `{...}` but
+not conversions or format specifications such as `!r` and `:.2f`.
 
-### Comments
+`True`, `False`, and `None` are literals. `True` and `False` cannot be rebound.
+Lowercase `true` and `false` are ordinary identifiers.
 
-* Single-line comments begin with `#`
-* The lexer removes comments entirely from generated C
+## Types and bindings
 
-### Indentation & Whitespace
+| PB type | C representation | Implementation |
+| --- | --- | --- |
+| `int` | `int64_t` | Signed 64-bit arithmetic |
+| `float` | `double` | Floating-point arithmetic |
+| `bool` | `bool` | Boolean values |
+| `str` | `const char *` | UTF-8 text, `+` and `+=` concatenation |
+| `list[T]` | `List_T` | Indexed access, append, pop, remove |
+| `set[T]` | `Set_T` | Literal construction, printing, iteration |
+| `dict[str, T]` | `Dict_str_T` | Lookup and updates of existing keys |
+| `file` | `PbFile` | Open, read, write, close |
+| User class | `struct Class *` | Fields, methods, single inheritance |
+| Enum | C enum | Distinct static type and named integer members |
 
-* Indentation is significant.
-* Spaces-only for indentation; tabs in indentation cause a `LexerError`.
-* Mixed spaces+tabs in leading whitespace is a `LexerError`.
+The built-in runtime container element/value types are `int`, `float`, `bool`,
+and `str`. Declarations can be generated for other generic types, but their full
+runtime methods are not implemented. Variables require explicit types. Class
+fields may omit initializers and be set in constructors. Reassignment preserves
+the static type. Function parameters are typed; default arguments and return
+annotations are supported. Omitted return annotations mean `None`/void.
 
----
-
-## 3. Static Types
-
-| PB type | Meaning | Lowered C |
-|---------|---------|-----------|
-| `int`   | signed 64‑bit integer | `int64_t` |
-| `float` | IEEE‑754 double | `double` |
-| `bool`  | `True`/`False` | `_Bool` |
-| `str`   | UTF‑8, immutable | `const char *` |
-| `list[T]` | homogeneous, mutable (`list[int]`, `list[str]`, `list[float]`, `list[bool]`) | `List_int`|
-| `dict[str,T]` | string keys (runtime ships only `dict[str,int]`) | `Dict_str_int` |
-| *User class* | single inheritance | `struct <Class>` |
-
-### Lists
+Numeric argument widening and subclass compatibility are accepted where
+implemented. Explicit conversion uses `int`, `float`, `bool`, `str`, and `hex`.
+`str` accepts numbers, booleans, and strings; numeric results have stable storage.
+Optional types (`T | None`) are parsed and checked, but complete optional-value
+runtime lowering remains experimental.
 
 ```python
-numbers: list[int] = [1, 2, 3]
-```
-
-### Dicts
-
-```python
-settings: dict[str, int] = {"volume": 10}
-```
-### Type Conversion
-
-* **Implicit coercion is allowed** in the following cases:
-  - **Numeric widening**: `bool → int → float` (e.g., a `bool` can be passed to a function expecting an `int`).
-  - **Subclass compatibility**: Instances of a subclass can be used where a superclass is expected.
-
-* **No implicit coercion** is performed between unrelated types (e.g., `str → int`, or unrelated classes).
-
-* **Explicit conversion** is still available using built-in constructors: `int(x)`, `float(x)`, `str(x)`, `bool(x)`, `hex(x)`.
-
----
-
-## 4. Declarations
-
-### Variables
-
-```python
-x: int = 5      # type + initializer are both required
-```
-Re‑assignment must keep the same static type.
-
-### Functions
-
-Explicit parameter and return annotations:
-
-```python
-def add(x: int, y: int) -> int:
+def add(x: int, y: int = 1) -> int:
     return x + y
-```
-
-Default parameters allowed:
-
-```python
-def inc(x: int, step: int = 1) -> int:
-    return x + step
-```
-
-* All parameters typed; defaults allowed.  
-* Nested functions **not supported**.  
-* `return` outside a function is a parser error.
-
-### Classes
-
-Support for single inheritance.
-
-```python
-class Enemy:
-    hp: int = 100
-    def heal(self, amt: int) -> None:
-        self.hp += amt
-
-class Boss(Enemy):
-    rage: int = 0
-```
-
-* Single inheritance; empty body is a parser error.  
-* Fields may be explicit (`hp`) or inferred from `self.x = …` in `__init__`.  
-* No `super()` helper yet – call base methods directly (`Enemy__heal(self, 5)`).
-
----
-
-## 5. Statements
-
-| Statement | Notes |
-|-----------|-------|
-| `if / elif / else` | standard, no `elif` fall‑through quirks |
-| `while cond:` | no `else` clause (not implemented) |
-| `for v in range(...)` | *only* `range` is iterable; compiles to a `for` loop in C |
-| `break / continue / pass` | only inside loops |
-| `assert expr` | runtime check → `pb_fail` on failure |
-| `try / except` | parses & type‑checks, but code‑gen emits a comment (no runtime) |
-| `raise expr` | aborts (`pb_fail("Exception raised")`) |
-
-### Exception Handling
-
-```python
-try:
-    risky()
-except RuntimeError:
-    print("Caught an error")
-```
-### Function Calls
-
-Supports positional and keyword arguments:
-
-```python
-add(5, 3)
-increment(10)
-increment(10, 2)
-```
-
-### Attribute & Index Access
-
-```python
-player.hp
-numbers[0]
-settings["volume"]
-```
-
-### String Interpolation
-
-F-string syntax supports full expressions inside `{}`:
-- Literals: `f"pi ≈ {3.14}"`
-- Arithmetic: `f"Total: {price * qty}"`
-- Function calls: `f"Score: {get_score()}"`
-- Method calls: `f"HP: {self.hp}"`
-- Attribute access: `f"User: {player.name}"`
-
-Resulting C code uses `snprintf` for efficient formatting at compile-time.
-
-
-### Expression Postfixes
-
-All of these can be chained in any order:
-
-* **Indexing**: `expr[expr]`
-* **Attribute**: `expr.attr`
-* **Call**: `expr(arg, …)`
-
-Example:
-
-```python
-obj.method()[i](x)
-```
-
----
-
-## 6. Expressions & Operators
-
-| Category   | Operators                        | Notes                                          |
-| ---------- | -------------------------------- | ---------------------------------------------- |
-| Arithmetic | `+`, `-`, `*`, `/`, `//`, `%`    | boolean arithmetic (`True + 1`) is a type error.       |
-| Comparison | `==`, `!=`, `<`, `<=`, `>`, `>=` |                                                |
-| Identity   | `is`, `is not`                   | Only valid on bools → compiles to `==` / `!=`. |
-| Logical    | `and`, `or`, `not`               |                                                |
-
-Precedence: `not` > `*`/`/`/`//`/`%` > `+`/`-` > `<`/`>`/… > `==`/`!=`/`is` > `and` > `or`.
-
-Logical ops compile to `&&` / `||`; `is`→`==`, `is not`→`!=`.
-
-Arithmetic allowed only on `int`/`float`.
-
----
-
-## 7. Modules & Imports
-
-* One `.pb` file = one module.
-* Absolute imports only (`import math.stats`); no relative imports yet.
-
-Global variables are module‑scoped; use `global name` inside a function to assign to them.
-When compiling a module, a header file is also produced. All top‑level variables
-are emitted as `extern` declarations so other modules can reference them. The
-compiler keeps the signature of every exported function and checks calls across
-modules against these signatures.
-
----
-
-## 8. Built-in Functions
-
-`print`, `range`, `hex`.
-`print` chooses helper (`pb_print_int`, `pb_print_bool`, …) based on static type.
-`hex(x)` returns a zero-padded hexadecimal string. Negative values are prefixed
-with `-0x`.
-
----
-
-## 9. Compile‑time & Error Model
-
-| Phase | Errors raised |  When |
-|-------|---------------| ---------------|
-| Lexing | LexerError | mixed tabs/spaces, bad token, invalid f‑string placeholder |
-| Parsing | ParserError | `break` outside loop, empty class, chained comparison, duplicate param, etc. |
-| Type check | TypeError | mismatched types, heterogeneous list, arithmetic on non‑numeric, etc. |
-| Runtime | ConversionError, RuntimeError | failed `assert`, explicit `raise` → abort |
-
-Compilation stops at the first error per phase.
-
----
-
-## 10. From PB to C99 — Mapping Highlights
-
-| PB construct | Emitted C |
-|--------------|-----------|
-| Module | single `.c` file with standard headers (`stdio.h`, `stdint.h`, …) |
-| `int / float / bool / str` | `int64_t / double / bool / const char *` |
-| `list[int]` | `typedef struct { int64_t len; int64_t *data; } List_int;` |
-| `dict[str,int]` | `Dict_str_int` plus `pb_dict_get` |
-| Function | `ret_type name(params…) { … }` |
-| Method `Class.m` | free function `Class__m(Class * self, …)` |
-| Constructor `Class(...)` | stack struct `__tmp_<id>` + call to `Class____init__` |
-| `for i in range(a,b):` | `for(int64_t i=a; i<b; ++i){ … }` |
-| `assert e` | `if(!(e)) pb_fail("Assertion failed");` |
-| `print(x)` | dispatches to helper chosen at code‑gen time |
-
-Dynamic features (exceptions, dynamic dispatch) generate stub comments until implemented.
-
----
-
-## 11. Differences vs. Python 3
-
-| Area | Python 3 | PB 1.0 |
-|------|----------|--------|
-| Typing | dynamic; optional hints | **mandatory static types** |
-| Lists / dicts | heterogeneous | homogeneous; `list[int | float | bool | str]`, `dict[str,int]` |
-| Dispatch | dynamic (`obj.m()`) | static (`Class__m(obj, …)`) |
-| Inheritance | multiple, `super()` | single, no `super()` helper |
-| Loops | any iterable | only `range` |
-| Exceptions | full runtime | parsed but aborts at runtime |
-| Extras | comprehensions, lambdas, decorators, etc. | **not implemented** |
-
----
-
-## 12. Quick Cheat‑sheet
-
-```pb
-# hello.pb
-hello: str = "Hello World"
 
 def main() -> int:
-    print(hello)
+    values: list[int] = [1, 2]
+    values.append(add(2))
+    print("values:", values)
     return 0
 ```
 
+`print` evaluates multiple arguments from left to right, separates values with
+spaces, and adds one newline. Scalars, built-in containers, and enums can be
+mixed. `len` accepts strings and built-in containers. String length/iteration
+count UTF-8 code points, not grapheme clusters.
+
+## Containers and loops
+
+`for` supports one- or two-argument `range`, lists, sets, dictionary keys, and
+strings. Iterable expressions and range bounds are evaluated once; nested loops
+have independent state. Three-argument ranges are not supported.
+
+List assignment must address an existing element: assigning at `len(values)`
+raises `IndexError`; use `append` to grow. Negative indices are currently rejected.
+Dictionary lookup and updates of missing keys raise `KeyError`. New-key insertion
+and deletion need a future mutable dictionary representation.
+
+Set literals remove repeated expressions during generation. General runtime
+uniqueness and a complete Python-style set API remain unimplemented. Containers
+are C value records: assignment copies length/capacity and shares backing storage.
+Element updates can be shared. Resizing a list gives that value new storage and
+keeps older copies valid. This differs from Python container identity.
+
+## Classes and enums
+
+Classes support fields, constructors, methods, and single inheritance. Dispatch
+is static. Nested attribute reads and assignments work. Local class instances use
+managed heap storage and can be returned. Multiple inheritance, `super()`, and
+dynamic dispatch are not implemented.
+
+```python
+from enum import Enum
+
+class Scene(Enum):
+    MENU = 1
+    GAME = 2
+
+def main() -> int:
+    scene: Scene = Scene.GAME
+    print(scene)  # Scene.GAME
+    return 0
 ```
-$ python run.py run .\examples\hello.pb
+
+Enum members require explicit integer constants in the signed 32-bit C99 range.
+Duplicate names and cross-enum assignments are rejected. Equal-valued aliases
+print the first member's name. Enums can be exported, imported under an alias,
+or addressed through a module alias. Their C symbols are module-qualified.
+`auto()`, string values, and reflective `.name`/`.value` APIs are future work.
+
+## Imports and native bindings
+
+Each `.pb` file is a module. Imports support dotted absolute names, aliases,
+`from`, star imports, and parenthesized lists. Search order is stdlib, vendor,
+then the entry module directory. `__name__` guards are recognized. Use `global`
+to reassign module globals inside functions. Relative imports are unimplemented.
+The initial PB stdlib contains `random` and the enum marker.
+
+Vendor `metadata.json` declares include/library paths, link flags, and native
+status. Native declarations describe an existing C API and are not generated as
+C implementations. Raylib's verified subset is `vendor/raylib/raylib.pb`.
+`examples/ray_core.pb` and `examples/ray_pong.pb` use it. Pong supports two-player
+movement, wall/paddle bounces, scoring, pause, and close without external assets.
+The bundled Raylib library and metadata currently target Windows.
+
+```text
+python run.py build examples/ray_pong.pb
+build/ray_pong.exe
 ```
 
-The reference script **`lang.pb`** exercises every feature and is guaranteed to compile.
+The generator writes experimental `raylib_stub.pb` reference output without
+replacing the curated API. General pointer/callback/variadic ABI support and
+native struct-by-value lowering are not a supported interface yet. The original
+larger C Pong design remains in `ref/pong/`.
 
-### Toolchain
+## Exceptions and control flow
 
-```
-$python run.py -h
-usage: run.py [-h] [-v] [-d] {toc,build,run} file
+Conditionals, while/for loops, break, continue, pass, and assert are implemented.
+Runtime exceptions use `setjmp`/`longjmp`. `BaseException` is the root; `Exception`,
+`RuntimeError`, `ValueError`, `IndexError`, `KeyError`, and `TypeError` are built-in types.
+User subclasses inherit a message constructor. Handlers match ancestors and
+exact types. Runtime exceptions can carry message payloads; explicit exception
+objects must have their message in the first storage slot.
 
-PB Language Toolchain
+Try/except/finally handles normal completion, unhandled errors, errors raised by
+handlers, returns, breaks, and continues. Return expressions are evaluated before
+finally. Bare raise inside a handler preserves and re-raises the active payload.
+Uncaught errors terminate with a readable message. Internal allocation failures
+use `pb_fail` and are not recoverable language exceptions.
 
-positional arguments:
-  {toc,build,run}  Action to perform
-  file             Path to .pb source file
+## Ownership and lifetime policy
 
-options:
-  -h, --help       show this help message and exit
-  -v, --verbose    Enable verbose output
-  -d, --debug      Enable debug output
-```
+PB has no tracing garbage collector. Runtime allocations for list growth,
+concatenated/copied strings, file reads, and local class instances are tracked
+and released at orderly process shutdown, including `pb_fail`'s exit path.
 
----
+Generated code does not free a list when a local leaves scope. Returned values,
+aliases, and exceptions make that unsafe. Growth copies into managed storage and
+retains previous managed buffers until shutdown so aliases stay valid. C release
+helpers only free registered allocations, never borrowed stack arrays.
 
-## 13. Not Yet Implemented / Road‑map
+Container literals initially borrow backing arrays in their C scope. Returning a
+built-in container or assigning one to an instance field copies its backing array
+into managed storage. Returning a string copies it too. Container copies are
+shallow for string elements/values, whose strings must have valid lifetimes.
+F-strings still use a shared 256-byte buffer per function. Direct formatting works;
+retained interpolated strings need a future owned representation. Multi-argument
+printing copies formatted strings before printing to preserve distinct arguments.
 
-* Multi-line and raw strings
-* Enums
-* Variadic arguments
-* Relative imports
-* Standard library in PB
+This conservative policy retains allocations until exit and is unsuitable for
+unbounded allocation in long-running processes. Early reclamation, deep ownership,
+reference semantics, and allocation accounting are explicit roadmap work.
 
----
+## Compatibility and remaining work
 
-### Design Notes
-
-* Tabs forbidden in indentation – portability & tooling.  
-* No bool arithmetic – avoids subtle bugs.  
-* Simple F‑strings keep lexer and code‑gen trivial yet useful.  
-* Static dispatch & structs map 1‑to‑1 onto C, yielding fast, predictable binaries.
-
-*Happy coding in PB!*
-
--- 
-
-_Last updated : 2025‑05‑14_
+PB follows C arithmetic where no Python-specific lowering exists. Negative floor
+division/modulo and conversion edge cases are not guaranteed to match Python.
+Overflow checks, complete memory safety, general string comparison, full optional
+lowering, comprehensions, lambdas, decorators, generators, and closures remain
+unimplemented. See [roadmap.md](roadmap.md) and the
+[branch consolidation record](branch-consolidation.md) for priorities and provenance.
