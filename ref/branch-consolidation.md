@@ -92,6 +92,11 @@ ownership of string container elements require further work. See `spec.md` and
 
 ## Retirement
 
-The reviewed source heads will be deleted after publishing the consolidated
-master and verifying its cross-platform CI. The local bundle above preserves
-their complete history independently of remote branch deletion.
+All twelve reviewed feature branches were deleted atomically on October 4,
+2026, after publishing the consolidation and verifying the Linux/Windows
+`-O0`/`-O2` jobs and the repository's required aggregate check:
+[successful CI run](https://github.com/pbedn/pb-lang/actions/runs/37190308230).
+Deletion checked each remote head against its reviewed commit before proceeding.
+`master` is the only local and remote branch; no open pull requests remain.
+The local bundle above preserves the complete source history independently of
+remote branch deletion.
