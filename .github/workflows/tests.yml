@@ -47,3 +47,14 @@ jobs:
       - name: Build bundled native Pong example
         if: runner.os == 'Windows'
         run: python run.py build examples/ray_pong.pb
+
+  required-check:
+    name: Pytest Checks (with GCC)
+    runs-on: ubuntu-latest
+    needs: pytest
+    if: always()
+    steps:
+      - name: Require every platform and optimization level to pass
+        env:
+          TEST_RESULT: ${{ needs.pytest.result }}
+        run: test "$TEST_RESULT" = success
